@@ -50,13 +50,6 @@ body,
   user-select: none;
 }
 
-.brand-mark {
-  height: 20px;
-  width: auto;
-  display: block;
-  filter: drop-shadow(0 0 6px rgba(96, 110, 255, 0.35));
-}
-
 /* the wordmark, as in the logo: MATRIX in white, LAB in blue → violet */
 .brand-name {
   font-size: 13px;
@@ -153,10 +146,9 @@ body,
   }
 }
 
-/* … then everything, and the name beside the logo */
+/* … then every label (the MatrixLab name always stays) */
 @container (max-width: 700px) {
-  .tb-label,
-  .brand-name {
+  .tb-label {
     display: none;
   }
   .tb {

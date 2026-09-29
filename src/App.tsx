@@ -606,7 +606,6 @@ function App() {
     <div className="app-root">
       <div className="toolbar">
         <div className="toolbar-brand" title="MatrixLab">
-          <img className="brand-mark" src="/brand/mark.png" alt="" aria-hidden />
           <span className="brand-name">
             Matrix<span className="brand-lab">Lab</span>
           </span>
