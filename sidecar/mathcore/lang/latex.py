@@ -1,0 +1,424 @@
+"""Reading and writing LaTeX — what the Visual editor produces and what
+people type in the LaTeX language. Covers the notation of school algebra:
+\\frac (incl. \\frac14), \\sqrt[n]{}, ^{}, _{}, \\left( \\right), |x|, \\cdot,
+\\times, \\div, \\le/\\ge/\\ne, \\pm, \\pi, functions, \\text{ or }."""
+
+import re
+
+from ..parsing import MathInputError
+from .ast import ATOMS, Add, Alts, Const, Div, Func, Group, Mul, Neg, Node, Num, Pow, Rel, Sym, strip_group
+from .text import Incomplete
+
+_SKIP = {",", ";", "!", " ", ":", "quad", "qquad", "displaystyle", "textstyle", "limits", "nolimits"}
+_REL = {"=": "=", "<": "<", ">": ">", "le": "<=", "leq": "<=", "leqslant": "<=", "ge": ">=", "geq": ">=", "geqslant": ">=",
+        "ne": "!=", "neq": "!=", "lt": "<", "gt": ">"}
+_FUNCS = {"sin": "sin", "cos": "cos", "tan": "tan", "arcsin": "asin", "arccos": "acos", "arctan": "atan", "ln": "ln", "log": "log", "exp": "exp"}
+_OPERATORNAME = {"abs": "abs", "sqrt": "sqrt", **_FUNCS}
+
+
+def _tokens(text: str) -> list[tuple[str, str]]:
+    out, i = [], 0
+    while i < len(text):
+        c = text[i]
+        if c.isspace():
+            i += 1
+        elif c == "\\":
+            m = re.match(r"\\([A-Za-z]+|.)", text[i:])
+            name = m.group(1)
+            i += len(m.group(0))
+            if name not in _SKIP:
+                out.append(("cmd", name))
+        elif c.isdigit() or (c == "." and i + 1 < len(text) and text[i + 1].isdigit()):
+            m = re.match(r"\d*\.?\d+|\d+\.?", text[i:])
+            out.append(("num", m.group(0)))
+            i += len(m.group(0))
+        elif c.isalpha():
+            out.append(("letter", c))
+            i += 1
+        else:
+            out.append(("op", {"−": "-", "×": "*", "·": "*", "÷": "/", "≤": "<=", "≥": ">=", "≠": "!="}.get(c, c)))
+            i += 1
+    out.append(("end", ""))
+    # two-character relations typed as <= / >=
+    merged = []
+    for tok in out:
+        if merged and tok == ("op", "=") and merged[-1] in (("op", "<"), ("op", ">"), ("op", "!")):
+            merged[-1] = ("op", merged[-1][1] + "=")
+        else:
+            merged.append(tok)
+    return merged
+
+
+class LatexReader:
+    def __init__(self, text: str):
+        if "\\placeholder" in text:
+            raise Incomplete("there's an empty box ▢ to fill in")
+        self.toks = _tokens(text)
+        self.i = 0
+        self.abs_depth = 0
+
+    def peek(self, k=0):
+        return self.toks[min(self.i + k, len(self.toks) - 1)]
+
+    def take(self):
+        tok = self.toks[self.i]
+        self.i += 1
+        return tok
+
+    def at(self, kind, text=None) -> bool:
+        k, t = self.peek()
+        return k == kind and (text is None or t == text)
+
+    def need_more(self):
+        if self.at("end"):
+            raise Incomplete("not finished yet")
+
+    def at_word(self) -> str | None:
+        """The letters "or" / "and" typed between two answers are a word,
+        not o·r — so those letter pairs are reserved in the Work Pad."""
+        for word in ("or", "and"):
+            if all(self.peek(j) == ("letter", ch) for j, ch in enumerate(word)) and self.peek(len(word))[0] != "end":
+                return word
+        return None
+
+    def is_or(self) -> bool:
+        k, t = self.peek()
+        if word := self.at_word():
+            self.i += len(word)
+            return True
+        if k == "cmd" and t in ("text", "mathrm", "textrm"):
+            save = self.i
+            self.take()
+            content = self.braced_text()
+            if content.strip().lower() in ("or", "and"):
+                return True
+            self.i = save
+        return self.at("op", ",")
+
+    def braced_text(self) -> str:
+        if not self.at("op", "{"):
+            return ""
+        self.take()
+        out, depth = [], 1
+        while not self.at("end"):
+            k, t = self.take()
+            if (k, t) == ("op", "{"):
+                depth += 1
+            elif (k, t) == ("op", "}"):
+                depth -= 1
+                if depth == 0:
+                    break
+            out.append(t)
+        return "".join(out)
+
+    # -------------------------------------------------------------- grammar
+
+    def parse(self) -> Node:
+        if self.at("end"):
+            raise Incomplete("nothing typed yet")
+        node = self.alts()
+        if not self.at("end"):
+            raise MathInputError(f"didn't expect “{self.peek()[1]}” here")
+        return node
+
+    def alts(self) -> Node:
+        items = [self.relation()]
+        while self.is_or():
+            if self.at("op", ","):
+                self.take()
+            self.need_more()
+            items.append(self.relation())
+        return items[0] if len(items) == 1 else Alts(items)
+
+    def rel_op(self) -> str | None:
+        k, t = self.peek()
+        if k == "op" and t in ("=", "<", ">", "<=", ">=", "!="):
+            return {"<=": "<=", ">=": ">=", "!=": "!="}.get(t, t)
+        if k == "cmd" and t in _REL:
+            return _REL[t]
+        return None
+
+    def relation(self) -> Node:
+        parts, ops = [self.sum()], []
+        while (op := self.rel_op()) is not None:
+            self.take()
+            self.need_more()
+            ops.append(op)
+            parts.append(self.sum())
+        return parts[0] if not ops else Rel(parts, ops)
+
+    def sign(self) -> str | None:
+        if self.at("op", "+") or self.at("op", "-"):
+            return self.take()[1]
+        if self.at("cmd", "pm") or self.at("cmd", "mp") or self.at("op", "±"):
+            self.take()
+            return "±"
+        return None
+
+    def sum(self) -> Node:
+        self.need_more()
+        terms = []
+        first = self.sign() or "+"
+        self.need_more()
+        terms.append((first, self.term()))
+        while (s := self.sign()) is not None:
+            self.need_more()
+            terms.append((s, self.term()))
+        if len(terms) == 1 and first == "+":
+            return terms[0][1]
+        if len(terms) == 1 and first == "-":
+            return Neg(terms[0][1])
+        return Add(terms)
+
+    def starts_atom(self) -> bool:
+        k, t = self.peek()
+        if k == "letter" and self.at_word():
+            return False
+        if k in ("num", "letter"):
+            return True
+        if k == "op":
+            return t in ("(", "[", "{") or (t == "|" and self.abs_depth == 0)
+        if k == "cmd":
+            return t in ("frac", "dfrac", "tfrac", "sqrt", "left", "mleft", "pi", "infty", "operatorname", "mathrm", "lvert", "exponentialE") or t in _FUNCS
+        return False
+
+    def term(self) -> Node:
+        factors, ops = [self.unary()], []
+        while True:
+            k, t = self.peek()
+            if (k, t) in (("cmd", "cdot"), ("cmd", "times"), ("op", "*")):
+                self.take()
+                self.need_more()
+                factors.append(self.unary())
+                ops.append("×" if t == "times" else "·")
+            elif (k, t) in (("cmd", "div"), ("op", "/")):
+                self.take()
+                self.need_more()
+                den = self.unary()
+                num = factors[0] if len(factors) == 1 else Mul(factors, ops)
+                factors, ops = [Div(num, den, "div" if t == "div" else "slash")], []
+            elif self.starts_atom():
+                factors.append(self.unary())
+                ops.append("implicit")
+            else:
+                break
+        return factors[0] if len(factors) == 1 else Mul(factors, ops)
+
+    def unary(self) -> Node:
+        if self.at("op", "-"):
+            self.take()
+            self.need_more()
+            return Neg(self.unary())
+        return self.power()
+
+    def script(self) -> Node:
+        """The argument of ^, _, \\frac, \\sqrt: {…} or one token."""
+        self.need_more()
+        if self.at("op", "{"):
+            self.take()
+            if self.at("op", "}"):
+                raise Incomplete("there's an empty box to fill in")
+            inner = self.alts()
+            if not self.at("op", "}"):
+                raise Incomplete("a { isn't closed")
+            self.take()
+            return inner
+        k, t = self.take()
+        if k == "num":
+            if len(t) > 1 and "." not in t:  # \frac14: each argument is ONE digit
+                self.toks.insert(self.i, ("num", t[1:]))
+                return Num(t[0])
+            return Num(t)
+        if k == "letter":
+            return Sym(t)
+        if k == "cmd" and t == "pi":
+            return Const("pi")
+        raise MathInputError(f"didn't expect “{t}” here")
+
+    def power(self) -> Node:
+        base = self.atom()
+        while self.at("op", "^"):
+            self.take()
+            base = Pow(base, self.script())
+        return base
+
+    def atom(self) -> Node:
+        self.need_more()
+        k, t = self.take()
+        if k == "num":
+            return Num(t)
+        if k == "letter":
+            name = t
+            if self.at("op", "_"):
+                self.take()
+                sub = self.script()
+                name += "_" + (sub.text if isinstance(sub, Num) else sub.name if isinstance(sub, Sym) else "")
+            return Sym(name)
+        if k == "op" and t in ("(", "["):
+            inner = self.alts()
+            close = ")" if t == "(" else "]"
+            if not self.at("op", close):
+                raise Incomplete("a bracket isn't closed yet")
+            self.take()
+            return Group(inner)
+        if k == "op" and t == "{":
+            inner = self.alts()
+            if not self.at("op", "}"):
+                raise Incomplete("a { isn't closed")
+            self.take()
+            return inner
+        if k == "op" and t == "|":
+            return self.abs_until(("op", "|"))
+        if k == "cmd":
+            if t in ("frac", "dfrac", "tfrac"):
+                return Div(self.script(), self.script(), "frac")
+            if t == "sqrt":
+                if self.at("op", "["):
+                    self.take()
+                    index = self.alts()
+                    if not self.at("op", "]"):
+                        raise Incomplete("the root's index isn't closed")
+                    self.take()
+                    return Func("root", [self.script(), index])
+                return Func("sqrt", [self.script()])
+            if t in ("left", "mleft"):
+                self.need_more()
+                k2, d = self.take()
+                if (k2, d) in (("op", "|"), ("cmd", "vert"), ("cmd", "lvert")):
+                    return self.abs_until(None, closing_left=True)
+                if d not in ("(", "[", "."):
+                    raise MathInputError(f"unsupported bracket “{d}”")
+                inner = self.alts()
+                if not (self.at("cmd", "right") or self.at("cmd", "mright")):
+                    raise Incomplete("a bracket isn't closed yet")
+                self.take()
+                self.take()  # the closing delimiter
+                return Group(inner)
+            if t == "lvert":
+                return self.abs_until(("cmd", "rvert"))
+            if t == "pi":
+                return Const("pi")
+            if t == "infty":
+                return Const("oo")
+            if t == "exponentialE":
+                return Const("e")
+            if t in _FUNCS:
+                return self.function(_FUNCS[t])
+            if t in ("operatorname", "mathrm"):
+                name = self.braced_text().strip()
+                if name in _OPERATORNAME:
+                    return self.function(_OPERATORNAME[name])
+                if name == "e":
+                    return Const("e")
+                return Sym(name)
+        raise MathInputError(f"didn't expect “{t}” here")
+
+    def abs_until(self, close, closing_left=False) -> Node:
+        self.abs_depth += 1
+        inner = self.sum()
+        self.abs_depth -= 1
+        if closing_left:
+            if not (self.at("cmd", "right") or self.at("cmd", "mright")):
+                raise Incomplete("an absolute value isn't closed")
+            self.take()
+            self.take()
+        else:
+            if self.peek() != close:
+                raise Incomplete("an absolute value isn't closed")
+            self.take()
+        return Func("abs", [inner])
+
+    def function(self, name: str) -> Node:
+        self.need_more()
+        if self.at("cmd", "left") or self.at("cmd", "mleft") or self.at("op", "("):
+            arg = self.atom()
+            return Func(name, [strip_group(arg)])
+        return Func(name, [self.power()])
+
+
+# ------------------------------------------------------------------ writing
+
+_REL_OUT = {"=": "=", "<": "<", ">": ">", "<=": "\\le", ">=": "\\ge", "!=": "\\ne"}
+_FUNC_OUT = {"sin": "\\sin", "cos": "\\cos", "tan": "\\tan", "asin": "\\arcsin", "acos": "\\arccos", "atan": "\\arctan", "ln": "\\ln", "log": "\\log"}
+
+
+def _starts_with_digit(tex: str) -> bool:
+    return tex[:1].isdigit() or tex.startswith("-")
+
+
+class LatexWriter:
+    def write(self, node: Node) -> str:
+        return self.w(node)
+
+    def paren(self, node: Node, needed: bool) -> str:
+        text = self.w(node)
+        return f"\\left({text}\\right)" if needed else text
+
+    def w(self, node: Node) -> str:
+        if isinstance(node, Num):
+            return node.text
+        if isinstance(node, Sym):
+            base, _, sub = node.name.partition("_")
+            if len(base) > 1:
+                base = f"\\mathrm{{{base}}}"
+            return f"{base}_{{{sub}}}" if sub else base
+        if isinstance(node, Const):
+            return {"pi": "\\pi", "e": "e", "oo": "\\infty"}[node.name]
+        if isinstance(node, Group):
+            return f"\\left({self.w(node.inner)}\\right)"
+        if isinstance(node, Neg):
+            return "-" + self.paren(node.arg, isinstance(node.arg, (Add, Neg)))
+        if isinstance(node, Add):
+            out = []
+            for k, (sign, term) in enumerate(node.terms):
+                text = self.paren(term, isinstance(term, (Add, Neg, Rel, Alts)))
+                spelled = {"+": "+", "-": "-", "±": "\\pm"}[sign]
+                if k == 0:
+                    out.append(("" if sign == "+" else spelled + ("" if sign == "-" else " ")) + text)
+                else:
+                    out.append(f"{spelled} {text}")
+            return " ".join(out)
+        if isinstance(node, Mul):
+            out = ""
+            for k, f in enumerate(node.factors):
+                text = self.paren(f, isinstance(f, (Add, Rel, Alts)) or (k > 0 and isinstance(f, Neg)))
+                if k == 0:
+                    out = text
+                    continue
+                op = node.ops[k - 1] if k - 1 < len(node.ops) else "implicit"
+                if op == "·":
+                    out += " \\cdot " + text
+                elif op == "×":
+                    out += " \\times " + text
+                elif _starts_with_digit(text):  # 2·3 must keep its dot
+                    out += " \\cdot " + text
+                else:  # implicit, or a code language's * — written the way it's read
+                    sep = " " if re.search(r"\\[A-Za-z]+$", out) else ""
+                    out += sep + text
+            return out
+        if isinstance(node, Div):
+            if node.style == "div":
+                return f"{self.paren(node.num, isinstance(node.num, (Add,)))} \\div {self.paren(node.den, not isinstance(node.den, ATOMS + (Pow,)))}"
+            return f"\\frac{{{self.w(strip_group(node.num))}}}{{{self.w(strip_group(node.den))}}}"
+        if isinstance(node, Pow):
+            base = self.paren(node.base, not isinstance(node.base, ATOMS) or isinstance(node.base, Func) and node.base.name not in ("sqrt", "abs", "root"))
+            return f"{base}^{{{self.w(strip_group(node.exp))}}}"
+        if isinstance(node, Func):
+            if node.name == "sqrt":
+                return f"\\sqrt{{{self.w(node.args[0])}}}"
+            if node.name == "root":
+                return f"\\sqrt[{self.w(node.args[1])}]{{{self.w(node.args[0])}}}"
+            if node.name == "abs":
+                return f"\\left|{self.w(node.args[0])}\\right|"
+            if node.name == "exp":
+                return f"e^{{{self.w(node.args[0])}}}"
+            name = _FUNC_OUT.get(node.name, f"\\operatorname{{{node.name}}}")
+            return f"{name}\\left({', '.join(self.w(a) for a in node.args)}\\right)"
+        if isinstance(node, Rel):
+            out = self.w(node.parts[0])
+            for op, part in zip(node.ops, node.parts[1:]):
+                out += f" {_REL_OUT[op]} {self.w(part)}"
+            return out
+        if isinstance(node, Alts):
+            return " \\text{ or } ".join(self.w(i) for i in node.items)
+        raise MathInputError(f"can't write {type(node).__name__} as LaTeX")

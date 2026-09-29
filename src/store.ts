@@ -1,0 +1,696 @@
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
+
+export interface VariableRow {
+  id: string;
+  name: string;
+  value: string;
+}
+
+export function defaultRow(name: string, value: string): Omit<VariableRow, "id"> {
+  return { name, value };
+}
+
+interface BlockBase {
+  id: string;
+  position: { x: number; y: number };
+  /** Blocks sharing a groupId are locked together and drag as one. */
+  groupId?: string;
+  /** Set once the user resizes the block; content scrolls inside it. */
+  size?: { w: number; h: number };
+}
+
+export interface VariableBlockData extends BlockBase {
+  type: "variable";
+  rows: VariableRow[];
+}
+
+export type TransformMode = "simplify" | "expand" | "factor" | "evaluate" | "scientific";
+
+/** Block type stays "simplify" so older saved workspaces keep loading —
+ * it's shown as "Transform" and does more than simplify now. */
+export interface SimplifyBlockData extends BlockBase {
+  type: "simplify";
+  expr: string;
+  mode?: TransformMode;
+}
+
+export interface GraphWindow {
+  xmin: number;
+  xmax: number;
+  ymin: number;
+  ymax: number;
+}
+
+export interface GraphBlockData extends BlockBase {
+  type: "graph";
+  /** One graphable thing per line: y = …, f(x) = …, x = 3, (1, 2), y < …  */
+  expr: string;
+  window?: GraphWindow;
+  /** Keep 1 unit of x the same length as 1 unit of y (true slopes). */
+  equalAspect?: boolean;
+  hideMarkers?: ("intercepts" | "vertices" | "intersections")[];
+}
+
+export type SolveMethod = "auto" | "factor" | "formula" | "complete" | "sqrt" | "substitution" | "elimination";
+
+export interface SolveBlockData extends BlockBase {
+  type: "solve";
+  expr: string;
+  target?: string;
+  method?: SolveMethod;
+}
+
+export interface NoteBlockData extends BlockBase {
+  type: "note";
+  text: string;
+}
+
+export interface TableBlockData extends BlockBase {
+  type: "table";
+  expr: string;
+  start: string;
+  end: string;
+  step: string;
+}
+
+export type LineMode = "points" | "point-slope" | "slope-intercept" | "equation" | "parallel" | "perpendicular";
+
+export interface LineBlockData extends BlockBase {
+  type: "line";
+  mode: LineMode;
+  p1: string;
+  p2: string;
+  slope: string;
+  intercept: string;
+  equation: string;
+}
+
+export interface QuadraticBlockData extends BlockBase {
+  type: "quadratic";
+  expr: string;
+}
+
+export interface SequenceBlockData extends BlockBase {
+  type: "sequence";
+  terms: string;
+  n: string;
+}
+
+export interface StatsBlockData extends BlockBase {
+  type: "stats";
+  data: string;
+  ydata: string;
+}
+
+export interface BalanceBlockData extends BlockBase {
+  type: "balance";
+  expr: string;
+  /** the letter to get alone */
+  target?: string;
+  /** Weigh mode: give the letters values so each tile has a real weight
+   * and the scale actually tilts when the sides aren't equal. */
+  weigh?: boolean;
+  values?: Record<string, number>;
+}
+
+export type WorkCheck = "live" | "button" | "off";
+/** "visual", "latex", a built-in text language ("python", "lua",
+ * "haskell"), or the id of a language defined in the workspace. */
+export type WorkLanguage = string;
+
+/** A teacher-defined input language: the same fields as the engine's
+ * built-in definitions (mathcore/lang/specs.py). Saved with the workspace,
+ * so a lesson carries the languages it uses. */
+export interface LanguageSpec {
+  id: string;
+  name: string;
+  power: string[];
+  multiply?: string;
+  implicit_multiplication?: boolean;
+  equals: string[];
+  not_equal: string[];
+  or: string[];
+  call_style?: "parens" | "juxtapose";
+  prefixes?: string[];
+  names?: Partial<Record<"sqrt" | "abs" | "pi" | "e" | "sin" | "cos" | "tan" | "ln" | "log" | "exp", string>>;
+}
+
+/** Show-your-work notepad: the student writes every step; each line is
+ * checked against the one above (never solved for them). */
+export interface WorkBlockData extends BlockBase {
+  type: "work";
+  problem: string;
+  lines: string[];
+  reasons: string[];
+  /** live ✓/✗ as you type, only when "Check my work" is pressed, or off (tests) */
+  check: WorkCheck;
+  showReasons: boolean;
+  /** teacher-set problem the student can't edit */
+  locked: boolean;
+  /** The input language — always chosen, never guessed: "visual" (type
+   *  the way it looks), "latex", or a text language by id. */
+  input?: WorkLanguage;
+}
+
+export interface CalcHistoryEntry {
+  expr: string;
+  inputLatex: string;
+  exact: string;
+  decimal: string;
+  /** plain decimal, typed in when a history answer is tapped */
+  value: string;
+  /** exact value in engine syntax (2*sqrt(2)) — what Ans means */
+  exactPlain?: string;
+}
+
+/** The TI-85-style home screen's memory: what's on screen, stored
+ * variables, Ans, the last entry (2nd ENTRY) and the MODE settings. */
+export interface TIState {
+  lines: { entry: string; result: string }[];
+  vars: Record<string, string>;
+  /** each stored variable as the screen shows it (for RCL) */
+  shown?: Record<string, string>;
+  ans: string;
+  lastEntry: string[];
+  format: "normal" | "sci" | "eng";
+  /** Fix digits (0–11), or null for Float */
+  digits: number | null;
+  /** show answers as fractions when there's a clean one (the a/b ⇄ 0.5 key) */
+  fracAnswers?: boolean;
+}
+
+export const DEFAULT_TI: TIState = { lines: [], vars: {}, ans: "0", lastEntry: [], format: "normal", digits: null };
+
+/** Calculator. `profile` is what a teacher can pin for a test: "ti85"
+ * (the classic graphing-calculator layout), "scientific" (modern), or
+ * "basic" (four-function). */
+export interface CalculatorBlockData extends BlockBase {
+  type: "calculator";
+  profile: "ti85" | "scientific" | "basic";
+  ti?: TIState;
+  /** the TI layout's extra-keys strip (fractions, powers…); on unless turned off */
+  tiExtras?: boolean;
+  /** "MathPrint" screen: stacked fractions, raised powers — on unless turned off (classic text screen) */
+  tiPretty?: boolean;
+  angle: "deg" | "rad";
+  /** show the exact answer (2√2) first, or the decimal (2.828…) */
+  exactFirst: boolean;
+  /** teacher lock: students can't change the profile or angle */
+  locked: boolean;
+  input: string;
+  history: CalcHistoryEntry[];
+}
+
+export interface PracticeBlockData extends BlockBase {
+  type: "practice";
+  topic: string;
+  seed: number;
+  correct: number;
+  attempted: number;
+}
+
+export const CUSTOM_BLOCK_TEMPLATE = `def compute(vars):
+    # vars: your Variable-block values as plain floats.
+    # Return one of:
+    #   {"text": "..."}
+    #   {"latex": "..."}
+    #   {"plot": {"x": [...], "y": [...]}}
+    return {"text": "hello"}
+`;
+
+export interface CustomBlockData extends BlockBase {
+  type: "custom";
+  code: string;
+}
+
+export interface SliderRow {
+  id: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+}
+
+export function defaultSliderRow(label: string): SliderRow {
+  return { id: newId("srow"), label, value: 0, min: -10, max: 10, step: 0.1 };
+}
+
+export interface SliderBlockData extends BlockBase {
+  type: "slider";
+  rows: SliderRow[];
+}
+
+export interface IncrementBlockData extends BlockBase {
+  type: "increment";
+  deltas: number[];
+}
+
+export type BlockData =
+  | VariableBlockData
+  | SimplifyBlockData
+  | GraphBlockData
+  | SolveBlockData
+  | CustomBlockData
+  | SliderBlockData
+  | IncrementBlockData
+  | NoteBlockData
+  | TableBlockData
+  | LineBlockData
+  | QuadraticBlockData
+  | SequenceBlockData
+  | StatsBlockData
+  | PracticeBlockData
+  | BalanceBlockData
+  | WorkBlockData
+  | CalculatorBlockData;
+
+/** A wire into one specific row on a Variable block (targetHandle = that
+ * row's id). Routing through "which row on which Variable block" means
+ * every other block keeps reading the variable pool exactly as before.
+ *
+ * Two kinds, decided by the source block:
+ * - from a Slider row (sourceHandle = that slider row's id): *drives* the
+ *   variable — the row shows and uses the slider's value, read-only.
+ * - from an Increment block: *nudges* the variable when a button is
+ *   clicked; the row stays editable. If the row is also slider-driven,
+ *   the nudge moves the slider instead, so the two compose. */
+export interface WireEdge {
+  id: string;
+  source: string;
+  sourceHandle: string;
+  target: string;
+  targetHandle: string;
+}
+
+let uid = 0;
+export function newId(prefix: string): string {
+  uid += 1;
+  return `${prefix}_${Date.now().toString(36)}_${uid}`;
+}
+
+/** What a tour step asks the student to do before moving on — checked
+ * live against what the spotlighted block reports (see reportStatus). */
+export type TourGoal =
+  | { kind: "solve" } // Balance: get the chosen letter alone
+  | { kind: "level" } // Balance (Weigh on): find values that level the scale
+  | { kind: "practice"; count: number } // Practice: this many right
+  | { kind: "event"; event: AppEvent; label: string }; // something done in the app itself
+
+/** Things the app itself reports, for tour goals about using the app
+ * (the "how to build a lesson" lesson checks these off as you do them). */
+export type AppEvent = "block-added" | "blocks-locked" | "tour-editor-opened" | "tour-step-added" | "saved" | "exported";
+
+/** One step of a guided lesson: optional block to spotlight, what to say
+ * (note markdown: **bold**, $math$, - bullets), and an optional goal. */
+export interface TourStep {
+  id: string;
+  blockId?: string;
+  text: string;
+  goal?: TourGoal;
+  /** a saved view to move the camera to (instead of framing the block) */
+  viewId?: string;
+}
+
+/** The canvas itself: infinite (default) or a fixed-size page, measured in
+ * grid squares, with (0, 0) wherever the author wants it. */
+export interface CanvasSettings {
+  bounded: boolean;
+  /** size in grid squares (only used when bounded) */
+  width: number;
+  height: number;
+  /** where (0, 0) sits: middle of the page, bottom-left like a graph, or top-left like a web page */
+  origin: "center" | "bottom-left" | "top-left";
+  /** pixels per grid square */
+  unit: number;
+  showGrid: boolean;
+  snap: boolean;
+  /** what 🏠 does: fit the whole canvas, go to (0, 0), or open a saved view */
+  home: "fit" | "origin" | { viewId: string };
+}
+
+export const DEFAULT_CANVAS: CanvasSettings = {
+  bounded: false,
+  width: 60,
+  height: 40,
+  origin: "center",
+  unit: 40,
+  showGrid: true,
+  snap: false,
+  home: "fit",
+};
+
+/** A saved camera position ("quick focus location"): the point at the
+ * center of the screen, in canvas pixels, and the zoom. */
+export interface SavedView {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  zoom: number;
+  /** a view that FOLLOWS blocks: fits them (a block or a locked group) and
+   * re-fits as they grow, instead of a fixed spot */
+  blockIds?: string[];
+}
+
+/** Live progress a block reports for tour goals. */
+export interface BlockStatus {
+  solved?: boolean;
+  level?: boolean;
+  correct?: number;
+}
+
+export interface WorkspaceSnapshot {
+  blocks: Record<string, BlockData>;
+  order: string[];
+  edges: WireEdge[];
+  /** A canvas with a tour is a lesson. */
+  title?: string;
+  tour?: TourStep[];
+  canvas?: CanvasSettings;
+  views?: SavedView[];
+  languages?: LanguageSpec[];
+}
+
+interface Store {
+  blocks: Record<string, BlockData>;
+  order: string[];
+  edges: WireEdge[];
+  /** Adds a block (make one with createBlock from blocks/meta). */
+  addBlock: (block: BlockData) => string;
+  removeBlock: (id: string) => void;
+  updateBlock: <T extends BlockData>(id: string, patch: Partial<T>) => void;
+  setPosition: (id: string, position: { x: number; y: number }) => void;
+  addEdge: (edge: Omit<WireEdge, "id">) => void;
+  removeEdge: (edgeId: string) => void;
+  loadSnapshot: (snapshot: WorkspaceSnapshot) => void;
+  setPositions: (positions: Record<string, { x: number; y: number }>) => void;
+  lockBlocks: (ids: string[]) => void;
+  unlockBlocks: (ids: string[]) => void;
+  applyIncrement: (blockId: string, delta: number) => void;
+  title: string;
+  tour: TourStep[];
+  /** which tour step is showing; null = tour panel closed */
+  tourIndex: number | null;
+  tourEditing: boolean;
+  blockStatus: Record<string, BlockStatus>;
+  /** how many times each app event happened since this canvas was opened */
+  events: Partial<Record<AppEvent, number>>;
+  canvas: CanvasSettings;
+  views: SavedView[];
+  /** input languages this workspace defines (see LanguageSpec) */
+  languages: LanguageSpec[];
+  setLanguages: (languages: LanguageSpec[]) => void;
+  /** blocks the camera is following (kept fitted as they change), if any */
+  follow: string[] | null;
+  setFollow: (ids: string[] | null) => void;
+  setCanvas: (patch: Partial<CanvasSettings>) => void;
+  setViews: (views: SavedView[]) => void;
+  emit: (event: AppEvent) => void;
+  setTour: (tour: TourStep[]) => void;
+  setTourIndex: (index: number | null) => void;
+  setTourEditing: (editing: boolean) => void;
+  setTitle: (title: string) => void;
+  reportStatus: (blockId: string, patch: BlockStatus) => void;
+  removeRowEdges: (blockId: string, rowId: string) => void;
+}
+
+const round = (n: number) => Number(n.toFixed(10));
+
+/** The slider row driving a given variable row, if one is wired into it. */
+export function findDrivingSlider(
+  state: { blocks: Record<string, BlockData>; edges: WireEdge[] },
+  targetBlockId: string,
+  targetRowId: string,
+): { blockId: string; row: SliderRow } | undefined {
+  for (const edge of state.edges) {
+    if (edge.target !== targetBlockId || edge.targetHandle !== targetRowId) continue;
+    const source = state.blocks[edge.source];
+    if (source?.type !== "slider") continue;
+    const row = source.rows.find((r) => r.id === edge.sourceHandle);
+    if (row) return { blockId: source.id, row };
+  }
+  return undefined;
+}
+
+/** Upgrades workspaces saved before Slider blocks held multiple rows (a
+ * single label/value/min/max/step on the block itself, and wires with
+ * no sourceHandle) so old autosaves and saved workspaces still load. */
+function normalizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot {
+  const blocks: Record<string, BlockData> = {};
+  const migratedSliderRow: Record<string, string> = {};
+  for (const [id, block] of Object.entries(snapshot.blocks)) {
+    const legacy = block as unknown as { type: string; rows?: unknown; label?: string; value?: number; min?: number; max?: number; step?: number };
+    if (legacy.type === "slider" && !Array.isArray(legacy.rows)) {
+      const row: SliderRow = {
+        id: newId("srow"),
+        label: legacy.label ?? "slider",
+        value: legacy.value ?? 0,
+        min: legacy.min ?? -10,
+        max: legacy.max ?? 10,
+        step: legacy.step ?? 0.1,
+      };
+      migratedSliderRow[id] = row.id;
+      blocks[id] = { id, type: "slider", position: block.position, groupId: block.groupId, rows: [row] };
+    } else {
+      blocks[id] = block;
+    }
+  }
+  const edges = snapshot.edges.map((edge) =>
+    edge.sourceHandle && edge.sourceHandle !== "value" ? edge : { ...edge, sourceHandle: migratedSliderRow[edge.source] ?? edge.sourceHandle ?? "out" },
+  );
+  return {
+    blocks,
+    order: snapshot.order,
+    edges,
+    title: snapshot.title ?? "",
+    tour: snapshot.tour ?? [],
+    canvas: { ...DEFAULT_CANVAS, ...(snapshot.canvas ?? {}) },
+    views: snapshot.views ?? [],
+    languages: snapshot.languages ?? [],
+  };
+}
+
+/** Every id in the same lock group(s) as any of `ids`, including `ids`. */
+export function groupMembers(blocks: Record<string, BlockData>, ids: string[]): string[] {
+  const groups = new Set(ids.map((id) => blocks[id]?.groupId).filter(Boolean));
+  const members = new Set(ids);
+  for (const block of Object.values(blocks)) {
+    if (block.groupId && groups.has(block.groupId)) members.add(block.id);
+  }
+  return [...members];
+}
+
+/** Clears groupId on any group left with a single member — a "group" of
+ * one isn't locked to anything. */
+function pruneLoneGroups(blocks: Record<string, BlockData>): Record<string, BlockData> {
+  const counts = new Map<string, number>();
+  for (const block of Object.values(blocks)) {
+    if (block.groupId) counts.set(block.groupId, (counts.get(block.groupId) ?? 0) + 1);
+  }
+  const next = { ...blocks };
+  for (const block of Object.values(blocks)) {
+    if (block.groupId && counts.get(block.groupId) === 1) next[block.id] = { ...block, groupId: undefined };
+  }
+  return next;
+}
+
+export const useStore = create<Store>((set) => ({
+  blocks: {},
+  order: [],
+  edges: [],
+  addBlock: (block) => {
+    set((state) => ({
+      blocks: { ...state.blocks, [block.id]: block },
+      order: [...state.order, block.id],
+      events: { ...state.events, "block-added": (state.events["block-added"] ?? 0) + 1 },
+    }));
+    return block.id;
+  },
+  removeBlock: (id) =>
+    set((state) => {
+      const blocks = { ...state.blocks };
+      delete blocks[id];
+      return {
+        blocks: pruneLoneGroups(blocks),
+        order: state.order.filter((existing) => existing !== id),
+        edges: state.edges.filter((edge) => edge.source !== id && edge.target !== id),
+        tour: state.tour.map((step) => (step.blockId === id ? { ...step, blockId: undefined, goal: undefined } : step)),
+      };
+    }),
+  updateBlock: (id, patch) =>
+    set((state) => {
+      const existing = state.blocks[id];
+      if (!existing) return state;
+      return { blocks: { ...state.blocks, [id]: { ...existing, ...patch } as BlockData } };
+    }),
+  setPosition: (id, position) =>
+    set((state) => {
+      const existing = state.blocks[id];
+      if (!existing) return state;
+      return { blocks: { ...state.blocks, [id]: { ...existing, position } } };
+    }),
+  addEdge: (edge) =>
+    set((state) => {
+      const isSlider = state.blocks[edge.source]?.type === "slider";
+      const keep = state.edges.filter((existing) => {
+        if (existing.target !== edge.target || existing.targetHandle !== edge.targetHandle) return true;
+        // a row has one *driver* — a new slider wire replaces the old one —
+        // but any number of increment wires can nudge it alongside
+        if (isSlider) return state.blocks[existing.source]?.type !== "slider";
+        return existing.source !== edge.source;
+      });
+      return { edges: [...keep, { ...edge, id: newId("edge") }] };
+    }),
+  removeEdge: (edgeId) =>
+    set((state) => ({ edges: state.edges.filter((edge) => edge.id !== edgeId) })),
+  loadSnapshot: (snapshot) => {
+    const normalized = normalizeSnapshot(snapshot);
+    set({
+      ...normalized,
+      tour: normalized.tour ?? [],
+      tourIndex: normalized.tour?.length ? 0 : null,
+      tourEditing: false,
+      blockStatus: {},
+      events: {},
+    });
+  },
+  title: "",
+  tour: [],
+  tourIndex: null,
+  tourEditing: false,
+  blockStatus: {},
+  events: {},
+  canvas: DEFAULT_CANVAS,
+  views: [],
+  languages: [],
+  setLanguages: (languages) => set({ languages }),
+  follow: null,
+  setFollow: (follow) => set({ follow }),
+  setCanvas: (patch) => set((state) => ({ canvas: { ...state.canvas, ...patch } })),
+  setViews: (views) => set({ views }),
+  emit: (event) => set((state) => ({ events: { ...state.events, [event]: (state.events[event] ?? 0) + 1 } })),
+  setTour: (tour) => set({ tour }),
+  setTourIndex: (tourIndex) => set({ tourIndex }),
+  setTourEditing: (tourEditing) =>
+    set((state) => ({
+      tourEditing,
+      events: tourEditing ? { ...state.events, "tour-editor-opened": (state.events["tour-editor-opened"] ?? 0) + 1 } : state.events,
+    })),
+  setTitle: (title) => set({ title }),
+  reportStatus: (blockId, patch) =>
+    set((state) => {
+      const prev = state.blockStatus[blockId] ?? {};
+      if (Object.entries(patch).every(([k, v]) => prev[k as keyof BlockStatus] === v)) return state;
+      return { blockStatus: { ...state.blockStatus, [blockId]: { ...prev, ...patch } } };
+    }),
+  applyIncrement: (blockId, delta) =>
+    set((state) => {
+      const blocks = { ...state.blocks };
+      for (const edge of state.edges) {
+        if (edge.source !== blockId) continue;
+        const driver = findDrivingSlider({ blocks, edges: state.edges }, edge.target, edge.targetHandle);
+        if (driver) {
+          // slider-driven row: move the slider itself, so the two compose
+          const slider = blocks[driver.blockId] as SliderBlockData;
+          blocks[driver.blockId] = {
+            ...slider,
+            rows: slider.rows.map((r) =>
+              r.id === driver.row.id ? { ...r, value: round(Math.min(r.max, Math.max(r.min, r.value + delta))) } : r,
+            ),
+          };
+          continue;
+        }
+        const target = blocks[edge.target];
+        if (target?.type !== "variable") continue;
+        blocks[edge.target] = {
+          ...target,
+          rows: target.rows.map((r) => {
+            if (r.id !== edge.targetHandle) return r;
+            const current = r.value.trim() === "" ? 0 : Number(r.value);
+            return Number.isFinite(current) ? { ...r, value: String(round(current + delta)) } : r;
+          }),
+        };
+      }
+      return { blocks };
+    }),
+  removeRowEdges: (blockId, rowId) =>
+    set((state) => ({
+      edges: state.edges.filter(
+        (edge) => !(edge.source === blockId && edge.sourceHandle === rowId) && !(edge.target === blockId && edge.targetHandle === rowId),
+      ),
+    })),
+  setPositions: (positions) =>
+    set((state) => {
+      const blocks = { ...state.blocks };
+      for (const [id, position] of Object.entries(positions)) {
+        if (blocks[id]) blocks[id] = { ...blocks[id], position };
+      }
+      return { blocks };
+    }),
+  lockBlocks: (ids) =>
+    set((state) => {
+      // locking into an existing group merges it — everything touched
+      // ends up in one group rather than nested/overlapping ones
+      const members = groupMembers(state.blocks, ids);
+      if (members.length < 2) return state;
+      const groupId = newId("group");
+      const blocks = { ...state.blocks };
+      for (const id of members) blocks[id] = { ...blocks[id], groupId };
+      return { blocks, events: { ...state.events, "blocks-locked": (state.events["blocks-locked"] ?? 0) + 1 } };
+    }),
+  unlockBlocks: (ids) =>
+    set((state) => {
+      const blocks = { ...state.blocks };
+      for (const id of groupMembers(state.blocks, ids)) blocks[id] = { ...blocks[id], groupId: undefined };
+      return { blocks };
+    }),
+}));
+
+/** The merged name -> value pool from every variable block, the shared
+ * context every other block's expression can reference. Later blocks in
+ * `order` win on name collisions.
+ *
+ * Builds a fresh object every call, so it's wrapped in useShallow: Zustand
+ * decides whether to re-render by comparing the selector's last return
+ * value to its new one, and a plain selector here would return a
+ * different object reference every time even when the actual variables
+ * are unchanged — "changed" on every check, forever, which is an infinite
+ * re-render loop (this is what crashed the app when the Solve block was
+ * added). useShallow compares the object's keys/values instead of its
+ * identity, so it only reports a change when a variable actually did. */
+export function useVariables(): Record<string, string> {
+  return useStore(
+    useShallow((state) => {
+      const vars: Record<string, string> = {};
+      for (const id of state.order) {
+        const block = state.blocks[id];
+        if (block?.type === "variable") {
+          for (const row of block.rows) {
+            if (!row.name.trim()) continue;
+            // a slider-driven row uses the slider's live value instead of
+            // what's typed in the row itself
+            const driver = findDrivingSlider(state, id, row.id);
+            vars[row.name.trim()] = driver ? String(driver.row.value) : row.value;
+          }
+        }
+      }
+      return vars;
+    }),
+  );
+}
+
+/** What's plugged into a Variable row: the live value of a driving slider
+ * (undefined if none — the row is then editable), and whether any
+ * Increment block is wired in to nudge it. */
+export function useRowInputs(blockId: string, rowId: string): { sliderValue: number | undefined; nudged: boolean } {
+  return useStore(
+    useShallow((state) => ({
+      sliderValue: findDrivingSlider(state, blockId, rowId)?.row.value,
+      nudged: state.edges.some(
+        (edge) => edge.target === blockId && edge.targetHandle === rowId && state.blocks[edge.source]?.type === "increment",
+      ),
+    })),
+  );
+}
