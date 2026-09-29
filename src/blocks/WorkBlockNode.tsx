@@ -332,7 +332,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
             className="work-problem-math"
             onFocus={() => (activeMath.current = problemMath.current)}
             value={data.problem}
-            placeholder="\\text{type the problem}"
+            placeholder={"\\text{type the problem}"}
             onChange={(problem) => updateBlock(data.id, { problem })}
             onEnter={() => mathInputs.current[0]?.focus()}
             onMoveOut={(direction) => direction === "downward" && mathInputs.current[0]?.focus()}
@@ -534,6 +534,22 @@ export default function WorkBlockNode({ id }: NodeProps) {
             }}
           >
             Clear
+          </button>
+        )}
+        {!cleared && !data.locked && (
+          <button
+            className="action-btn"
+            disabled={!lines.some((l) => l.trim()) && !data.problem.trim()}
+            title="All clear — erase the problem and every step"
+            onClick={() => {
+              setCleared({ problem: data.problem, lines, reasons });
+              clearTimeout(clearTimer.current);
+              clearTimer.current = setTimeout(() => setCleared(null), 8000);
+              updateBlock(data.id, { problem: "", lines: [""], reasons: [""] });
+              setTimeout(() => problemMath.current?.focus(), 30);
+            }}
+          >
+            AC
           </button>
         )}
         {data.check === "button" && (
