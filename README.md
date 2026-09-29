@@ -1,6 +1,6 @@
-# mathblocks
+# MatrixLab
 
-A desktop math canvas: blocks you place, wire and lock together, built for
+*(code name: mathblocks)* — a desktop math canvas: blocks you place, wire and lock together, built for
 teaching and learning (Algebra 1 first). Tauri + React on the front, a
 persistent Python/sympy engine behind it.
 

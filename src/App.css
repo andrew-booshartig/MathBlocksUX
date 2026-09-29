@@ -51,23 +51,26 @@ body,
 }
 
 .brand-mark {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  display: grid;
-  place-items: center;
-  font-size: 14px;
-  font-weight: 700;
-  color: #0e0e12;
-  background: linear-gradient(135deg, #55d6be, #7c9bf7 55%, #e07ce0);
-  box-shadow: 0 2px 8px rgba(85, 214, 190, 0.25);
+  height: 20px;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 0 6px rgba(96, 110, 255, 0.35));
 }
 
+/* the wordmark, as in the logo: MATRIX in white, LAB in blue → violet */
 .brand-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 650;
-  letter-spacing: 0.01em;
-  color: #d9dce6;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #eef0f6;
+}
+
+.brand-lab {
+  background: linear-gradient(90deg, #2f7bff, #8a3ff0);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .toolbar-group {

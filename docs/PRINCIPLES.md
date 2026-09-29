@@ -1,4 +1,4 @@
-# mathblocks — design principles
+# MatrixLab (mathblocks) — design principles
 
 mathblocks is a canvas of blocks that can be combined into almost anything:
 an Algebra 1 course, a test, a physics simulation, a calendar with

@@ -61,17 +61,17 @@ pub fn delete_workspace(app: AppHandle, name: String) -> Result<(), String> {
     fs::remove_file(path).map_err(|e| e.to_string())
 }
 
-/// Writes a canvas (with its tour) to ~/Downloads as `<name>.mathblocks.json`
+/// Writes a canvas (with its tour) to ~/Downloads as `<name>.matrixlab.json`
 /// — a single file a teacher can hand to students or post anywhere; the
 /// app's Import reads it back. Never overwrites: adds " (2)", " (3)", …
 #[tauri::command]
 pub fn export_workspace(app: AppHandle, name: String, data: serde_json::Value) -> Result<String, String> {
     let name = safe_filename(&name)?;
     let dir = app.path().download_dir().map_err(|e| e.to_string())?;
-    let mut path = dir.join(format!("{name}.mathblocks.json"));
+    let mut path = dir.join(format!("{name}.matrixlab.json"));
     let mut n = 2;
     while path.exists() {
-        path = dir.join(format!("{name} ({n}).mathblocks.json"));
+        path = dir.join(format!("{name} ({n}).matrixlab.json"));
         n += 1;
     }
     let json = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;

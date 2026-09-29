@@ -13,16 +13,17 @@ export function currentSnapshot(): WorkspaceSnapshot {
   return { blocks, order, edges, tour, title, canvas, views, languages };
 }
 
-/** Writes the canvas to ~/Downloads as a shareable .mathblocks.json file. */
+/** Writes the canvas to ~/Downloads as a shareable .matrixlab.json file. */
 export async function exportWorkspace(name: string): Promise<string> {
   return invoke<string>("export_workspace", { name, data: { ...currentSnapshot(), title: useStore.getState().title || name } });
 }
 
-/** Reads a .mathblocks.json file picked by the user. */
+/** Reads a lesson file picked by the user (.matrixlab.json, or an older
+ * .mathblocks.json — any .json with a canvas in it). */
 export function parseLessonFile(text: string): WorkspaceSnapshot {
   const data = JSON.parse(text);
   if (!data || typeof data !== "object" || !data.blocks || !Array.isArray(data.order) || !Array.isArray(data.edges)) {
-    throw new Error("that file isn't a mathblocks lesson or canvas");
+    throw new Error("that file isn't a MatrixLab lesson or canvas");
   }
   return data as WorkspaceSnapshot;
 }

@@ -575,7 +575,7 @@ function App() {
       confirmLabel: "Export",
       onSubmit: (name) =>
         exportWorkspace(name).then(
-          (path) => (useStore.getState().emit("exported"), setDialog({ kind: "alert", message: `Saved to ${path} — send that file to anyone with mathblocks, and they can 📚 Lessons → Import it.` })),
+          (path) => (useStore.getState().emit("exported"), setDialog({ kind: "alert", message: `Saved to ${path} — send that file to anyone with MatrixLab, and they can 📚 Lessons → Import it.` })),
           (error) => setDialog({ kind: "alert", message: `Couldn't export: ${error}` }),
         ),
     });
@@ -605,11 +605,11 @@ function App() {
   return (
     <div className="app-root">
       <div className="toolbar">
-        <div className="toolbar-brand" title="mathblocks">
-          <span className="brand-mark" aria-hidden>
-            ∑
+        <div className="toolbar-brand" title="MatrixLab">
+          <img className="brand-mark" src="/brand/mark.png" alt="" aria-hidden />
+          <span className="brand-name">
+            Matrix<span className="brand-lab">Lab</span>
           </span>
-          <span className="brand-name">mathblocks</span>
         </div>
 
         <div className="toolbar-group">
