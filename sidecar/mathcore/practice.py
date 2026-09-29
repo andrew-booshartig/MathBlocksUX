@@ -452,6 +452,107 @@ def g_exponential(r):
                 show={"op": "transform", "mode": "evaluate", "expr": (f"{start}*{rate}^t, t = {t}" if grow else f"{start}*(1/2)^t, t = {t}")})
 
 
+# ---- how many solutions? (0, 1 or infinitely many)
+
+
+def _signed(n, first=False) -> str:
+    """'+ 4' / '- 4' between terms, or '4' / '-4' up front."""
+    if first:
+        return str(n)
+    return f"+ {n}" if n >= 0 else f"- {-n}"
+
+
+def _linear_text(r, p, q, style):
+    """p·x + q written one of several ways, so the like terms and the
+    distributing still have to be done before the answer shows."""
+    x = lambda c, first=False: (("" if c == 1 else "-" if c == -1 else str(c)) + "x") if first else (  # noqa: E731
+        f"+ {'' if c == 1 else c}x" if c > 0 else f"- {'' if c == -1 else -c}x")
+    if style == 1 and abs(p) >= 2:  # a(x + b) + c
+        b = _nz(r, -6, 6)
+        c = q - p * b
+        return f"{p}(x {_signed(b)})" + (f" {_signed(c)}" if c else "")
+    if style == 2:  # mx + nx + q  (like terms to combine)
+        m = _nz(r, -6, 9)
+        while p - m == 0:
+            m = _nz(r, -6, 9)
+        n = p - m
+        return f"{x(m, True)} {x(n)}" + (f" {_signed(q)}" if q else "")
+    if style == 3 and abs(p) >= 1:  # a(x + b) + cx + d
+        a = r.choice([2, 3, 4, -2, -3])
+        c = p - a
+        b = _nz(r, -5, 5)
+        d = q - a * b
+        return f"{a}(x {_signed(b)})" + (f" {x(c)}" if c else "") + (f" {_signed(d)}" if d else "")
+    # plain px + q
+    if p == 0:
+        return str(q)
+    return x(p, True) + (f" {_signed(q)}" if q else "")
+
+
+def _side_tex(text):
+    return tex(parse(text, evaluate_expr=False), keep_order=True)
+
+
+def _count_equation(r, count):
+    """A linear equation with variables on both sides and exactly `count`
+    ('0', '1' or 'inf') solutions, written so it has to be simplified first."""
+    p, q = _nz(r, -7, 9), r.randint(-12, 12)
+    if count == "inf":
+        p2, q2 = p, q
+    elif count == "0":
+        p2, q2 = p, q + _nz(r, -9, 9)
+    else:
+        p2, q2 = p + _nz(r, -4, 4), r.randint(-12, 12)
+        if p2 == p:
+            p2 += 1
+    styles = r.sample([0, 1, 2, 3], 2)
+    left, right = _linear_text(r, p, q, styles[0]), _linear_text(r, p2, q2, styles[1])
+    if left.replace(" ", "") == right.replace(" ", ""):
+        right = _linear_text(r, p2, q2, 2)
+    if r.random() < 0.5:
+        left, right = right, left
+    return left, right
+
+
+COUNT_CHOICES = [
+    {"label": "No solution", "value": "0"},
+    {"label": "Exactly one solution", "value": "1"},
+    {"label": "Infinitely many solutions", "value": "inf"},
+]
+COUNT_TEX = {"0": "\\text{no solution}", "1": "\\text{exactly one solution}", "inf": "\\text{infinitely many solutions}"}
+
+
+def g_num_solutions(r):
+    count = r.choice(["0", "1", "inf"])
+    left, right = _count_equation(r, count)
+    return dict(prompt="How many solutions does this equation have?", latex=f"{_side_tex(left)} = {_side_tex(right)}",
+                kind="count", answer=count, answer_latex=COUNT_TEX[count], choices=COUNT_CHOICES,
+                show={"op": "solve", "expr": f"{left} = {right}"})
+
+
+def g_num_solutions_make(r):
+    """Fill the box so the equation has a given number of solutions."""
+    p, q = _nz(r, -6, 8), r.randint(-10, 10)
+    if p == 1:
+        p = 2
+    right = _linear_text(r, p, q, r.choice([1, 2, 3]))
+    form = r.choice(["constant-inf", "coef-none", "coef-inf"])
+    if form == "constant-inf":
+        # px + [ ] = (something equal to px + q)  →  [ ] = q
+        latex = f"{_t(p * X)} + \\square = {_side_tex(right)}"
+        prompt, answer, done = "What number goes in the box so the equation has **infinitely many** solutions?", q, f"{_typed(p * X)} + {q} = {right}"
+    elif form == "coef-none":
+        # [ ]x + k = right, with k ≠ q  →  [ ] = p
+        k = q + _nz(r, -8, 8)
+        latex = f"\\square x {_signed(k)} = {_side_tex(right)}"
+        prompt, answer, done = "What number goes in the box so the equation has **no solution**?", p, f"{p}x {_signed(k)} = {right}"
+    else:
+        latex = f"\\square x {_signed(q)} = {_side_tex(right)}"
+        prompt, answer, done = "What number goes in the box so the equation has **infinitely many** solutions?", p, f"{p}x {_signed(q)} = {right}"
+    return dict(prompt=prompt, latex=latex, kind="value", answer=str(answer), answer_latex=f"\\square = {answer}",
+                show={"op": "solve", "expr": done})
+
+
 TOPICS = {
     "order-of-operations": ("Order of operations", g_order_of_operations),
     "evaluate": ("Evaluate expressions", g_evaluate_expression),
@@ -463,6 +564,8 @@ TOPICS = {
     "inequality": ("Inequalities", g_inequality),
     "compound": ("Compound inequalities", g_compound_inequality),
     "absolute-value": ("Absolute value equations", g_absolute_value),
+    "num-solutions": ("Number of solutions", g_num_solutions),
+    "num-solutions-make": ("Number of solutions: fill the box", g_num_solutions_make),
     "function-notation": ("Function notation", g_function_notation),
     "slope": ("Slope from two points", g_slope),
     "slope-from-equation": ("Slope from an equation", g_slope_from_equation),
@@ -513,6 +616,18 @@ def op_topics(req: dict) -> dict:
 
 _NONE = re.compile(r"^\s*(no\s*(real\s*)?solutions?|none|∅|\{\s*\}|empty)\s*$", re.I)
 _ALL = re.compile(r"^\s*(all\s*real(\s*numbers)?|infinite(ly many)?(\s*solutions)?|identity|every\s*real\s*number|R|ℝ)\s*$", re.I)
+
+
+def _count(text):
+    """'0' / '1' / 'inf' from how a student says how many solutions."""
+    t = re.sub(r"[\s.!]", "", text.lower())
+    if t in ("0", "zero", "none", "nosolution", "nosolutions", "∅") or _NONE.match(text):
+        return "0"
+    if t in ("1", "one", "exactlyone", "onesolution", "exactlyonesolution", "justone"):
+        return "1"
+    if t in ("inf", "∞", "infinite", "infinitely", "infinitelymany", "infinitelymanysolutions", "infinitesolutions", "many") or _ALL.match(text):
+        return "inf"
+    return None
 
 
 def _close(a, b, loose) -> bool:
@@ -634,6 +749,10 @@ def op_check(req: dict) -> dict:
     try:
         if kind == "solutions":
             correct, feedback = check_solutions(answer, response)
+        elif kind == "count":
+            correct = _count(response) == answer
+            if not correct and _count(response) is None:
+                raise MathInputError("answer no solution, one, or infinitely many")
         elif kind == "value":
             got, loose = _values(response)
             correct = len(got) == 1 and _close(got[0], parse(answer), loose)

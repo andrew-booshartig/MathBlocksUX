@@ -103,6 +103,8 @@ export interface Lesson {
   id: string;
   title: string;
   build: () => WorkspaceSnapshot;
+  /** the Khan Academy Algebra 1 lessons this one covers (shown in the menu) */
+  khan?: string;
 }
 
 export interface Unit {
@@ -110,7 +112,9 @@ export interface Unit {
   lessons: Lesson[];
 }
 
-export const UNITS: Unit[] = [
+/** Every lesson, grouped loosely by topic — the menu order comes from
+ * COURSE below, not from here. */
+const LIBRARY: Unit[] = [
   {
     title: "0 · Start here",
     lessons: [
@@ -313,6 +317,99 @@ If the variable disappears:
             solve(2, 300, "3(x - 1) = 3x - 3"),
             practice(3, 40, "multi-step"),
           ]),
+      },
+      {
+        id: "num-solutions",
+        title: "Number of solutions",
+        build: () =>
+          build(
+            [
+              note(0, 40, `# How many solutions?
+Most equations have **exactly one** solution. But sometimes the variable **cancels out** — and what's left tells you the answer.
+
+Simplify each side completely first, so the equation looks like $ax + b = cx + d$. Then:
+
+| Compare | You end up with | Solutions |
+|---|---|---|
+| $a \\ne c$ (different $x$ terms) | $x = $ a number | **exactly one** |
+| $a = c$, $b \\ne d$ | something **false**, like $5 = 2$ | **none** |
+| $a = c$, $b = d$ | something **always true**, like $6 = 6$ | **infinitely many** (every number works) |
+
+**The picture:** graph each side as a line. They cross **once** → one solution. They're **parallel** → none. They're the **same line** → infinitely many.
+
+**To build one yourself:**
+- *no solution* → same $x$ term on both sides, different numbers
+- *infinitely many* → make both sides exactly the same after simplifying`),
+              {
+                type: "work",
+                col: 1,
+                y: 40,
+                fields: { problem: "3(x + 2) - 4 = 3x + 5", lines: [""], reasons: [""], check: "live", showReasons: false, locked: true },
+              },
+              {
+                type: "work",
+                col: 1,
+                y: 560,
+                fields: { problem: "2(2x - 3) + 1 = 4x - 5", lines: [""], reasons: [""], check: "live", showReasons: false, locked: true },
+              },
+              {
+                type: "slider",
+                col: 2,
+                y: 40,
+                sliders: [
+                  { label: "m", value: 1, min: -5, max: 5, step: 0.5 },
+                  { label: "b", value: 5, min: -10, max: 10, step: 1 },
+                ],
+              },
+              { type: "variable", col: 2, y: 260, vars: [["m", "1"], ["b", "5"]] },
+              graph(2, 420, "y = 3x + 2\ny = m*x + b"),
+              solve(3, 40, "3x + 2 = m*x + b"),
+              practice(3, 400, "num-solutions"),
+              practice(3, 820, "num-solutions-make"),
+            ],
+            [
+              [3, 0, 4, 0],
+              [3, 1, 4, 1],
+            ],
+            [
+              {
+                at: 0,
+                text: "**How many solutions?** Usually one — but not always. Read the three cases here. The key question is always: *after simplifying, do the $x$ terms cancel out?*",
+              },
+              {
+                at: 1,
+                text: "**Solve this one.** Distribute and combine first, then gather the $x$ terms. When the $x$'s cancel, look at what's left — true or false? Write your conclusion on its own line: the **no solution** and **all reals** keys are on the keypad (or just type it).",
+                goal: { kind: "solve" },
+              },
+              {
+                at: 2,
+                text: "**Now this one.** Same moves — watch what's left this time.",
+                goal: { kind: "solve" },
+              },
+              {
+                at: 5,
+                text: "**See it as a picture.** Each side of $3x + 2 = mx + b$ is a line; a solution is where they cross. Drag **m** (the slope of the right side) to **3** — the same as the left.",
+              },
+              {
+                at: 5,
+                text: "Same slope → the lines are **parallel**: they never cross, so **no solution**. Now drag **b** to **2**. The lines land exactly on top of each other: every point is shared — **infinitely many solutions**.",
+              },
+              {
+                at: 6,
+                text: "The **Solve** block agrees with the picture at every setting. Pick any other slope and it finds the one crossing point — **exactly one solution**.",
+              },
+              {
+                at: 7,
+                text: "**Practice.** Decide how many solutions each equation has. Simplify both sides in your head (or on the Work Pad) and compare.",
+                goal: { kind: "practice", count: 5 },
+              },
+              {
+                at: 8,
+                text: "**Challenge: build your own.** Fill the box so the equation has the number of solutions asked for. *No solution*: same $x$ term, different number. *Infinitely many*: both sides identical.",
+                goal: { kind: "practice", count: 3 },
+              },
+            ],
+          ),
       },
       {
         id: "literal",
@@ -836,5 +933,108 @@ Stuck? **Hint** reveals one step at a time.`),
     ],
   },
 ];
+
+/** The course, in Khan Academy Algebra 1 order (unit numbers match
+ * khanacademy.org/math/algebra), each lesson tagged with the Khan lessons
+ * it covers. Units with nothing built yet are left out — see
+ * docs/khan-algebra1.md for what's covered and what isn't. */
+const COURSE: { title: string; lessons: [id: string, khan: string][] }[] = [
+  { title: "Start here", lessons: [["build-a-lesson", ""]] },
+  {
+    title: "1 · Algebra foundations",
+    lessons: [
+      ["evaluating", "Intro to variables · Substitution & evaluating expressions"],
+      ["expressions", "Combining like terms · Equivalent expressions"],
+      ["order-of-operations", "Warm-up (review)"],
+    ],
+  },
+  {
+    title: "2 · Solving equations & inequalities",
+    lessons: [
+      ["one-two-step", "Warm-up (review)"],
+      ["multi-step", "Variables on both sides · Equations with parentheses"],
+      ["num-solutions", "Number of solutions to equations"],
+      ["literal", "Linear equations with unknown coefficients"],
+      ["inequalities", "Multi-step inequalities"],
+      ["compound", "Compound inequalities"],
+    ],
+  },
+  { title: "4 · Linear equations & graphs", lessons: [["slope", "Slope"]] },
+  {
+    title: "5 · Forms of linear equations",
+    lessons: [
+      ["slope-intercept", "Slope-intercept form: intro, graphing, writing"],
+      ["forms", "Point-slope form · Standard form · Summary"],
+      ["parallel-perpendicular", "Extra"],
+    ],
+  },
+  {
+    title: "6 · Systems of equations",
+    lessons: [
+      ["systems-graphing", "Intro to systems · Number of solutions to systems"],
+      ["systems-algebra", "Substitution · Elimination"],
+    ],
+  },
+  { title: "7 · Inequalities (systems & graphs)", lessons: [["systems-inequalities", "Graphing two-variable inequalities"]] },
+  { title: "8 · Functions", lessons: [["functions", "Evaluating functions · Inputs & outputs · Domain & range"]] },
+  { title: "9 · Sequences", lessons: [["sequences", "Arithmetic & geometric sequences"]] },
+  { title: "10 · Absolute value & piecewise", lessons: [["absolute-value-eq", "Graphs of absolute value (+ solving)"]] },
+  {
+    title: "11 · Exponents & radicals",
+    lessons: [
+      ["exponent-rules", "Exponent properties review"],
+      ["radicals", "Radicals · Simplifying square roots"],
+      ["scientific-notation", "Extra"],
+    ],
+  },
+  {
+    title: "12 · Exponential growth & decay",
+    lessons: [
+      ["exponential", "Exponential growth & decay · Graphs"],
+      ["patterns", "Exponential vs. linear growth"],
+    ],
+  },
+  {
+    title: "13 · Quadratics: multiplying & factoring",
+    lessons: [
+      ["polynomial-operations", "Multiplying monomials & binomials · Special products"],
+      ["factoring", "Factoring: GCF, quadratics, grouping, special patterns"],
+    ],
+  },
+  {
+    title: "14 · Quadratic functions & equations",
+    lessons: [
+      ["graphing-quadratics", "Intro to parabolas · Vertex form"],
+      ["solving-quadratics", "Factored form · Square roots · Solving by factoring"],
+      ["quadratic-formula", "Quadratic formula · Completing the square"],
+    ],
+  },
+  {
+    title: "Extras",
+    lessons: [
+      ["statistics", "Not in Algebra 1 — statistics"],
+      ["mixed-review", "Everything, shuffled"],
+    ],
+  },
+];
+
+const byId = new Map(LIBRARY.flatMap((u) => u.lessons).map((l) => [l.id, l]));
+
+export const UNITS: Unit[] = COURSE.map((unit) => ({
+  title: unit.title,
+  lessons: unit.lessons.map(([id, khan]) => {
+    const lesson = byId.get(id);
+    if (!lesson) throw new Error(`lessons.ts: COURSE lists “${id}”, which doesn't exist`);
+    return { ...lesson, khan: khan || undefined };
+  }),
+}));
+
+// every lesson in the library must be in the course, exactly once
+{
+  const placed = UNITS.flatMap((u) => u.lessons.map((l) => l.id));
+  const missing = [...byId.keys()].filter((id) => !placed.includes(id));
+  const twice = placed.filter((id, i) => placed.indexOf(id) !== i);
+  if (missing.length || twice.length) throw new Error(`lessons.ts: not in COURSE: ${missing.join(", ")}; listed twice: ${twice.join(", ")}`);
+}
 
 export const ALL_LESSONS: Lesson[] = UNITS.flatMap((u) => u.lessons);

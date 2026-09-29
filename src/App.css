@@ -1219,9 +1219,13 @@ body,
 }
 
 .lessons {
-  width: 560px;
-  columns: 2;
+  width: min(620px, 92vw);
+  max-height: min(74vh, 720px);
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   column-gap: 12px;
+  align-items: start;
 }
 
 .palette-group {
@@ -2299,6 +2303,50 @@ body,
 .work-line.is-unknown .work-message {
   background: #26262f;
   color: #b8b8cc;
+}
+
+.note-table {
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 12.5px;
+}
+
+.note-table th,
+.note-table td {
+  border: 1px solid #2c2c38;
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.note-table th {
+  background: #1b1b24;
+  color: #c9c9d6;
+  font-weight: 600;
+}
+
+.practice-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.practice-choices .action-btn.is-correct {
+  border-color: #2e9e4f;
+  color: #8fd694;
+}
+
+.practice-choices .action-btn.is-wrong {
+  border-color: #d64545;
+  color: #f19a9a;
+  opacity: 0.7;
+}
+
+.work-note {
+  margin: 4px 0 0 8px;
+  font-size: 12px;
+  color: #9fc3ff;
 }
 
 .work-done {

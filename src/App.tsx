@@ -637,6 +637,7 @@ function App() {
                   {unit.lessons.map((lesson) => (
                     <button key={lesson.id} className="palette-item" onClick={() => loadLesson(lesson.id)}>
                       <span className="palette-name">{lesson.title}</span>
+                      {lesson.khan && lesson.khan !== lesson.title && <span className="palette-desc">{lesson.khan}</span>}
                     </button>
                   ))}
                 </div>

@@ -84,3 +84,48 @@ def test_latex_is_not_guessed():
 def test_problem_displays_as_typed():
     r = handle({"op": "worklines", "problem": r"6s-4=8\left(2+\frac{1}{4}s\right)", "lines": [], "syntax": "latex"})
     assert r["problem_latex"] == r"6s-4=8\left(2+\frac{1}{4}s\right)"
+
+
+# ---- conclusions in words: "no solution" / "all real numbers"
+
+
+def _lines(problem, lines, syntax="latex"):
+    from mathcore.worklines import op_worklines
+
+    return op_worklines({"problem": problem, "lines": lines, "syntax": syntax})["lines"]
+
+
+def test_no_solution_conclusion():
+    out = _lines("3x + 5 = 3x + 2", ["5 = 2", "\\text{no solution}"])
+    assert [l["status"] for l in out] == ["ok", "ok"]
+    assert "false" in out[0]["note"]
+    assert out[1]["done"].startswith("No solution")
+
+
+def test_all_reals_conclusion_typed_without_spaces():
+    # the Visual editor drops spaces: "allrealnumbers"
+    out = _lines("2(x + 3) = 2x + 6", ["6 = 6", "allrealnumbers"])
+    assert [l["status"] for l in out] == ["ok", "ok"]
+    assert out[1]["done"].startswith("Infinitely many")
+
+
+def test_wrong_conclusions_are_nudged_not_answered():
+    assert _lines("2(x + 3) = 2x + 6", ["0 = 0", "no solution"])[1]["status"] == "wrong"
+    assert _lines("3x + 5 = 3x + 2", ["0 = -3", "infinitely many solutions"])[1]["status"] == "wrong"
+    still = _lines("4x - 1 = 2x + 7", ["2x = 8", "no solution"])[1]
+    assert still["status"] == "wrong" and "still has solutions" in still["message"]
+
+
+def test_conclusion_in_text_languages_and_translation():
+    from mathcore.lang import op_translate
+
+    assert _lines("3*x + 5 = 3*x + 2", ["5 = 2", "no solution"], "python")[1]["status"] == "ok"
+    items = op_translate({"from": "latex", "to": "python", "items": ["\\text{no solution}"]})["items"]
+    assert items[0] == {"text": "no solution", "ok": True}
+
+
+def test_single_letter_r_is_not_a_conclusion():
+    from mathcore.worklines import conclusion
+
+    assert conclusion("r") is None and conclusion("x = 3") is None
+    assert conclusion("x \\in \\mathbb{R}") == "all" and conclusion("∅") == "none"

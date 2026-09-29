@@ -40,6 +40,8 @@ def wrong_response(p):
         return f"{p['target']} = 1000"
     if kind == "scientific":
         return "9.9 x 10^40"
+    if kind == "count":
+        return "one" if answer != "1" else "no solution"
     return f"({answer}) + 1"
 
 
@@ -55,3 +57,30 @@ def test_topic(topic):
         assert good["correct"], (topic, seed, p, good)
         bad = handle({**base, "response": wrong_response(p)})
         assert not bad["correct"], (topic, seed, p)
+
+
+def test_number_of_solutions_topics_agree_with_the_solver():
+    from mathcore.practice import op_practice
+    from mathcore.solve import op_solve
+
+    seen = set()
+    for seed in range(120):
+        pr = op_practice({"topic": "num-solutions", "seed": seed})
+        sol = op_solve(pr["show"])["solution_latex"]
+        got = "0" if "no solution" in sol else "inf" if "all real" in sol else "1"
+        assert got == pr["answer"], pr["latex"]
+        assert [c["value"] for c in pr["choices"]] == ["0", "1", "inf"]
+        seen.add(got)
+    assert seen == {"0", "1", "inf"}
+    for seed in range(80):
+        pr = op_practice({"topic": "num-solutions-make", "seed": seed})
+        sol = op_solve(pr["show"])["solution_latex"]
+        assert ("no solution" if "no solution" in pr["prompt"] else "all real") in sol
+
+
+def test_count_answers():
+    from mathcore.practice import op_check
+
+    for said, value in [("no solution", "0"), ("none", "0"), ("one", "1"), ("Exactly one solution", "1"), ("infinitely many", "inf"), ("all real numbers", "inf"), ("∞", "inf")]:
+        assert op_check({"kind": "count", "answer": value, "response": said})["correct"], said
+    assert not op_check({"kind": "count", "answer": "1", "response": "none"})["correct"]

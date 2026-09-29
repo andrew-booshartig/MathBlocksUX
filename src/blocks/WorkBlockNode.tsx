@@ -23,6 +23,8 @@ interface CheckedLine {
   parts?: [string, string, string] | null;
   message?: string;
   done?: string;
+  /** a nudge on a correct line (e.g. the variable cancelled out — now what?) */
+  note?: string;
 }
 
 interface WorkResult {
@@ -490,6 +492,11 @@ export default function WorkBlockNode({ id }: NodeProps) {
                       </div>
                     )}
                     {showMarks && c?.done && c.status === "ok" && <div className="work-done">✓ {<RichText text={c.done} />}</div>}
+                    {showMarks && c?.note && c.status === "ok" && !lines.slice(i + 1).some((l) => l.trim()) && (
+                      <div className="work-note">
+                        <RichText text={c.note} />
+                      </div>
+                    )}
                   </div>
                 </li>
               );

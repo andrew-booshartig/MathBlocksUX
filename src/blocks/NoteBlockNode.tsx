@@ -5,12 +5,54 @@ import { RichText, Tex } from "../ui";
 import BlockShell from "./BlockShell";
 
 /** Just enough markdown for math notes: # headings, - bullets, 1. lists,
+ * | tables | (a |---| line under the first row makes it the header),
  * $$display math$$ lines, and inline $math$ / **bold** via RichText. */
 export function renderNote(text: string): ReactNode[] {
   const out: ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
+  let table: string[][] | null = null;
   let key = 0;
+  const cells = (line: string) =>
+    line
+      .trim()
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((c) => c.trim());
+  const flushTable = () => {
+    if (!table) return;
+    const rows = table;
+    table = null;
+    const header = rows.length > 1 && rows[1].every((c) => /^:?-{2,}:?$/.test(c));
+    const body = header ? rows.slice(2) : rows;
+    out.push(
+      <table key={key++} className="note-table">
+        {header && (
+          <thead>
+            <tr>
+              {rows[0].map((c, i) => (
+                <th key={i}>
+                  <RichText text={c} />
+                </th>
+              ))}
+            </tr>
+          </thead>
+        )}
+        <tbody>
+          {body.map((row, r) => (
+            <tr key={r}>
+              {row.map((c, i) => (
+                <td key={i}>
+                  <RichText text={c} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>,
+    );
+  };
   const flush = () => {
+    flushTable();
     if (!list) return;
     const items = list.items.map((item, i) => (
       <li key={i}>
@@ -22,6 +64,12 @@ export function renderNote(text: string): ReactNode[] {
   };
   for (const raw of text.split("\n")) {
     const line = raw.trimEnd();
+    if (line.trim().startsWith("|")) {
+      if (list) flush();
+      (table ??= []).push(cells(line));
+      continue;
+    }
+    flushTable();
     const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
     const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
     if (bullet || numbered) {

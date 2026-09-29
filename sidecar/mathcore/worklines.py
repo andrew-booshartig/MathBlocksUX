@@ -10,6 +10,9 @@ them. Each line is compared with the line above it:
              carried through (so it doesn't match the problem any more)
   error    — couldn't read the line
 
+A line can also be a conclusion in words — "no solution" or "all real
+numbers" (infinitely many solutions) — checked against the line above it.
+
 Lines are read in the block's chosen language (LaTeX from the Visual
 editor, Python, Lua, Haskell, or one a teacher defined) through the
 shared language layer in mathcore/lang."""
@@ -252,6 +255,83 @@ def diagnose(prev: Line, line: Line) -> str:
     return "This doesn't have the same solutions as the line above — find the step that changed it."
 
 
+# "no solution" / "all real numbers" typed as a line — in any language, with
+# or without spaces (the Visual editor drops them: "nosolution")
+_NONE_WORDS = re.compile(r"^(no(real)?solutions?|none|nosolutionsexist|∅|\\emptyset|\\varnothing|\{\}|\\\{\\\})$", re.I)
+_ALL_WORDS = re.compile(
+    r"^(all(real)?(numbers)?|allreals|infinitelymany(solutions)?|infinite(ly)?(many)?(solutions)?|∞solutions|"
+    r"every(real)?number(isasolution)?|identity|ℝ|\\mathbb\{r\}|[a-z](∈|\\in)(ℝ|\\mathbb\{r\}))$",
+    re.I,
+)
+CONCLUSION_TEX = {"none": "\\text{no solution}", "all": "\\text{all real numbers}"}
+
+
+def conclusion(raw: str) -> str | None:
+    """'none' / 'all' when the line is a conclusion in words, else None."""
+    text = re.sub(r"\\(text|mathrm|operatorname|textrm|textit|mathit)\s*\{([^{}]*)\}", r"\2", raw)
+    text = re.sub(r"\\[ ,;:!]|~|\\quad|\\qquad|[\s.]", "", text).lower()
+    text = text.replace("solutionset", "").replace("x=", "")
+    if _NONE_WORDS.match(text):
+        return "none"
+    if _ALL_WORDS.match(text):
+        return "all"
+    return None
+
+
+def verdict(line: Line) -> str | None:
+    """How many solutions does this line have: 'none', 'all' or 'some'
+    (None when it can't be told)."""
+    syms = line.symbols
+    if line.kind == "expression":
+        return None
+    if not syms:  # 5 = 2, 6 = 6, 3 < 1 …
+        try:
+            if line.rel == "=":
+                return "all" if sympy.simplify(line.diff) == 0 else "none"
+            return "all" if bool(_RELOPS[line.rel](*line.sides)) else "none"
+        except (TypeError, KeyError):
+            return None
+    if len(syms) != 1:
+        return None
+    try:
+        found = line.solution_set(syms[0])
+    except (NotImplementedError, ValueError, TypeError):
+        return None
+    return "none" if found == S.EmptySet else "all" if found == S.Reals else "some"
+
+
+def _check_conclusion(claim: str, prev: Line, given: Line, carried: bool) -> dict:
+    entry = {"latex": CONCLUSION_TEX[claim], "parts": None}
+    if given.kind == "expression":
+        return {**entry, "status": "error", "message": "“No solution” and “all real numbers” are answers to equations and inequalities — this problem is an expression."}
+    before = verdict(prev)
+    if before is None:
+        return {**entry, "status": "unknown", "message": "Can't check this step automatically."}
+    if before == "some":
+        return {**entry, "status": "wrong", "message": "The line above still has solutions — some values work and some don't. Keep solving."}
+    if before != claim:
+        if claim == "none":
+            return {**entry, "status": "wrong", "message": "Is the line above ever false? It's true no matter what the variable is — so which values work?"}
+        return {**entry, "status": "wrong", "message": "Is the line above ever true? It's false no matter what the variable is — so which values work?"}
+    if carried and verdict(given) != claim:
+        return {**entry, "status": "carried", "message": "This follows from the line above, but an earlier mistake is carried through."}
+    done = "No solution — no value makes it true" if claim == "none" else "Infinitely many solutions — every value makes it true"
+    return {**entry, "status": "ok", "done": done}
+
+
+def _variable_gone(line: Line, given: Line) -> str | None:
+    """A nudge when the variable cancels out: the line is now just true or
+    false — the student still has to say what that means."""
+    if line.kind == "expression" or line.alts or line.symbols or not given.symbols:
+        return None
+    v = verdict(line)
+    if v == "none":
+        return "The variable is gone and what's left is **false** — so what are the solutions?"
+    if v == "all":
+        return "The variable is gone and what's left is **always true** — so what are the solutions?"
+    return None
+
+
 def _is_done(line: Line, given: Line) -> str | None:
     if line.alts:
         return "Solved" if all(_is_done(a, given) for a in line.alts) else None
@@ -287,6 +367,12 @@ def op_worklines(req: dict) -> dict:
         if not raw.strip():
             out.append({"status": "empty"})
             continue
+        claim = conclusion(raw)
+        if claim:
+            entry = _check_conclusion(claim, prev, given, carried)
+            carried = carried or entry["status"] == "wrong"
+            out.append(entry)
+            continue
         try:
             line = Line(raw, language, custom)
         except Incomplete:  # still being typed — no marks or complaints yet
@@ -317,6 +403,9 @@ def op_worklines(req: dict) -> dict:
             done = _is_done(line, given)
             if done:
                 entry["done"] = done
+            note = _variable_gone(line, given)
+            if note:
+                entry["note"] = note
         out.append(entry)
         prev = line
     return {"kind": given.kind, "problem_latex": given.latex(), "problem_parts": given.parts(), "lines": out}

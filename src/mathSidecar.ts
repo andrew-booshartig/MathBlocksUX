@@ -158,6 +158,8 @@ export interface PracticeProblem {
   answer: unknown;
   answer_latex: string;
   target?: string;
+  /** answer by picking one of these instead of typing */
+  choices?: { label: string; value: string }[];
   show: MathRequest;
 }
 

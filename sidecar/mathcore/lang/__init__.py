@@ -60,6 +60,13 @@ def op_translate(req: dict) -> dict:
         if not str(text).strip():
             out.append({"text": "", "ok": True})
             continue
+        from ..worklines import conclusion  # here, not at the top: worklines imports lang
+
+        claim = conclusion(str(text))
+        if claim:  # "no solution" / "all real numbers" — words, in any language
+            words = {"none": "no solution", "all": "all real numbers"}[claim]
+            out.append({"text": f"\\text{{{words}}}" if target == "latex" else words, "ok": True})
+            continue
         try:
             out.append({"text": translate(text, source, target, custom), "ok": True})
         except Exception as exc:  # noqa: BLE001 — any failure keeps the original line

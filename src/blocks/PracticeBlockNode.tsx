@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import type { NodeProps } from "@xyflow/react";
 import { type PracticeBlockData, useStore } from "../store";
-import { type CheckResult, type PracticeProblem, type Step, mathRequest, useLiveMath } from "../mathSidecar";
+import {
+  type CheckResult,
+  type PracticeProblem,
+  type Step,
+  mathRequest,
+  useLiveMath,
+} from "../mathSidecar";
 import { ErrorText, RichText, Tex } from "../ui";
 import BlockShell from "./BlockShell";
 
@@ -21,6 +27,8 @@ export const PRACTICE_UNITS: { unit: string; topics: [string, string][] }[] = [
       ["two-step", "Two-step equations"],
       ["multi-step", "Multi-step equations"],
       ["literal", "Literal equations"],
+      ["num-solutions", "Number of solutions"],
+      ["num-solutions-make", "Number of solutions: fill the box"],
       ["absolute-value", "Absolute value equations"],
       ["inequality", "Inequalities"],
       ["compound", "Compound inequalities"],
@@ -93,7 +101,10 @@ export default function PracticeBlockNode({ id }: NodeProps) {
   const [checkError, setCheckError] = useState<string | null>(null);
   const [solution, setSolution] = useState<Step[] | null>(null);
   const [hints, setHints] = useState(0);
-  const { result: problem, error } = useLiveMath<PracticeProblem>(data ? { op: "practice", topic: data.topic, seed: data.seed } : null, 0);
+  const { result: problem, error } = useLiveMath<PracticeProblem>(
+    data ? { op: "practice", topic: data.topic, seed: data.seed } : null,
+    0,
+  );
 
   // a new problem starts fresh
   useEffect(() => {
@@ -108,22 +119,36 @@ export default function PracticeBlockNode({ id }: NodeProps) {
   const solved = attempts.some((a) => a.result.correct);
   const last = attempts[attempts.length - 1];
 
-  const next = () => updateBlock(data.id, { seed: Math.floor(Math.random() * 1e9) });
+  const next = () =>
+    updateBlock(data.id, { seed: Math.floor(Math.random() * 1e9) });
 
-  const check = () => {
-    if (!problem || !response.trim() || solved) return;
-    mathRequest<CheckResult>({ op: "check", kind: problem.kind, answer: problem.answer, target: problem.target, response }).then(
+  const check = (picked?: string) => {
+    const answer = picked ?? response;
+    if (!problem || !answer.trim() || solved) return;
+    if (picked !== undefined) setResponse(picked);
+    mathRequest<CheckResult>({
+      op: "check",
+      kind: problem.kind,
+      answer: problem.answer,
+      target: problem.target,
+      response: answer,
+    }).then(
       (result) => {
         setCheckError(null);
-        setAttempts((prev) => [...prev, { response, result }]);
+        setAttempts((prev) => [...prev, { response: answer, result }]);
         if (result.correct) {
           // progress for guided-lesson goals ("get 3 right")
           const { blockStatus, reportStatus } = useStore.getState();
-          reportStatus(data.id, { correct: (blockStatus[data.id]?.correct ?? 0) + 1 });
+          reportStatus(data.id, {
+            correct: (blockStatus[data.id]?.correct ?? 0) + 1,
+          });
         }
         // only a problem's first attempt counts toward the score
         if (attempts.length === 0) {
-          updateBlock(data.id, { attempted: data.attempted + 1, correct: data.correct + (result.correct && hints === 0 ? 1 : 0) });
+          updateBlock(data.id, {
+            attempted: data.attempted + 1,
+            correct: data.correct + (result.correct && hints === 0 ? 1 : 0),
+          });
         }
       },
       (err) => setCheckError(String(err)),
@@ -164,7 +189,10 @@ export default function PracticeBlockNode({ id }: NodeProps) {
       wide
       help="Endless generated problems. Check your answer, take a hint (one step at a time), or see the full worked solution."
       headerExtra={
-        <span className="practice-score" title="First-try correct (without hints) / problems attempted">
+        <span
+          className="practice-score"
+          title="First-try correct (without hints) / problems attempted"
+        >
           {data.correct}/{data.attempted}
         </span>
       }
@@ -172,7 +200,12 @@ export default function PracticeBlockNode({ id }: NodeProps) {
       <select
         className="block-select nodrag"
         value={data.topic}
-        onChange={(e) => updateBlock(data.id, { topic: e.target.value, seed: Math.floor(Math.random() * 1e9) })}
+        onChange={(e) =>
+          updateBlock(data.id, {
+            topic: e.target.value,
+            seed: Math.floor(Math.random() * 1e9),
+          })
+        }
       >
         <option value="mixed">🎲 Mixed review (everything)</option>
         {PRACTICE_UNITS.map((u) => (
@@ -189,43 +222,84 @@ export default function PracticeBlockNode({ id }: NodeProps) {
       {problem && (
         <>
           <div className="practice-prompt">
-            {data.topic === "mixed" && <div className="practice-topic">{problem.title}</div>}
+            {data.topic === "mixed" && (
+              <div className="practice-topic">{problem.title}</div>
+            )}
             <RichText text={problem.prompt} />
           </div>
           <div className="practice-problem">
             <Tex math={problem.latex} block />
           </div>
-          <div className="block-row">
-            <input
-              className="nodrag block-input"
-              value={response}
-              disabled={solved}
-              placeholder={PLACEHOLDERS[problem.kind] ?? "your answer"}
-              onChange={(e) => setResponse(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") (solved ? next : check)();
-              }}
-            />
-            {solved ? (
-              <button className="action-btn is-primary nodrag" onClick={next}>
-                Next →
-              </button>
-            ) : (
-              <button className="action-btn is-primary nodrag" onClick={check} disabled={!response.trim()}>
-                Check
-              </button>
-            )}
-          </div>
+          {problem.choices ? (
+            <div className="practice-choices">
+              {problem.choices.map((c) => {
+                const tried = attempts.find((a) => a.response === c.value);
+                return (
+                  <button
+                    key={c.value}
+                    className={`action-btn nodrag${tried ? (tried.result.correct ? " is-correct" : " is-wrong") : ""}`}
+                    disabled={solved || !!tried}
+                    onClick={() => check(c.value)}
+                  >
+                    {c.label}
+                  </button>
+                );
+              })}
+              {solved && (
+                <button className="action-btn is-primary nodrag" onClick={next}>
+                  Next →
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="block-row">
+              <input
+                className="nodrag block-input"
+                value={response}
+                disabled={solved}
+                placeholder={PLACEHOLDERS[problem.kind] ?? "your answer"}
+                onChange={(e) => setResponse(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (solved ? next : check)();
+                }}
+              />
+              {solved ? (
+                <button className="action-btn is-primary nodrag" onClick={next}>
+                  Next →
+                </button>
+              ) : (
+                <button
+                  className="action-btn is-primary nodrag"
+                  onClick={() => check()}
+                  disabled={!response.trim()}
+                >
+                  Check
+                </button>
+              )}
+            </div>
+          )}
           <ErrorText error={checkError} />
           {last && (
-            <div className={`practice-feedback ${last.result.correct ? "is-correct" : "is-wrong"}`}>
-              {last.result.correct ? (hints ? "✓ Correct (with hints)" : attempts.length > 1 ? "✓ Correct — nice recovery" : "✓ Correct!") : "✗ Not quite."}{" "}
+            <div
+              className={`practice-feedback ${last.result.correct ? "is-correct" : "is-wrong"}`}
+            >
+              {last.result.correct
+                ? hints
+                  ? "✓ Correct (with hints)"
+                  : attempts.length > 1
+                    ? "✓ Correct — nice recovery"
+                    : "✓ Correct!"
+                : "✗ Not quite."}{" "}
               {last.result.feedback && <RichText text={last.result.feedback} />}
             </div>
           )}
           {!showAnswer && (
             <div className="block-row">
-              <button className="action-btn nodrag" onClick={hint} title="Reveal the next step of the worked solution">
+              <button
+                className="action-btn nodrag"
+                onClick={hint}
+                title="Reveal the next step of the worked solution"
+              >
                 💡 Hint{hints ? ` (${hints})` : ""}
               </button>
               <button className="action-btn nodrag" onClick={revealAll}>
