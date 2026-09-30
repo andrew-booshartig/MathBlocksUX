@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -175,6 +175,26 @@ function Dialog({ spec, close }: { spec: DialogSpec; close: () => void }) {
   );
 }
 
+/** Lesson groups in two columns that each read top to bottom, in order,
+ * split where the columns come out closest in length — no gaps from
+ * lining short groups up beside long ones. */
+function lessonColumns(groups: { key: string; weight: number; node: ReactNode }[]) {
+  const total = groups.reduce((sum, g) => sum + g.weight, 0);
+  let split = groups.length;
+  let best = Infinity;
+  let running = 0;
+  for (let i = 0; i <= groups.length; i++) {
+    const worse = Math.max(running, total - running);
+    if (worse < best) [best, split] = [worse, i];
+    if (i < groups.length) running += groups[i].weight;
+  }
+  return [groups.slice(0, split), groups.slice(split)].map((column, i) => (
+    <div key={i} className="lessons-col">
+      {column.map((g) => g.node)}
+    </div>
+  ));
+}
+
 export default function AppRoot() {
   return (
     <ReactFlowProvider>
@@ -321,6 +341,7 @@ function App() {
     [setNodes],
   );
 
+  const { getNode: flowNode } = useReactFlow();
   const onNodeDragStop = useCallback(
     (_event: unknown, node: Node, dragged: Node[]) => {
       const drag = groupDrag.current;
@@ -335,9 +356,24 @@ function App() {
           if (!(id in positions)) positions[id] = { x: start.x + dx, y: start.y + dy };
         }
       }
+      // a fixed page: whatever was dropped past its edge slides back inside
+      const { canvas } = useStore.getState();
+      if (canvas.bounded) {
+        const b = canvasBounds(canvas);
+        for (const [id, at] of Object.entries(positions)) {
+          const n = flowNode(id);
+          const w = n?.measured?.width ?? 0;
+          const h = n?.measured?.height ?? 0;
+          positions[id] = {
+            x: Math.max(b.minX, Math.min(at.x, b.maxX - w)),
+            y: Math.max(b.minY, Math.min(at.y, b.maxY - h)),
+          };
+        }
+        setNodes((prev) => prev.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n)));
+      }
       setPositions(positions);
     },
-    [setPositions],
+    [setPositions, flowNode, setNodes],
   );
 
   const onSelectionChange = useCallback(({ nodes: selected }: { nodes: Node[] }) => {
@@ -406,12 +442,10 @@ function App() {
         [bounds.maxX + pad, bounds.maxY + pad],
       ]
     : undefined;
-  const nodeExtent: [[number, number], [number, number]] | undefined = bounds
-    ? [
-        [bounds.minX, bounds.minY],
-        [bounds.maxX, bounds.maxY],
-      ]
-    : undefined;
+  // (no xyflow nodeExtent: it clamps *every* block on every render — a new
+  // lesson's blocks got squashed into the previous page's edges, and blocks
+  // near an edge crept inward on each reload. A dragged block is kept on
+  // the page when it's dropped instead; nothing else ever moves.)
 
   // 1–9 jump to saved views; H goes home (only when not typing)
   useEffect(() => {
@@ -440,6 +474,53 @@ function App() {
     const timer = setTimeout(() => fitBlocks(follow, 250), 60);
     return () => clearTimeout(timer);
   }, [followKey, follow, fitBlocks]);
+
+  // blocks that overlap (older canvases can have them) slide down until
+  // nothing does; nobody moves sideways, and locked groups move as one
+  const tidyOverlaps = () => {
+    const { blocks } = useStore.getState();
+    const GAP = 24;
+    type Item = { ids: string[]; x: number; y: number; w: number; h: number };
+    const items = new Map<string, Item>();
+    for (const n of nodes) {
+      const key = blocks[n.id]?.groupId ?? n.id;
+      const w = n.measured?.width ?? 360;
+      const h = n.measured?.height ?? 300;
+      const item = items.get(key);
+      if (!item) {
+        items.set(key, { ids: [n.id], x: n.position.x, y: n.position.y, w, h });
+      } else {
+        const right = Math.max(item.x + item.w, n.position.x + w);
+        const bottom = Math.max(item.y + item.h, n.position.y + h);
+        item.x = Math.min(item.x, n.position.x);
+        item.y = Math.min(item.y, n.position.y);
+        item.w = right - item.x;
+        item.h = bottom - item.y;
+        item.ids.push(n.id);
+      }
+    }
+    const placed: Item[] = [];
+    const shift: Record<string, number> = {};
+    for (const item of [...items.values()].sort((a, b) => a.y - b.y || a.x - b.x)) {
+      let y = item.y;
+      for (let pass = 0, moved = true; moved && pass < 200; pass++) {
+        moved = false;
+        for (const p of placed) {
+          if (item.x < p.x + p.w && p.x < item.x + item.w && y < p.y + p.h && p.y < y + item.h) {
+            y = p.y + p.h + GAP;
+            moved = true;
+          }
+        }
+      }
+      placed.push({ ...item, y });
+      if (y !== item.y) for (const id of item.ids) shift[id] = y - item.y;
+    }
+    const positions: Record<string, XYPosition> = {};
+    for (const n of nodes) if (shift[n.id]) positions[n.id] = { x: n.position.x, y: n.position.y + shift[n.id] };
+    setPositions(positions);
+    setNodes((prev) => prev.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n)));
+    setCanvasOpen(false);
+  };
 
   const fitToContent = () => {
     const { blocks, canvas: current } = useStore.getState();
@@ -640,26 +721,42 @@ function App() {
           </Menu>
           <Menu icon="book" label="Lessons" id="lessons" open={lessonsOpen} setOpen={setLessonsOpen}>
             <div className="lessons">
-              {UNITS.map((unit) => (
-                <div key={unit.title} className="palette-group">
-                  <div className="palette-heading">{unit.title}</div>
-                  {unit.lessons.map((lesson) => (
-                    <button key={lesson.id} className="palette-item" onClick={() => loadLesson(lesson.id)}>
-                      <span className="palette-name">{lesson.title}</span>
-                      {lesson.khan && lesson.khan !== lesson.title && <span className="palette-desc">{lesson.khan}</span>}
-                    </button>
-                  ))}
-                </div>
-              ))}
-              {savedWorkspaces.length > 0 && (
-                <div className="palette-group">
-                  <div className="palette-heading">My lessons & canvases</div>
-                  {savedWorkspaces.map((name) => (
-                    <button key={name} className="palette-item" onClick={() => openSaved(name, () => setLessonsOpen(false))}>
-                      <span className="palette-name">{name}</span>
-                    </button>
-                  ))}
-                </div>
+              {lessonColumns(
+                [
+                  ...(savedWorkspaces.length
+                    ? [
+                        {
+                          key: "mine",
+                          weight: 1 + savedWorkspaces.length,
+                          node: (
+                            <div key="mine" className="palette-group">
+                              <div className="palette-heading">My lessons & canvases</div>
+                              {savedWorkspaces.map((name) => (
+                                <button key={name} className="palette-item" onClick={() => openSaved(name, () => setLessonsOpen(false))}>
+                                  <span className="palette-name">{name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          ),
+                        },
+                      ]
+                    : []),
+                  ...UNITS.map((unit) => ({
+                    key: unit.title,
+                    weight: 1 + unit.lessons.reduce((sum, l) => sum + (l.khan && l.khan !== l.title ? 1.6 : 1), 0),
+                    node: (
+                      <div key={unit.title} className="palette-group">
+                        <div className="palette-heading">{unit.title}</div>
+                        {unit.lessons.map((lesson) => (
+                          <button key={lesson.id} className="palette-item" onClick={() => loadLesson(lesson.id)}>
+                            <span className="palette-name">{lesson.title}</span>
+                            {lesson.khan && lesson.khan !== lesson.title && <span className="palette-desc">{lesson.khan}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    ),
+                  })),
+                ],
               )}
             </div>
             <div className="lessons-footer">
@@ -706,7 +803,7 @@ function App() {
             />
           </Menu>
           <Menu icon="frame" label="Canvas" id="canvas" title="Canvas size, grid and origin" open={canvasOpen} setOpen={setCanvasOpen}>
-            <CanvasMenu onFitContent={fitToContent} />
+            <CanvasMenu onFitContent={fitToContent} onTidy={tidyOverlaps} />
           </Menu>
         </div>
 
@@ -808,7 +905,6 @@ function App() {
         panOnScroll={scrollMode === "pan"}
         zoomOnScroll={scrollMode === "zoom"}
         zoomOnPinch
-        nodeExtent={nodeExtent}
         snapToGrid={canvas.snap}
         snapGrid={[canvas.unit / 2, canvas.unit / 2]}
         onMouseMove={(event) => {

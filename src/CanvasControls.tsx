@@ -266,7 +266,7 @@ export function ViewsMenu({
   );
 }
 
-export function CanvasMenu({ onFitContent }: { onFitContent: () => void }) {
+export function CanvasMenu({ onFitContent, onTidy }: { onFitContent: () => void; onTidy: () => void }) {
   const canvas = useStore((s) => s.canvas);
   const views = useStore((s) => s.views);
   const { setCanvas } = useStore.getState();
@@ -307,6 +307,12 @@ export function CanvasMenu({ onFitContent }: { onFitContent: () => void }) {
           </button>
         </div>
       )}
+      <div className="canvas-row">
+        <span>Blocks</span>
+        <button className="action-btn" title="Slide overlapping blocks down until none overlap (nothing moves sideways)" onClick={onTidy}>
+          Tidy up overlaps
+        </button>
+      </div>
       <div className="canvas-row">
         <span>(0, 0)</span>
         <div className="segmented">
