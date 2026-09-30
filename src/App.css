@@ -3494,8 +3494,29 @@ body,
 /* ================= visual math input (MathLive) ================= */
 
 .math-input {
+  position: relative;
   width: 100%;
   min-width: 0;
+}
+
+/* greyed hint over an empty field — like any text box's placeholder */
+.math-input-placeholder {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #5a6472;
+  font-family: -apple-system, "Inter", Helvetica, sans-serif;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: calc(100% - 22px);
+  text-overflow: ellipsis;
+}
+
+.work-problem-math .math-input-placeholder {
+  font-size: 17px;
 }
 
 .math-input math-field {

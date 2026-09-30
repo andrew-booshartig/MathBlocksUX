@@ -332,7 +332,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
             className="work-problem-math"
             onFocus={() => (activeMath.current = problemMath.current)}
             value={data.problem}
-            placeholder={"\\text{type the problem}"}
+            placeholder="type the problem"
             onChange={(problem) => updateBlock(data.id, { problem })}
             onEnter={() => mathInputs.current[0]?.focus()}
             onMoveOut={(direction) => direction === "downward" && mathInputs.current[0]?.focus()}
@@ -435,7 +435,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
                           }}
                           className="work-math"
                           value={text}
-                          placeholder={i === 0 ? "\\text{first step…}" : "\\text{next step…}"}
+                          placeholder={i === 0 ? "first step…" : "next step…"}
                           onFocus={() => {
                             setFocus(i);
                             activeMath.current = mathInputs.current[i];

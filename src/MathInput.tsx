@@ -32,6 +32,7 @@ export default function MathInput({
 }: {
   value: string;
   onChange: (latex: string) => void;
+  /** plain text, shown greyed while the field is empty */
   placeholder?: string;
   onEnter?: (shift: boolean) => void;
   onBackspaceEmpty?: () => void;
@@ -57,7 +58,6 @@ export default function MathInput({
     mf.menuItems = [];
     mf.smartFence = true;
     mf.value = value;
-    mf.placeholder = placeholder ?? "";
     mf.addEventListener("input", () => handlers.current.onChange(mf.value));
     mf.addEventListener("focus", () => handlers.current.onFocus?.());
     // capture phase: runs before MathLive's own key handling inside the field
@@ -97,10 +97,6 @@ export default function MathInput({
     if (mf && mf.value !== value) mf.value = value;
   }, [value]);
 
-  useEffect(() => {
-    if (field.current) field.current.placeholder = placeholder ?? "";
-  }, [placeholder]);
-
   useImperativeHandle(ref, () => ({
     // a field that was *just* created finishes mounting a frame later, and
     // ignores focus until then — keep trying for a few frames
@@ -122,5 +118,16 @@ export default function MathInput({
     },
   }));
 
-  return <div ref={host} className={`math-input nodrag ${className ?? ""}`} />;
+  // the placeholder is ordinary text over the empty field — MathLive's own
+  // draws it as math text, which it boxes in a highlight while focused
+  return (
+    <div className={`math-input nodrag ${className ?? ""}`}>
+      <div ref={host} />
+      {!value && placeholder && (
+        <span className="math-input-placeholder" aria-hidden>
+          {placeholder}
+        </span>
+      )}
+    </div>
+  );
 }
