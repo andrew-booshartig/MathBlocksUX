@@ -790,6 +790,9 @@ function App() {
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
+        // clicking twice (on a button, or just to get the app's attention)
+        // must never zoom the canvas
+        zoomOnDoubleClick={false}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeDragStart={onNodeDragStart}
