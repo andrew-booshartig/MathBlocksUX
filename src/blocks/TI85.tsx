@@ -338,6 +338,22 @@ export default function TI85({ data }: { data: CalculatorBlockData }) {
   const [busy, setBusy] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
+  // a click anywhere on the block — its header, its border, the space
+  // around the calculator — puts the cursor in the calculator (otherwise
+  // the block itself takes focus and the cursor stays dim, which looks like
+  // the click didn't take). Settings fields keep their own clicks.
+  useEffect(() => {
+    const node = root.current?.closest(".react-flow__node");
+    if (!node) return;
+    const onDown = (event: Event) => {
+      const target = event.target as HTMLElement;
+      if (root.current?.contains(target) || target.closest("input, textarea, select, label, .calc-settings")) return;
+      requestAnimationFrame(() => root.current?.focus({ preventScroll: true }));
+    };
+    node.addEventListener("pointerdown", onDown);
+    return () => node.removeEventListener("pointerdown", onDown);
+  }, []);
+
   useEffect(() => {
     if (!flash) return;
     const timer = setTimeout(() => setFlash(null), 2200);
