@@ -141,6 +141,56 @@ def _solve_for_y(expr):
     return sympy.simplify(-(e - cy * Y) / cy), cy
 
 
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def unknown_names(text, vars_):
+    """Letters a line uses that have no value yet (not x or y) — a graph
+    turns each into a slider. 'mx' counts as m·x; the f in 'f(x) =' doesn't."""
+    scope = build_scope(vars_, keep_symbolic={"x", "y"})
+    text = prep(text)
+    names = set()
+    for m in _IDENT.finditer(text):
+        token = m.group(0)
+        if len(token) == 1 and re.match(r"\s*\(\s*x\s*\)", text[m.end():]):
+            continue  # a function's name: f(x) = …
+        try:
+            value = parse(token, scope)
+        except Exception:
+            continue
+        names |= {str(s) for s in getattr(value, "free_symbols", set())}
+    return sorted(names - {"x", "y"})
+
+
+_KNOWN_NAMES = {"sin", "cos", "tan", "asin", "acos", "atan", "sqrt", "abs", "pi", "ln", "log", "exp"}
+
+
+def _graph_spec():
+    from .lang.specs import normalize
+
+    # how graph lines are typed: 2x means 2·x, ^ (or **) is a power
+    return normalize({"name": "Graph", "power": ["^", "**"], "equals": ["=", "=="], "implicit_multiplication": True}, "graph")
+
+
+def display_latex(text):
+    """The line as the student wrote it — letters and shape kept (y = mx + b,
+    not y = 2x + 3 with the slider values filled in, and not reordered)."""
+    from . import lang
+    from .lang.text import TextReader
+
+    spec = _graph_spec()
+    # mx is m·x on a graph (as the grapher reads it), unless it's a function name
+    text = re.sub(r"[A-Za-z]{2,}", lambda m: m.group(0) if m.group(0) in _KNOWN_NAMES else " ".join(m.group(0)), text)
+    show = lambda part: lang.latex(TextReader(part, spec).parse())  # noqa: E731
+    pts = _POINT.findall(text)
+    if pts and not _POINT.sub("", text).replace(",", "").strip():
+        return ",\\ ".join(f"\\left({show(a)}, {show(b)}\\right)" for a, b in pts)
+    label = re.match(r"\s*([a-zA-Z])\s*\(\s*x\s*\)\s*=", text)
+    if label:
+        return f"{label.group(1)}(x) = " + show(text[label.end():])
+    return show(text)
+
+
 def graph_line(text, vars_, xr, yr):
     scope = build_scope(vars_, keep_symbolic={"x", "y"})
     text = prep(text)
@@ -228,7 +278,8 @@ def op_graph(req: dict) -> dict:
     lines = req.get("exprs")
     if lines is None:
         lines = [req.get("expr", "")]
-    vars_ = req.get("vars") or {}
+    vars_ = dict(req.get("vars") or {})
+    vars_.setdefault("e", "exp(1)")  # e is Euler's number on a graph, unless something defines it
     xr = [float(v) for v in (req.get("xrange") or [-10, 10])]
     yr = [float(v) for v in (req.get("yrange") or [-10, 10])]
     if xr[0] >= xr[1] or yr[0] >= yr[1]:
@@ -239,13 +290,23 @@ def op_graph(req: dict) -> dict:
     for i, line in enumerate(lines):
         if not str(line).strip():
             continue
+        missing = unknown_names(str(line), vars_)
         try:
+            if missing:
+                raise MathInputError(f"give {', '.join(missing)} a value to graph this")
             s = graph_line(str(line), vars_, xr, yr)
         except MathInputError as exc:
             s = {"kind": "error", "error": str(exc)}
+            if missing:
+                s["missing"] = missing
         except Exception as exc:  # a bad line shouldn't blank the whole graph
             s = {"kind": "error", "error": f"{type(exc).__name__}: {exc}"}
         s["index"] = i
+        if s["kind"] != "error":
+            try:
+                s["display"] = display_latex(str(line))
+            except Exception:  # noqa: BLE001 — fall back to the graphed form
+                pass
         series.append(s)
         if "_expr" in s:
             functions.append((i, s["_expr"], s["kind"]))

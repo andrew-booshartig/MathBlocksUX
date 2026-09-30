@@ -16,8 +16,10 @@ interface BlockBase {
   position: { x: number; y: number };
   /** Blocks sharing a groupId are locked together and drag as one. */
   groupId?: string;
-  /** Set once the user resizes the block; content scrolls inside it. */
-  size?: { w: number; h: number };
+  /** Set once the user resizes the block. `base` is the width its contents
+   * were laid out at before resizing: most blocks zoom their contents by
+   * w / base (see BlockShell), so a bigger box means bigger everything. */
+  size?: { w: number; h: number; base?: number };
 }
 
 export interface VariableBlockData extends BlockBase {
@@ -50,6 +52,62 @@ export interface GraphBlockData extends BlockBase {
   /** Keep 1 unit of x the same length as 1 unit of y (true slopes). */
   equalAspect?: boolean;
   hideMarkers?: ("intercepts" | "vertices" | "intersections")[];
+  /** how each line is drawn — same order as the lines of `expr` */
+  styles?: GraphLineStyle[];
+  /** letters like m and b come from Variable/Slider blocks (default), or
+   * only from this graph's own sliders */
+  useGlobals?: boolean;
+  /** this graph's own sliders — made automatically for any letter a line uses */
+  sliders?: GraphSlider[];
+  /** pen strokes, segments, arrows and text drawn on the graph (graph coordinates) */
+  drawings?: GraphDrawing[];
+  appearance?: GraphAppearance;
+  /** the equation list: shown, or tucked away to give the graph all the room */
+  panel?: "shown" | "hidden";
+}
+
+export interface GraphLineStyle {
+  color?: string;
+  dash?: "solid" | "dash" | "dot";
+  width?: number;
+  hidden?: boolean;
+  /** shading strength for inequalities, 0–1 */
+  fill?: number;
+  /** write the equation next to its curve */
+  label?: boolean;
+}
+
+export interface GraphSlider {
+  name: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+}
+
+export interface GraphDrawing {
+  id: string;
+  kind: "pen" | "segment" | "arrow" | "text";
+  /** graph coordinates: the stroke, the two ends, or the text's anchor */
+  points: [number, number][];
+  color: string;
+  width: number;
+  text?: string;
+}
+
+export type GraphTheme = "dark" | "paper" | "chalkboard" | "blueprint";
+
+export interface GraphAppearance {
+  theme?: GraphTheme;
+  grid?: "none" | "major" | "minor";
+  axes?: boolean;
+  numbers?: boolean;
+  /** distance between labelled ticks; empty = automatic */
+  xStep?: number;
+  yStep?: number;
+  xLabel?: string;
+  yLabel?: string;
+  title?: string;
 }
 
 export type SolveMethod = "auto" | "factor" | "formula" | "complete" | "sqrt" | "substitution" | "elimination";

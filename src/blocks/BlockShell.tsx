@@ -1,5 +1,5 @@
-import { type ReactNode, useEffect, useRef } from "react";
-import { NodeResizer } from "@xyflow/react";
+import { type ReactNode, createContext, useContext, useEffect, useRef } from "react";
+import { NodeResizeControl, ResizeControlVariant, type OnResize, type OnResizeStart } from "@xyflow/react";
 import { useStore } from "../store";
 import { metaFor } from "./meta";
 
@@ -49,6 +49,21 @@ function useSmartWheel(root: React.RefObject<HTMLDivElement | null>) {
 }
 
 
+const BlockScale = createContext(1);
+
+/** How much this block's contents are zoomed by its own resizing (1 = the
+ * natural size). For code that measures the screen, like the Balance. */
+export const useBlockScale = () => useContext(BlockScale);
+
+/** the shell's border, both sides (1.5px each) */
+const BORDER = 3;
+/** blocks resized before contents zoomed never recorded their natural width */
+const LEGACY_BASE = { normal: 337, wide: 377 };
+
+const CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
+const HANDLE = { width: 9, height: 9, borderRadius: 2 };
+const EDGE = { borderColor: "transparent" };
+
 export default function BlockShell({
   id,
   title,
@@ -70,44 +85,125 @@ export default function BlockShell({
   const removeBlock = useStore((state) => state.removeBlock);
   const locked = useStore((state) => !!state.blocks[id]?.groupId);
   const type = useStore((state) => state.blocks[id]?.type);
-  const accent = type ? metaFor(type).accent : "#55d6be";
+  const meta = type ? metaFor(type) : undefined;
+  const accent = meta?.accent ?? "#55d6be";
+  const mode = meta?.resize ?? "zoom";
   const size = useStore((state) => state.blocks[id]?.size);
   const updateBlock = useStore((state) => state.updateBlock);
   const shellRef = useRef<HTMLDivElement>(null);
   useSmartWheel(shellRef);
 
+  // zoom/scale: the contents keep the layout they had at `base` width and
+  // are scaled to fill the box — so a bigger box is bigger everything
+  const base = size?.base ?? (wide ? LEGACY_BASE.wide : LEGACY_BASE.normal);
+  const staged = mode !== "fill" && !!size;
+  const scale = staged ? Math.max(0.25, (size.w - BORDER) / base) : 1;
+  const box = mode === "fill" ? (size ?? meta?.defaultSize) : size;
+
+  // the size lives here (block data), never as xyflow node attributes (see
+  // App's onNodesChange), so the node box always follows this shell
+  const start = useRef({ base, w: 0, h: 0 });
+  const onResizeStart: OnResizeStart = (_event, params) => {
+    // first resize: remember the width the contents are laid out at now
+    start.current = { base: size?.base ?? (size ? base : (shellRef.current?.clientWidth ?? base)), w: params.width, h: params.height };
+  };
+  const save = (w: number, h: number, at: { x: number; y: number }) =>
+    updateBlock(id, {
+      // dragging a left/top edge moves the block's corner too
+      position: { x: at.x, y: at.y },
+      size: { w: Math.round(w), h: Math.round(h), ...(mode === "fill" ? {} : { base: start.current.base }) },
+    });
+  const onResize: OnResize = (_event, params) => save(params.width, params.height, params);
+  // a side edge zooms the whole block: the height follows the width, and
+  // the top stays where it is (xyflow's own keep-ratio would grow it upward)
+  const onResizeSide: OnResize = (_event, params) => {
+    if (mode === "fill") return save(params.width, params.height, params);
+    save(params.width, start.current.h * (params.width / start.current.w), params);
+  };
+  // top/bottom edges: more or less room — except a calculator keeps its shape
+  const onResizeEnd: OnResize = (_event, params) => {
+    if (mode !== "scale") return save(params.width, params.height, params);
+    save(start.current.w * (params.height / start.current.h), params.height, params);
+  };
+  const common = { color: accent, minWidth: 160, minHeight: 80, onResizeStart };
+
+  const header = (
+    <div className="block-shell-header" style={{ color: accent }}>
+      <span title={help}>
+        {title}
+        {locked && (
+          <span className="block-shell-lock" title="Locked to a group — select it and Unlock to separate">
+            🔒
+          </span>
+        )}
+      </span>
+      <span className="block-shell-actions">
+        {headerExtra}
+        <button className="block-shell-close" onClick={() => removeBlock(id)} title="Remove block">
+          ×
+        </button>
+      </span>
+    </div>
+  );
+  const body = <div className="block-shell-body">{children}</div>;
+
   return (
     <div
       ref={shellRef}
-      className={`block-shell${wide ? " is-wide" : ""}${size ? " is-sized" : ""}`}
-      style={{ borderColor: accent, ...(size ? { width: size.w, height: size.h } : {}) }}
+      className={`block-shell${wide ? " is-wide" : ""}${box ? (staged ? " is-staged" : " is-sized") : ""}`}
+      style={{ borderColor: accent, ...(box ? { width: box.w, height: box.h } : {}) }}
     >
-      <NodeResizer
-        isVisible
-        minWidth={200}
-        minHeight={80}
-        color={accent}
-        lineStyle={{ borderColor: "transparent" }}
-        handleStyle={{ width: 9, height: 9, borderRadius: 2 }}
-        onResize={(_event, params) => updateBlock(id, { size: { w: Math.round(params.width), h: Math.round(params.height) } })}
-      />
-      <div className="block-shell-header" style={{ color: accent }}>
-        <span title={help}>
-          {title}
-          {locked && (
-            <span className="block-shell-lock" title="Locked to a group — select it and Unlock to separate">
-              🔒
-            </span>
-          )}
-        </span>
-        <span className="block-shell-actions">
-          {headerExtra}
-          <button className="block-shell-close" onClick={() => removeBlock(id)} title="Remove block">
-            ×
-          </button>
-        </span>
-      </div>
-      <div className="block-shell-body">{children}</div>
+      {/* corners resize freely (a calculator keeps its shape); the side edges
+          zoom the whole block in proportion; top/bottom give more or less room */}
+      {CORNERS.map((position) => (
+        <NodeResizeControl
+          key={position}
+          position={position}
+          variant={ResizeControlVariant.Handle}
+          style={HANDLE}
+          keepAspectRatio={mode === "scale"}
+          onResize={onResize}
+          {...common}
+        />
+      ))}
+      {(["left", "right"] as const).map((position) => (
+        <NodeResizeControl
+          key={position}
+          position={position}
+          variant={ResizeControlVariant.Line}
+          style={EDGE}
+          resizeDirection={mode === "fill" ? undefined : "horizontal"}
+          onResize={onResizeSide}
+          {...common}
+        />
+      ))}
+      {(["top", "bottom"] as const).map((position) => (
+        <NodeResizeControl
+          key={position}
+          position={position}
+          variant={ResizeControlVariant.Line}
+          style={EDGE}
+          resizeDirection={mode === "scale" ? "vertical" : undefined}
+          onResize={onResizeEnd}
+          {...common}
+        />
+      ))}
+      <BlockScale.Provider value={scale}>
+        {staged ? (
+          <div
+            className="block-stage"
+            style={{ width: base, height: (size.h - BORDER) / scale, transform: `scale(${scale})`, borderRadius: 9 / scale }}
+          >
+            {header}
+            {body}
+          </div>
+        ) : (
+          <>
+            {header}
+            {body}
+          </>
+        )}
+      </BlockScale.Provider>
     </div>
   );
 }

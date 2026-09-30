@@ -6,3 +6,6 @@ import createPlotlyComponent from "react-plotly.js/factory";
 const Plot = createPlotlyComponent(Plotly);
 
 export default Plot;
+
+/** Plotly itself, for things like saving a plot as an image. */
+export { Plotly };

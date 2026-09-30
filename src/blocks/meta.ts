@@ -49,6 +49,14 @@ export interface BlockMeta<T extends BlockType = BlockType> {
   goals?: GoalOption[];
   /** the goal a lesson's auto-generated tour uses */
   defaultGoal?: TourGoal;
+  /** what dragging the block's border does:
+   *  zoom  — (default) the contents grow and shrink with the box; side edges
+   *          keep the proportions, top/bottom edges give more or less room
+   *  scale — like zoom, but always keeps its shape (a calculator)
+   *  fill  — the contents re-lay-out to use the space (a graph) */
+  resize?: "zoom" | "scale" | "fill";
+  /** starting size, for `fill` blocks */
+  defaultSize?: { w: number; h: number };
 }
 
 const SOLVE_GOAL: TourGoal = { kind: "solve" };
@@ -140,6 +148,7 @@ const REGISTRY: { [T in BlockType]: BlockMeta<T> } = {
     description: "TI-85-style calculator (or modern / four-function)",
     category: "Tools",
     accent: "#ffb454",
+    resize: "scale",
     create: (id, position) => ({
       id,
       type: "calculator",
@@ -160,6 +169,8 @@ const REGISTRY: { [T in BlockType]: BlockMeta<T> } = {
     category: "Functions & graphs",
     accent: "#7c9bf7",
     create: (id, position) => ({ id, type: "graph", position, expr: "", equalAspect: true }),
+    resize: "fill",
+    defaultSize: { w: 400, h: 620 },
     tourText: "The **Graph** is live. Drag to pan, scroll to zoom — intercepts, vertices and crossings are marked for you.",
   },
   table: {

@@ -78,3 +78,65 @@ pub fn export_workspace(app: AppHandle, name: String, data: serde_json::Value) -
     fs::write(&path, json).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().into_owned())
 }
+
+/// Saves a picture (a `data:image/png;base64,…` URL, e.g. a graph) to
+/// ~/Downloads as `<name>.png`. Never overwrites: adds " (2)", " (3)", …
+#[tauri::command]
+pub fn save_image(app: AppHandle, name: String, data_url: String) -> Result<String, String> {
+    let name = safe_filename(&name)?;
+    let encoded = data_url
+        .strip_prefix("data:image/png;base64,")
+        .ok_or("expected a PNG data URL")?;
+    let bytes = decode_base64(encoded)?;
+    let dir = app.path().download_dir().map_err(|e| e.to_string())?;
+    let mut path = dir.join(format!("{name}.png"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("{name} ({n}).png"));
+        n += 1;
+    }
+    fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Standard base64 (no crate needed for one PNG now and then).
+fn decode_base64(text: &str) -> Result<Vec<u8>, String> {
+    fn value(c: u8) -> Option<u32> {
+        match c {
+            b'A'..=b'Z' => Some((c - b'A') as u32),
+            b'a'..=b'z' => Some((c - b'a' + 26) as u32),
+            b'0'..=b'9' => Some((c - b'0' + 52) as u32),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let mut out = Vec::with_capacity(text.len() * 3 / 4);
+    let (mut buffer, mut bits) = (0u32, 0u32);
+    for &c in text.as_bytes() {
+        if c == b'=' {
+            break;
+        }
+        if c.is_ascii_whitespace() {
+            continue;
+        }
+        let v = value(c).ok_or("not valid base64")?;
+        buffer = (buffer << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+            buffer &= (1 << bits) - 1;
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn decodes_base64() {
+        assert_eq!(super::decode_base64("aGVsbG8=").unwrap(), b"hello");
+        assert_eq!(super::decode_base64("TWFu").unwrap(), b"Man");
+    }
+}

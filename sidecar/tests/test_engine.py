@@ -80,3 +80,14 @@ def test_usual_order_of_operations(typed, meaning):
     import sympy
     from mathcore.parsing import parse
     assert sympy.simplify(parse(typed) - sympy.sympify(meaning, locals={"F": sympy.Symbol("F")})) == 0
+
+
+def test_graph_reports_letters_without_values():
+    from mathcore.graphing import op_graph, unknown_names
+
+    assert unknown_names("y = mx + b", {}) == ["b", "m"]
+    assert unknown_names("f(x) = a x^2", {}) == ["a"]
+    assert unknown_names("y = sin(x) + pi", {}) == []
+    series = op_graph({"exprs": ["y = m*x + b", "y = e^x"], "vars": {"m": "2"}})["series"]
+    assert series[0]["kind"] == "error" and series[0]["missing"] == ["b"]
+    assert series[1]["kind"] == "function"  # e is Euler's number

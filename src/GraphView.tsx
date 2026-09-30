@@ -2,11 +2,12 @@
  * the mini-graphs inside Line / Quadratic / Sequence / Stats. Takes lines
  * of text exactly as a student types them and draws whatever they are —
  * functions, vertical lines, points, shaded inequalities — with key points
- * (intercepts, vertices, intersections) marked. */
-import { useEffect, useMemo, useRef, useState } from "react";
+ * (intercepts, vertices, intersections) marked. The Graph block adds per-line
+ * styles, a theme, grid/axis options and drawings on top. */
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Plot from "./PlotlyChart";
 import { type GraphMarker, type GraphResult, type GraphSeries, useLiveMath } from "./mathSidecar";
-import type { GraphWindow } from "./store";
+import type { GraphAppearance, GraphDrawing, GraphLineStyle, GraphTheme, GraphWindow } from "./store";
 import { Tex } from "./ui";
 
 export const SERIES_COLORS = ["#7c9bf7", "#e07ce0", "#55d6be", "#f0a35c", "#8fd694", "#f08787", "#e0b25c", "#c98cf0"];
@@ -15,6 +16,38 @@ const FAR = 1e5;
 
 export type MarkerFeature = "intercepts" | "vertices" | "intersections";
 
+/** How a theme paints the plot. `palette` is for lines without their own color. */
+export const THEMES: Record<GraphTheme, { label: string; bg: string; grid: string; minor: string; axis: string; ink: string; palette: string[] }> = {
+  dark: { label: "Dark", bg: "#14141a", grid: "#24242f", minor: "#1a1a22", axis: "#6a7584", ink: "#e8e8f0", palette: SERIES_COLORS },
+  paper: {
+    label: "Paper",
+    bg: "#ffffff",
+    grid: "#dfe3ea",
+    minor: "#f0f2f6",
+    axis: "#4a5263",
+    ink: "#1d2330",
+    palette: ["#2f6fe0", "#c2185b", "#0f9d76", "#e07b16", "#2e7d32", "#d32f2f", "#a0790a", "#7b1fa2"],
+  },
+  chalkboard: {
+    label: "Chalkboard",
+    bg: "#1e3a2f",
+    grid: "rgba(255,255,255,0.10)",
+    minor: "rgba(255,255,255,0.04)",
+    axis: "#e9f2ec",
+    ink: "#eef5f0",
+    palette: ["#fff59d", "#ffab91", "#80deea", "#f8bbd0", "#c5e1a5", "#ffffff", "#ffcc80", "#b39ddb"],
+  },
+  blueprint: {
+    label: "Blueprint",
+    bg: "#123a73",
+    grid: "rgba(255,255,255,0.16)",
+    minor: "rgba(255,255,255,0.06)",
+    axis: "#dce8ff",
+    ink: "#eaf1ff",
+    palette: ["#ffffff", "#ffd54f", "#80d8ff", "#ff8a80", "#b9f6ca", "#ea80fc", "#ffcc80", "#a7ffeb"],
+  },
+};
+
 const MARKER_STYLE: Record<GraphMarker["kind"], { color: string; symbol: string }> = {
   "x-intercept": { color: "#f0e14a", symbol: "circle" },
   "y-intercept": { color: "#f0e14a", symbol: "circle" },
@@ -22,16 +55,19 @@ const MARKER_STYLE: Record<GraphMarker["kind"], { color: string; symbol: string 
   intersection: { color: "#ffffff", symbol: "star" },
 };
 
-function hexToRgba(hex: string, alpha: number) {
-  const n = parseInt(hex.slice(1), 16);
+function toRgba(color: string, alpha: number) {
+  if (!color.startsWith("#") || color.length !== 7) return color;
+  const n = parseInt(color.slice(1), 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Trace = Record<string, any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type PlotDiv = any;
 
-function seriesTraces(s: GraphSeries, color: string): Trace[] {
-  const line = { color, width: 2.5 };
+function seriesTraces(s: GraphSeries, color: string, style: GraphLineStyle, outline: string): Trace[] {
+  const line = { color, width: style.width ?? 2.5, dash: style.dash ?? "solid" };
   switch (s.kind) {
     case "function":
       return [{ x: s.x, y: s.y, type: "scatter", mode: "lines", line, connectgaps: false, hoverinfo: "x+y", name: "" }];
@@ -42,7 +78,7 @@ function seriesTraces(s: GraphSeries, color: string): Trace[] {
           y: s.y,
           type: "scatter",
           mode: "markers+text",
-          marker: { color, size: 10, line: { color: "#14141a", width: 1.5 } },
+          marker: { color, size: 6 + 1.6 * (style.width ?? 2.5), line: { color: outline, width: 1.5 } },
           text: (s.x ?? []).map((x, i) => `(${fmt(x)}, ${fmt(s.y?.[i] ?? 0)})`),
           textposition: "top center",
           textfont: { color, size: 10 },
@@ -52,8 +88,8 @@ function seriesTraces(s: GraphSeries, color: string): Trace[] {
     case "vline":
       return [{ x: [s.x0, s.x0], y: [-FAR, FAR], type: "scatter", mode: "lines", line, hoverinfo: "x" }];
     case "inequality": {
-      const boundary = { ...line, dash: s.strict ? "dash" : "solid" };
-      const fill = hexToRgba(color, 0.18);
+      const boundary = { ...line, dash: s.strict ? "dash" : line.dash };
+      const fill = toRgba(color, style.fill ?? 0.18);
       if (s.vertical) {
         const edge = s.shade === "right" ? FAR : -FAR;
         return [
@@ -74,7 +110,7 @@ function seriesTraces(s: GraphSeries, color: string): Trace[] {
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100);
 
-function markerTrace(markers: GraphMarker[]): Trace[] {
+function markerTrace(markers: GraphMarker[], outline: string): Trace[] {
   if (!markers.length) return [];
   return [
     {
@@ -86,12 +122,77 @@ function markerTrace(markers: GraphMarker[]): Trace[] {
         color: markers.map((m) => MARKER_STYLE[m.kind].color),
         symbol: markers.map((m) => MARKER_STYLE[m.kind].symbol),
         size: markers.map((m) => (m.kind === "intersection" ? 13 : 10)),
-        line: { color: "#14141a", width: 1.5 },
+        line: { color: outline, width: 1.5 },
       },
       text: markers.map((m) => `${m.kind.replace("-", " ")} ${m.label}`),
       hoverinfo: "text",
     },
   ];
+}
+
+/** Pen strokes and segments as lines; arrows and text as annotations. */
+function drawingLayers(drawings: GraphDrawing[]): { traces: Trace[]; annotations: Trace[] } {
+  const traces: Trace[] = [];
+  const annotations: Trace[] = [];
+  for (const d of drawings) {
+    if (d.kind === "pen" || d.kind === "segment") {
+      traces.push({
+        x: d.points.map((p) => p[0]),
+        y: d.points.map((p) => p[1]),
+        type: "scatter",
+        mode: "lines",
+        line: { color: d.color, width: d.width, shape: d.kind === "pen" ? "spline" : "linear", smoothing: 0.6 },
+        hoverinfo: "skip",
+      });
+    } else if (d.kind === "arrow" && d.points.length === 2) {
+      const [[x0, y0], [x1, y1]] = d.points;
+      annotations.push({
+        x: x1,
+        y: y1,
+        ax: x0,
+        ay: y0,
+        xref: "x",
+        yref: "y",
+        axref: "x",
+        ayref: "y",
+        text: "",
+        showarrow: true,
+        arrowhead: 2,
+        arrowsize: 1.1,
+        arrowwidth: d.width,
+        arrowcolor: d.color,
+      });
+    } else if (d.kind === "text" && d.points.length) {
+      annotations.push({
+        x: d.points[0][0],
+        y: d.points[0][1],
+        xref: "x",
+        yref: "y",
+        text: escapeHtml(d.text ?? ""),
+        showarrow: false,
+        xanchor: "left",
+        yanchor: "bottom",
+        font: { color: d.color, size: 9 + d.width * 2.5 },
+      });
+    }
+  }
+  return { traces, annotations };
+}
+
+/** Plotly annotation text is HTML-ish — show typed < > & as themselves. */
+const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Where a curve leaves the visible window — a good spot for its label. */
+function labelSpot(s: GraphSeries, w: GraphWindow): [number, number] | null {
+  if (s.kind === "vline" && s.x0 !== undefined) return [s.x0, w.ymax - (w.ymax - w.ymin) * 0.06];
+  if (!s.x || !s.y) return null;
+  for (let i = s.x.length - 1; i >= 0; i--) {
+    const x = s.x[i];
+    const y = s.y[i];
+    if (y === null || y === undefined) continue;
+    if (x >= w.xmin && x <= w.xmax - (w.xmax - w.xmin) * 0.02 && y >= w.ymin && y <= w.ymax) return [x, y];
+  }
+  return null;
 }
 
 export default function GraphView({
@@ -106,6 +207,14 @@ export default function GraphView({
   extraTraces = [],
   showLabels = true,
   legend = false,
+  fill = false,
+  styles = [],
+  appearance = {},
+  drawings = [],
+  live = false,
+  onResult,
+  onPlot,
+  overlay,
 }: {
   exprs: string[];
   vars: Record<string, string>;
@@ -119,10 +228,25 @@ export default function GraphView({
   showLabels?: boolean;
   /** Under the plot: each line's color swatch + LaTeX, or its error. */
   legend?: boolean;
+  /** size the plot to fill its container (both ways) instead of width × height */
+  fill?: boolean;
+  /** per line (same order as `exprs`) */
+  styles?: GraphLineStyle[];
+  appearance?: GraphAppearance;
+  drawings?: GraphDrawing[];
+  /** redraw continuously while values change (sliders), not after a pause */
+  live?: boolean;
+  onResult?: (result: GraphResult | null, error: string | null) => void;
+  /** the Plotly element, once drawn — for exporting and for drawing tools */
+  onPlot?: (plot: PlotDiv) => void;
+  /** drawn over the plot, the same size as it */
+  overlay?: (plot: PlotDiv, size: { width: number; height: number }) => ReactNode;
 }) {
-  // follow the block's width when it's resized; height scales along
+  const theme = THEMES[appearance.theme ?? "dark"];
+
+  // follow the container: its width (height scales along), or both in `fill` mode
   const box = useRef<HTMLDivElement>(null);
-  const [measured, setMeasured] = useState(width);
+  const [measured, setMeasured] = useState({ w: width, h: height });
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -131,9 +255,14 @@ export default function GraphView({
     let frame = 0;
     const observer = new ResizeObserver(([entry]) => {
       const w = Math.floor(entry.contentRect.width);
+      const h = Math.floor(entry.contentRect.height);
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        if (w > 50) setMeasured((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+        if (w <= 50) return;
+        setMeasured((prev) => {
+          const nextH = fill && h > 50 ? h : prev.h;
+          return Math.abs(prev.w - w) > 1 || Math.abs(prev.h - nextH) > 1 ? { w, h: nextH } : prev;
+        });
       });
     });
     observer.observe(el);
@@ -141,9 +270,9 @@ export default function GraphView({
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, []);
-  const plotWidth = measured;
-  const plotHeight = Math.round(height * (measured / width));
+  }, [fill]);
+  const plotWidth = measured.w;
+  const plotHeight = fill ? measured.h : Math.round(height * (measured.w / width));
 
   // sample a wider strip than what's visible, so a pan reveals curve that
   // is already there instead of empty space while the new request runs
@@ -158,62 +287,126 @@ export default function GraphView({
         features: (["intercepts", "vertices", "intersections"] as MarkerFeature[]).filter((f) => !hide.includes(f)),
       }
     : null;
-  const { result, error } = useLiveMath<GraphResult>(request, 120);
+  const { result, error } = useLiveMath<GraphResult>(request, live ? 60 : 120, live ? "throttle" : "debounce");
+  useEffect(() => onResult?.(result, error), [result, error, onResult]);
+
+  const colorOf = (index: number) => styles[index]?.color ?? theme.palette[index % theme.palette.length];
+  const hidden = (index: number) => !!styles[index]?.hidden;
+
+  const drawn = useMemo(() => drawingLayers(drawings), [drawings]);
 
   const data = useMemo(() => {
     const traces: Trace[] = [];
-    for (const s of result?.series ?? []) traces.push(...seriesTraces(s, SERIES_COLORS[s.index % SERIES_COLORS.length]));
+    for (const s of result?.series ?? []) {
+      if (hidden(s.index)) continue;
+      traces.push(...seriesTraces(s, colorOf(s.index), styles[s.index] ?? {}, theme.bg));
+    }
     traces.push(...extraTraces);
+    traces.push(...drawn.traces);
+    const owned = (m: GraphMarker) => (Array.isArray(m.series) ? m.series : [m.series]).every((i) => !hidden(Number(i)));
     const visible = (result?.markers ?? []).filter(
-      (m) => m.x >= window.xmin - 1e-9 && m.x <= window.xmax + 1e-9 && m.y >= window.ymin - span && m.y <= window.ymax + span,
+      (m) => owned(m) && m.x >= window.xmin - 1e-9 && m.x <= window.xmax + 1e-9 && m.y >= window.ymin - span && m.y <= window.ymax + span,
     );
-    traces.push(...markerTrace(visible));
+    traces.push(...markerTrace(visible, theme.bg));
     if (showLabels) {
-      const labelled = visible;
       traces.push({
-        x: labelled.map((m) => m.x),
-        y: labelled.map((m) => m.y),
+        x: visible.map((m) => m.x),
+        y: visible.map((m) => m.y),
         type: "scatter",
         mode: "text",
-        text: labelled.map((m) => m.label),
+        text: visible.map((m) => m.label),
         textposition: "top right",
-        textfont: { color: "#cfcfe0", size: 9 },
+        textfont: { color: theme.ink, size: 9 },
         hoverinfo: "skip",
       });
     }
     return traces;
-  }, [result, extraTraces, window.xmin, window.xmax, window.ymin, window.ymax, span, showLabels]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, extraTraces, drawn, styles, theme, window.xmin, window.xmax, window.ymin, window.ymax, span, showLabels]);
 
-  const layout = useMemo(
-    () => ({
-      paper_bgcolor: "transparent",
-      plot_bgcolor: "#14141a",
-      font: { color: "#e8e8f0", size: 10 },
-      margin: { l: 32, r: 8, t: 8, b: 24 },
+  // the equation written next to each curve that asked for a label
+  const curveLabels = useMemo(() => {
+    const out: Trace[] = [];
+    for (const s of result?.series ?? []) {
+      const style = styles[s.index];
+      if (!style?.label || style.hidden) continue;
+      const spot = labelSpot(s, window);
+      if (!spot) continue;
+      out.push({
+        x: spot[0],
+        y: spot[1],
+        xref: "x",
+        yref: "y",
+        text: escapeHtml((exprs[s.index] ?? "").trim()),
+        showarrow: false,
+        xanchor: "right",
+        yanchor: "bottom",
+        font: { color: colorOf(s.index), size: 12 },
+        bgcolor: toRgba(theme.bg, 0.75),
+      });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, styles, exprs, theme, window.xmin, window.xmax, window.ymin, window.ymax]);
+
+  const layout = useMemo(() => {
+    const grid = appearance.grid ?? "major";
+    const numbers = appearance.numbers !== false;
+    const axes = appearance.axes !== false;
+    const axis = (range: [number, number], step: number | undefined, label: string | undefined) => ({
+      range,
+      zeroline: axes,
+      zerolinecolor: theme.axis,
+      zerolinewidth: 1.5,
+      showgrid: grid !== "none",
+      gridcolor: theme.grid,
+      showticklabels: numbers,
+      tickfont: { color: theme.ink, size: 10 },
+      ...(step && step > 0 ? { dtick: step } : {}),
+      ...(grid === "minor" ? { minor: { showgrid: true, gridcolor: theme.minor } } : {}),
+      ...(label ? { title: { text: escapeHtml(label), font: { color: theme.ink, size: 12 } } } : {}),
+    });
+    return {
+      paper_bgcolor: theme.bg,
+      plot_bgcolor: theme.bg,
+      font: { color: theme.ink, size: 10 },
+      margin: {
+        l: (numbers ? 32 : 10) + (appearance.yLabel ? 18 : 0),
+        r: 10,
+        t: appearance.title ? 34 : 10,
+        b: (numbers ? 24 : 10) + (appearance.xLabel ? 18 : 0),
+      },
+      ...(appearance.title ? { title: { text: escapeHtml(appearance.title), font: { color: theme.ink, size: 15 } } } : {}),
       showlegend: false,
       dragmode: "pan" as const,
       width: plotWidth,
       height: plotHeight,
-      xaxis: { zeroline: true, zerolinecolor: "#6a7584", zerolinewidth: 1.5, gridcolor: "#22222c", range: [window.xmin, window.xmax] },
+      annotations: [...drawn.annotations, ...curveLabels],
+      xaxis: axis([window.xmin, window.xmax], appearance.xStep, appearance.xLabel),
       yaxis: {
-        zeroline: true,
-        zerolinecolor: "#6a7584",
-        zerolinewidth: 1.5,
-        gridcolor: "#22222c",
-        range: [window.ymin, window.ymax],
+        ...axis([window.ymin, window.ymax], appearance.yStep, appearance.yLabel),
         ...(equalAspect ? { scaleanchor: "x" as const, scaleratio: 1 } : {}),
       },
-    }),
-    [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect],
-  );
+    };
+  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels]);
+
+  const [plot, setPlot] = useState<PlotDiv>(null);
+  const ready = (_figure: unknown, div: PlotDiv) => {
+    if (div !== plot) {
+      setPlot(div);
+      onPlot?.(div);
+    }
+  };
 
   return (
-    <div className="graph-view nodrag nowheel" ref={box}>
+    <div className={`graph-view nodrag nowheel${fill ? " is-fill" : ""}`} ref={box}>
       <Plot
         data={data}
         layout={layout}
+        onInitialized={ready}
+        onUpdate={ready}
         config={{
-          displayModeBar: "hover",
+          displayModeBar: fill ? false : "hover",
           displaylogo: false,
           scrollZoom: true,
           modeBarButtonsToRemove: ["lasso2d", "select2d", "toggleSpikelines", "hoverClosestCartesian", "hoverCompareCartesian", "autoScale2d"],
@@ -238,12 +431,13 @@ export default function GraphView({
           }
         }}
       />
-      {error && <div className="block-error">{error}</div>}
+      {plot && overlay?.(plot, { width: plotWidth, height: plotHeight })}
+      {error && !onResult && <div className="block-error">{error}</div>}
       {legend && result && (
         <div className="graph-legend">
           {result.series.map((s) => (
             <div key={s.index} className="graph-legend-row">
-              <span className="graph-swatch" style={{ background: SERIES_COLORS[s.index % SERIES_COLORS.length] }} />
+              <span className="graph-swatch" style={{ background: colorOf(s.index) }} />
               {s.kind === "error" ? <span className="block-error">line {s.index + 1}: {s.error}</span> : <Tex math={s.latex ?? ""} />}
             </div>
           ))}

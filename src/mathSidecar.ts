@@ -47,6 +47,10 @@ export interface GraphSeries {
   vertical?: boolean;
   shade?: "above" | "below" | "left" | "right";
   strict?: boolean;
+  /** the line as typed, as math (letters kept) — `latex` has values filled in */
+  display?: string;
+  /** letters this line needs a value for (the Graph block makes sliders) */
+  missing?: string[];
 }
 
 export interface GraphMarker {
@@ -187,10 +191,21 @@ export const runCustom = (code: string, vars: Record<string, string>) =>
  * compute yet". Requests are keyed on their JSON, so a re-render with an
  * identical request does nothing, and a slow response for stale input is
  * dropped rather than clobbering what's currently on screen. */
-export function useLiveMath<T>(request: MathRequest | null, delayMs = 150) {
+/** Keeps a live result for `request`. Debounced by default (waits for a
+ * pause — typing doesn't flash half-read errors); `throttle` instead sends
+ * at most one request per `delayMs` while it keeps changing, so a slider
+ * being dragged or played redraws continuously. */
+export function useLiveMath<T>(request: MathRequest | null, delayMs = 150, mode: "debounce" | "throttle" = "debounce") {
   const key = request ? JSON.stringify(request) : "";
   const [state, setState] = useState<{ result: T | null; error: string | null }>({ result: null, error: null });
   const generation = useRef(0);
+  const lastSent = useRef(0);
+  // throttle: requests overlap while a slider moves, so an answer counts if
+  // it's newer than the one on screen (not only if nothing changed since)
+  const sent = useRef(0);
+  const shown = useRef(0);
+  const live = useRef(key);
+  live.current = key;
 
   useEffect(() => {
     const mine = ++generation.current;
@@ -198,18 +213,27 @@ export function useLiveMath<T>(request: MathRequest | null, delayMs = 150) {
       setState({ result: null, error: null });
       return;
     }
-    const timer = setTimeout(() => {
+    const send = () => {
+      lastSent.current = performance.now();
+      const seq = ++sent.current;
+      const fresh = () => (mode === "throttle" ? seq > shown.current && live.current !== "" : mine === generation.current);
       mathRequest<T>(JSON.parse(key)).then(
         (result) => {
-          if (mine === generation.current) setState({ result, error: null });
+          if (!fresh()) return;
+          shown.current = seq;
+          setState({ result, error: null });
         },
         (error) => {
-          if (mine === generation.current) setState({ result: null, error: String(error) });
+          if (!fresh()) return;
+          shown.current = seq;
+          setState({ result: null, error: String(error) });
         },
       );
-    }, delayMs);
+    };
+    const wait = mode === "throttle" ? Math.max(0, lastSent.current + delayMs - performance.now()) : delayMs;
+    const timer = setTimeout(send, wait);
     return () => clearTimeout(timer);
-  }, [key, delayMs]);
+  }, [key, delayMs, mode]);
 
   return state;
 }

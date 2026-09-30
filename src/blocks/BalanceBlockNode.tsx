@@ -14,7 +14,7 @@ import { type NodeProps, useViewport } from "@xyflow/react";
 import { type BalanceBlockData, useStore, useVariables } from "../store";
 import { type Step, useLiveMath } from "../mathSidecar";
 import { ErrorText, RichText, StepList, Tex } from "../ui";
-import BlockShell from "./BlockShell";
+import BlockShell, { useBlockScale } from "./BlockShell";
 
 // ---------------------------------------------------------------- fractions
 
@@ -225,7 +225,8 @@ export default function BalanceBlockNode({ id }: NodeProps) {
   const data = useStore((state) => state.blocks[id]) as BalanceBlockData;
   const updateBlock = useStore((state) => state.updateBlock<BalanceBlockData>);
   const { result, error } = useLiveMath<BalanceParse>(data?.expr?.trim() ? { op: "balance", expr: data.expr } : null, 250);
-  const { zoom } = useViewport();
+  // screen px per block px: the canvas zoom times the block's own resize zoom
+  const zoom = useViewport().zoom * useBlockScale();
   const pool = useVariables();
 
   const [sides, setSides] = useState<Sides>({ lhs: [], rhs: [] });

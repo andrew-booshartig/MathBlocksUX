@@ -9,6 +9,7 @@ import {
   useNodesState,
   useEdgesState,
   type Node,
+  type NodeChange,
   type Edge,
   type EdgeTypes,
   type Connection,
@@ -192,7 +193,16 @@ function App() {
   const lockBlocks = useStore((state) => state.lockBlocks);
   const unlockBlocks = useStore((state) => state.unlockBlocks);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [nodes, setNodes, onNodesChangeRaw] = useNodesState<Node>([]);
+  // a block's size is block data (BlockShell draws it from the resize
+  // callbacks). The resizer's own size reports are dropped: they'd pin
+  // width/height on the node, and at the end of a drag they report the size
+  // *it* computed — wrong when the block keeps its proportions. The node's
+  // real size still arrives, measured from the page.
+  const onNodesChange = useCallback(
+    (changes: NodeChange<Node>[]) => onNodesChangeRaw(changes.filter((c) => !(c.type === "dimensions" && c.resizing !== undefined))),
+    [onNodesChangeRaw],
+  );
   const pendingFit = useRef(false);
   const [layoutTick, setLayoutTick] = useState(0);
   const [edges, setEdges, onEdgesChangeInternal] = useEdgesState<Edge>([]);
