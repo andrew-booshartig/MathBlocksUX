@@ -17,6 +17,12 @@ export interface MathInputHandle {
   focus: () => void;
   /** Insert LaTeX at the caret. #? = an empty slot, #@ = the selection / what's just before the caret. */
   insert: (latex: string) => void;
+  /** Run a MathLive editing command (deleteBackward, moveToPreviousChar…). */
+  command: (name: string) => void;
+  /** What's in the field right now — the change event can lag a keystroke behind. */
+  getValue: () => string;
+  /** Replace what's in the field (even when the parent's copy already matches). */
+  setValue: (latex: string) => void;
 }
 
 export default function MathInput({
@@ -113,7 +119,26 @@ export default function MathInput({
       const mf = field.current;
       if (!mf) return;
       mf.focus();
-      mf.insert(latex, { selectionMode: "placeholder", format: "latex" });
+      // something selected + a template key (fraction, root, |x|…): the
+      // selection goes in the first slot — highlight 3x+1, tap the fraction
+      // key, and 3x+1 is the top
+      const wraps = !mf.selectionIsCollapsed && latex.includes("#?") && !latex.includes("#@");
+      mf.insert(wraps ? latex.replace("#?", "#@") : latex, { selectionMode: "placeholder", format: "latex" });
+      handlers.current.onChange(mf.value);
+    },
+    getValue: () => field.current?.value ?? "",
+    setValue: (latex: string) => {
+      const mf = field.current;
+      if (!mf) return;
+      mf.value = latex;
+      handlers.current.onChange(latex);
+    },
+    command: (name: string) => {
+      const mf = field.current;
+      if (!mf) return;
+      mf.focus();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mf.executeCommand(name as any);
       handlers.current.onChange(mf.value);
     },
   }));

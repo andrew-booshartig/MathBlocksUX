@@ -211,6 +211,34 @@ export interface WorkBlockData extends BlockBase {
   input?: WorkLanguage;
 }
 
+/** What the smart calculator did with a line: a value, a simplified or
+ * solved result, or — with several letters — the choices it's asking about. */
+export interface SmartAction {
+  kind: "solve" | "simplify" | "expand" | "factor";
+  var?: string;
+  label: string;
+}
+
+export interface SmartResult {
+  kind: "value" | "result" | "truth" | "choose";
+  input_latex: string;
+  result_latex?: string;
+  decimal?: string | null;
+  steps?: { note: string; latex: string }[];
+  action?: SmartAction;
+  others?: SmartAction[];
+  choices?: SmartAction[];
+  /** this answer as math, for Ans */
+  ans?: string | null;
+}
+
+export interface SmartEntry {
+  id: string;
+  /** what was typed (LaTeX) */
+  latex: string;
+  result: SmartResult;
+}
+
 export interface CalcHistoryEntry {
   expr: string;
   inputLatex: string;
@@ -245,7 +273,9 @@ export const DEFAULT_TI: TIState = { lines: [], vars: {}, ans: "0", lastEntry: [
  * "basic" (four-function). */
 export interface CalculatorBlockData extends BlockBase {
   type: "calculator";
-  profile: "ti85" | "scientific" | "basic";
+  profile: "smart" | "ti85" | "scientific" | "basic";
+  /** the smart calculator's history (pretty math in, answers out) */
+  smart?: SmartEntry[];
   ti?: TIState;
   /** the TI layout's extra-keys strip (fractions, powers…); on unless turned off */
   tiExtras?: boolean;

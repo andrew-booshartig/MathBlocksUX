@@ -11,6 +11,7 @@ import { type CalcHistoryEntry, type CalculatorBlockData, DEFAULT_TI, useStore, 
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import { RichText, Segmented, Tex } from "../ui";
 import TI85 from "./TI85";
+import SmartCalc from "./SmartCalc";
 import BlockShell from "./BlockShell";
 
 interface CalcResult {
@@ -202,7 +203,7 @@ export default function CalculatorBlockNode({ id }: NodeProps) {
   const primary = (exact: string, decimal: string, differs: boolean) => (data.exactFirst || !differs ? exact : decimal);
   const secondary = (exact: string, decimal: string, differs: boolean) => (differs ? (data.exactFirst ? decimal : exact) : null);
 
-  const profileName = { ti85: "TI-85 style", scientific: "modern scientific", basic: "four-function" }[data.profile];
+  const profileName = { smart: "smart", ti85: "TI-85 style", scientific: "modern scientific", basic: "four-function" }[data.profile];
   const settingsPanel = settings && (
     <div className="calc-settings">
             {data.locked ? (
@@ -212,6 +213,7 @@ export default function CalculatorBlockNode({ id }: NodeProps) {
                 <Segmented
                   value={data.profile}
                   options={[
+                    { value: "smart", label: "Smart" },
                     { value: "ti85", label: "TI-85 style" },
                     { value: "scientific", label: "Modern" },
                     { value: "basic", label: "Four-function" },
@@ -244,7 +246,12 @@ export default function CalculatorBlockNode({ id }: NodeProps) {
               <input type="checkbox" checked={data.locked} onChange={(e) => updateBlock(data.id, { locked: e.target.checked })} />
               Lock these settings (teacher)
             </label>
-            <button className="action-btn" onClick={() => updateBlock(data.id, data.profile === "ti85" ? { ti: { ...(data.ti ?? DEFAULT_TI), lines: [] } } : { history: [] })}>
+            <button
+              className="action-btn"
+              onClick={() =>
+                updateBlock(data.id, data.profile === "ti85" ? { ti: { ...(data.ti ?? DEFAULT_TI), lines: [] } } : data.profile === "smart" ? { smart: [] } : { history: [] })
+              }
+            >
               Clear history
             </button>
           </div>
@@ -255,6 +262,20 @@ export default function CalculatorBlockNode({ id }: NodeProps) {
       ⚙
     </button>
   );
+
+  if (data.profile === "smart") {
+    return (
+      <BlockShell
+        id={data.id}
+        title="Calculator"
+        help="Type math the way it looks and press Enter: numbers are worked out, one letter is simplified or solved, and with several letters it asks what to do. Tap an answer to use it again."
+        headerExtra={settingsButton}
+      >
+        {settingsPanel && <div className="calc nodrag">{settingsPanel}</div>}
+        <SmartCalc data={data} />
+      </BlockShell>
+    );
+  }
 
   if (data.profile === "ti85") {
     return (

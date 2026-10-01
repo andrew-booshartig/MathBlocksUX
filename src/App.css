@@ -4294,3 +4294,159 @@ body,
     transform: translate(-50%, 8px);
   }
 }
+
+/* ---- the smart calculator: pretty math in, answers out */
+.smart-calc {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.smart-tape {
+  max-height: 280px;
+  min-height: 60px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 2px;
+}
+
+.smart-empty {
+  color: #6a6a80;
+  font-size: 12.5px;
+  padding: 8px 4px;
+}
+
+.smart-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #17171f;
+}
+
+.smart-in,
+.smart-out {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.smart-in {
+  align-self: flex-start;
+  color: #a9a9bd;
+  font-size: 15px;
+}
+
+.smart-out {
+  align-self: flex-end;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: #ffffff;
+  font-size: 18px;
+}
+
+.smart-in:hover,
+.smart-out:hover {
+  color: #ffd391;
+}
+
+.smart-decimal {
+  color: #7c8aa0;
+  font-size: 13px;
+  font-family: -apple-system, "Inter", Helvetica, sans-serif;
+}
+
+.smart-choose {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #b8b8cc;
+}
+
+.smart-more {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.smart-field math-field {
+  border-color: #2e2e3a;
+  font-size: 20px;
+}
+
+.smart-preview {
+  min-height: 22px;
+  padding: 2px 4px 0;
+  text-align: right;
+  color: #7c8aa0;
+  font-size: 14px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.smart-preview.is-error {
+  color: #f19a9a;
+  font-size: 12px;
+  white-space: normal;
+}
+
+.smart-keys {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 5px;
+}
+
+.smart-key {
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 8px;
+  background: #23232d;
+  color: #e8e8f0;
+  font-size: 15px;
+  cursor: pointer;
+  box-shadow: 0 2px 0 #101014, inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.05s;
+}
+
+.smart-key .katex {
+  font-size: 0.95em;
+}
+
+.smart-key:hover {
+  background: #2b2b37;
+}
+
+.smart-key:active {
+  transform: translateY(1.5px);
+  box-shadow: 0 0.5px 0 #101014;
+}
+
+.smart-key.is-digit {
+  background: #30303d;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.smart-key.is-tool {
+  color: #f0a35c;
+}
+
+.smart-key.is-enter {
+  background: linear-gradient(180deg, #ffc46e, #f0a33c);
+  color: #2a1a05;
+  font-size: 18px;
+  font-weight: 700;
+}

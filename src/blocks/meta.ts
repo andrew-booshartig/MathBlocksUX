@@ -145,7 +145,7 @@ const REGISTRY: { [T in BlockType]: BlockMeta<T> } = {
   calculator: {
     type: "calculator",
     title: "Calculator",
-    description: "TI-85-style calculator (or modern / four-function)",
+    description: "Type math, press Enter: works out, simplifies or solves (or TI-85 / modern / four-function)",
     category: "Tools",
     accent: "#ffb454",
     resize: "scale",
@@ -153,8 +153,8 @@ const REGISTRY: { [T in BlockType]: BlockMeta<T> } = {
       id,
       type: "calculator",
       position,
-      profile: "ti85",
-      angle: "rad", // a TI-85 starts in Radian mode
+      profile: "smart",
+      angle: "deg",
       exactFirst: true,
       locked: false,
       input: "",
