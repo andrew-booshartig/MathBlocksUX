@@ -3,8 +3,20 @@
  * one letter, solves an equation or inequality in one letter. With several
  * letters it asks what you want (solve for which letter, simplify, expand,
  * factor). A slim keypad for the structures that are awkward to type. */
-import { useEffect, useRef, useState } from "react";
-import { type CalculatorBlockData, type SmartAction, type SmartEntry, type SmartResult, newId, useStore } from "../store";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CalculatorBlockData,
+  type GraphBlockData,
+  type GraphWindow,
+  type SmartAction,
+  type SmartEntry,
+  type SmartResult,
+  type WorkBlockData,
+  newId,
+  useStore,
+} from "../store";
+import { WorkPad } from "./WorkBlockNode";
+import { GraphStudio } from "./GraphBlockNode";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { StepList, Tex } from "../ui";
@@ -65,23 +77,61 @@ function severalTerms(latex: string): boolean {
 }
 const MAX_ENTRIES = 60;
 
+type Tab = NonNullable<CalculatorBlockData["smartTab"]>;
+const TABS: { value: Tab; label: string }[] = [
+  { value: "calc", label: "Calculate" },
+  { value: "vars", label: "Variables" },
+  { value: "work", label: "Work" },
+  { value: "graph", label: "Graph" },
+];
+
+type VarValue = { plain?: string; latex?: string; decimal?: string | null; error?: string };
+
 export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const updateBlock = useStore((state) => state.updateBlock<CalculatorBlockData>);
   const entries = data.smart ?? [];
+  const variables = data.smartVars ?? [];
+  const tab: Tab = data.smartTab ?? "calc";
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [openSteps, setOpenSteps] = useState<string | null>(null);
   const field = useRef<MathInputHandle>(null);
   const tape = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
+  const recall = useRef<{ index: number; text: string } | null>(null);
   const ans = [...entries].reverse().find((e) => e.result.ans)?.result.ans ?? undefined;
 
+  /** the latest copy of this block — callbacks fire after renders */
+  const current = () => useStore.getState().blocks[data.id] as CalculatorBlockData | undefined;
+  const setTab = (smartTab: Tab) => updateBlock(data.id, { smartTab });
+
+  // ---- variables: worked out (in any order — d = 2r before r = 4 is fine)
+  const { result: resolved } = useLiveMath<{ values: Record<string, VarValue> }>(
+    variables.length ? { op: "smartvars", vars: variables.map(({ name, latex }) => ({ name, latex })) } : null,
+    150,
+  );
+  const values = useMemo(() => resolved?.values ?? {}, [resolved]);
+  const vars = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const [name, v] of Object.entries(values)) if (v.plain !== undefined) out[name] = v.plain;
+    return out;
+  }, [values]);
+
+  /** save a variable (from the Variables tab, or "r = 4" on the Calculate line) */
+  const setVariable = (name: string, latex: string) => {
+    const list = current()?.smartVars ?? [];
+    const at = list.findIndex((v) => v.name === name);
+    updateBlock(data.id, {
+      smartVars: at >= 0 ? list.map((v, i) => (i === at ? { ...v, latex } : v)) : [...list, { id: newId("var"), name, latex }],
+    });
+  };
+
   // a quiet preview of the answer while typing
-  const { result: preview } = useLiveMath<SmartResult>(draft.trim() ? { op: "smart", latex: draft, angle: data.angle, ans } : null, 250);
+  const { result: preview } = useLiveMath<SmartResult>(draft.trim() ? { op: "smart", latex: draft, angle: data.angle, ans, vars } : null, 250);
 
   useEffect(() => {
     tape.current?.scrollTo({ top: tape.current.scrollHeight });
-  }, [entries.length]);
+  }, [entries.length, tab]);
 
   // a click anywhere on the block puts the cursor in the line
   useEffect(() => {
@@ -89,31 +139,51 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     if (!node) return;
     const onDown = (event: Event) => {
       const target = event.target as HTMLElement;
+      if ((current()?.smartTab ?? "calc") !== "calc") return;
       if (target.closest("button, input, textarea, select, label, math-field, .calc-settings, .smart-tape")) return;
       requestAnimationFrame(() => field.current?.focus());
     };
     node.addEventListener("pointerdown", onDown);
     return () => node.removeEventListener("pointerdown", onDown);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = (next: SmartEntry[]) => updateBlock(data.id, { smart: next.slice(-MAX_ENTRIES) });
 
-  /** Work out a line — or redo an earlier one with a different action. */
-  const run = (latex: string, action?: SmartAction, replace?: string) =>
-    mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, action }).then(
+  /** Work out a line — or redo an earlier one (another action, or because a
+   * variable it uses changed). */
+  const run = (latex: string, action?: SmartAction, replace?: string, useVars = vars) =>
+    mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, action, vars: useVars }).then(
       (result) => {
         setError(null);
-        const current = (useStore.getState().blocks[data.id] as CalculatorBlockData | undefined)?.smart ?? [];
-        if (replace) save(current.map((e) => (e.id === replace ? { ...e, result } : e)));
-        else {
-          save([...current, { id: newId("calc"), latex, result }]);
-          // clear the field itself: our copy of the line may never have
-          // caught up with the last keystroke, so setting it alone can miss
-          field.current?.setValue("");
+        const list = current()?.smart ?? [];
+        if (replace) {
+          save(list.map((e) => (e.id === replace ? { ...e, result } : e)));
+          return;
         }
+        save([...list, { id: newId("calc"), latex, result }]);
+        // "r = 4": that's a variable now
+        if (result.kind === "assign" && result.name && result.value_latex) setVariable(result.name, result.value_latex);
+        // clear the field itself: our copy of the line may never have
+        // caught up with the last keystroke, so setting it alone can miss
+        field.current?.setValue("");
+        recall.current = null;
       },
-      (err) => setError(String(err).replace(/^Error:\s*/, "") || "I can't read that yet"),
+      (err) => {
+        if (!replace) setError(String(err).replace(/^Error:\s*/, "") || "I can't read that yet");
+      },
     );
+
+  // a variable changed: every line that uses it is worked out again
+  const previousVars = useRef(vars);
+  useEffect(() => {
+    const before = previousVars.current;
+    previousVars.current = vars;
+    const changed = new Set([...Object.keys(before), ...Object.keys(vars)].filter((n) => before[n] !== vars[n]));
+    if (!changed.size) return;
+    for (const entry of current()?.smart ?? []) {
+      if (entry.result.names?.some((n) => changed.has(n))) run(entry.latex, entry.result.action, entry.id, vars);
+    }
+  }, [vars]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** a line or answer from the history, into what's being typed: the whole
    * line when it's empty, otherwise at the cursor (in brackets if it's more
@@ -129,7 +199,30 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     // read the field itself: its change event can arrive a keystroke late
     const line = field.current?.getValue() ?? draft;
     if (line.trim()) run(line);
-    else if (entries.length) field.current?.setValue(entries[entries.length - 1].latex); // Enter on an empty line: bring the last one back
+  };
+
+  /** ↑/↓ on an empty line (or one just brought back) walk the history */
+  const cycle = (direction: "up" | "down"): boolean => {
+    const f = field.current;
+    const list = current()?.smart ?? [];
+    if (!f || !list.length) return false;
+    const now = f.getValue();
+    const r = recall.current;
+    const recalled = !!r && r.text === now;
+    if (now.trim() && !recalled) {
+      recall.current = null;
+      return false;
+    }
+    const k = (recalled ? r!.index : list.length) + (direction === "up" ? -1 : 1);
+    if (k < 0) return true;
+    if (k >= list.length) {
+      f.setValue("");
+      recall.current = null;
+      return true;
+    }
+    f.setValue(list[k].latex);
+    recall.current = { index: k, text: f.getValue() };
+    return true;
   };
 
   const press = (key: Key) => {
@@ -144,106 +237,272 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     else field.current?.insert(key.insert);
   };
 
+  // ---- hand-offs to the other tabs
+  const showWork = (latex: string) => {
+    updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), problem: latex, lines: [""], reasons: [""] }, smartTab: "work" });
+  };
+  const sendToGraph = (lines: string[], window?: GraphWindow) => {
+    const graph = current()?.smartGraph ?? {};
+    const have = (graph.expr ?? "").split("\n").filter((l) => l.trim());
+    const add = lines.filter((l) => !have.includes(l));
+    updateBlock(data.id, { smartGraph: { ...graph, expr: [...have, ...add].join("\n"), ...(window ? { window } : {}) }, smartTab: "graph" });
+  };
+
   const previewText =
     preview?.kind === "choose"
       ? "\\text{Enter — then pick what to do}"
-      : preview?.result_latex
-        ? `${preview.kind === "value" || preview.kind === "truth" ? "= " : "\\Rightarrow "}${preview.result_latex}`
-        : null;
+      : preview?.kind === "assign"
+        ? `\\text{saves } ${preview.result_latex}`
+        : preview?.result_latex
+          ? `${preview.kind === "value" || preview.kind === "truth" ? "= " : "\\Rightarrow "}${preview.result_latex}`
+          : null;
+
+  const tabs = (
+    <div className="smart-tabs" role="tablist">
+      {TABS.map((t) => (
+        <button key={t.value} role="tab" className={`smart-tab${tab === t.value ? " is-on" : ""}`} onClick={() => setTab(t.value)}>
+          {t.label}
+          {t.value === "vars" && variables.length > 0 && <span className="smart-tab-count">{variables.length}</span>}
+        </button>
+      ))}
+    </div>
+  );
+
+  // ---- the Work and Graph tabs: the same pad and studio as their blocks,
+  // kept inside this calculator
+  const workData: WorkBlockData = {
+    id: `${data.id}:work`,
+    type: "work",
+    position: { x: 0, y: 0 },
+    problem: "",
+    lines: [""],
+    reasons: [""],
+    check: "live",
+    showReasons: false,
+    locked: false,
+    input: "visual",
+    ...(data.smartWork ?? {}),
+  };
+  const graphData: GraphBlockData = {
+    id: `${data.id}:graph`,
+    type: "graph",
+    position: { x: 0, y: 0 },
+    expr: "",
+    equalAspect: true,
+    ...(data.smartGraph ?? {}),
+  };
+  const tabFrame = (className: string) => (headerExtra: ReactNode, body: ReactNode) => (
+    <div className={className}>
+      <div className="smart-tab-tools">{headerExtra}</div>
+      {body}
+    </div>
+  );
 
   return (
     <div className="smart-calc nodrag" ref={root}>
-      <div className="smart-tape nowheel" ref={tape}>
-        {!entries.length && <div className="smart-empty">Type math — numbers, x, an equation — and press Enter.</div>}
-        {entries.map((entry) => {
-          const r = entry.result;
-          return (
-            <div key={entry.id} className="smart-entry">
-              <button
-                className="smart-in"
-                title="Put this in the line (at the cursor)"
-                onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
-                onClick={() => reuse(entry.latex)}
-              >
-                <Tex math={r.input_latex} />
-              </button>
-              {r.kind === "choose" ? (
-                <div className="smart-choose">
-                  <span>What should I do?</span>
-                  {(r.choices ?? []).map((c) => (
-                    <button key={c.label} className="chip" onClick={() => run(entry.latex, c, entry.id)}>
-                      {c.label}
-                    </button>
-                  ))}
+      {tabs}
+
+      {tab === "vars" && (
+        <div className="smart-vars">
+          <div className="smart-vars-hint">
+            Name a value once, use it everywhere — in Calculate, Work and Graph. Values can use each other (<i>d = 2r</i>), and every line that uses one updates
+            when it changes. You can also type <i>r = 4</i> on the Calculate line.
+          </div>
+          {variables.map((v) => {
+            const value = values[v.name];
+            return (
+              <div key={v.id} className="smart-var">
+                <input
+                  className="smart-var-name"
+                  value={v.name}
+                  spellCheck={false}
+                  placeholder="name"
+                  onChange={(e) => {
+                    const name = e.target.value.replace(/[^A-Za-z0-9_]/g, "");
+                    updateBlock(data.id, { smartVars: (current()?.smartVars ?? []).map((x) => (x.id === v.id ? { ...x, name } : x)) });
+                  }}
+                />
+                <span className="smart-var-eq">=</span>
+                <MathInput
+                  className="smart-var-value"
+                  value={v.latex}
+                  placeholder="value"
+                  onChange={(latex) => updateBlock(data.id, { smartVars: (current()?.smartVars ?? []).map((x) => (x.id === v.id ? { ...x, latex } : x)) })}
+                />
+                <button
+                  className="smart-var-remove"
+                  title="Remove this variable"
+                  onClick={() => updateBlock(data.id, { smartVars: (current()?.smartVars ?? []).filter((x) => x.id !== v.id) })}
+                >
+                  ×
+                </button>
+                <div className={`smart-var-result${value?.error ? " is-error" : ""}`}>
+                  {value?.error ? value.error : value?.latex !== undefined ? <Tex math={`= ${value.latex}${value.decimal && value.decimal !== value.latex ? `\\approx ${value.decimal}` : ""}`} /> : null}
                 </div>
-              ) : (
-                <>
-                  <button
-                    className="smart-out"
-                    title="Put this answer in the line (at the cursor)"
-                    onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
-                    onClick={() => r.result_latex && reuse(r.action?.kind === "solve" ? r.result_latex.replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)}
-                  >
-                    <Tex math={r.result_latex ?? ""} />
-                    {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
-                  </button>
-                  {(r.others?.length || r.steps?.length) && (
-                    <div className="smart-more">
-                      {(r.others ?? []).map((o) => (
-                        <button key={o.label} className="chip" onClick={() => run(entry.latex, o, entry.id)}>
-                          {o.label}
-                        </button>
-                      ))}
-                      {!!r.steps?.length && (
-                        <button className="chip" onClick={() => setOpenSteps(openSteps === entry.id ? null : entry.id)}>
-                          {openSteps === entry.id ? "Hide steps" : "Steps"}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {openSteps === entry.id && r.steps && <StepList steps={r.steps} />}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="smart-line">
-        <MathInput
-          ref={field}
-          className="smart-field"
-          value={draft}
-          placeholder="type math, then Enter"
-          onChange={(latex) => {
-            setDraft(latex);
-            setError(null);
-          }}
-          onEnter={enter}
-          onMoveOut={(direction) => {
-            if (direction === "upward" && entries.length && !field.current?.getValue()) field.current?.setValue(entries[entries.length - 1].latex);
-          }}
-        />
-        <div className={`smart-preview${error ? " is-error" : ""}`}>{error ? error : previewText ? <Tex math={previewText} /> : null}</div>
-      </div>
-
-      <div className="smart-keys">
-        {KEYS.map((key) => (
+              </div>
+            );
+          })}
           <button
-            key={key.label}
-            className={`smart-key${"run" in key && key.run === "enter" ? " is-enter" : ""}${"insert" in key && DIGIT.test(key.insert) ? " is-digit" : ""}${"command" in key || ("run" in key && key.run === "clear") ? " is-tool" : ""}`}
-            title={key.title}
-            // act on press, like a real calculator (and keep the line focused)
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              press(key);
+            className="graph-add"
+            onClick={() => {
+              const used = new Set((current()?.smartVars ?? []).map((v) => v.name));
+              const name = ["a", "b", "c", "k", "m", "n", "r", "t"].find((n) => !used.has(n)) ?? "";
+              updateBlock(data.id, { smartVars: [...(current()?.smartVars ?? []), { id: newId("var"), name, latex: "" }] });
             }}
           >
-            {key.tex ? <Tex math={key.label} /> : key.label}
+            + Add a variable
           </button>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {tab === "work" && (
+        <WorkPad
+          data={workData}
+          update={(patch) => updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), ...patch } })}
+          frame={tabFrame("smart-tab-work")}
+        />
+      )}
+
+      {tab === "graph" && (
+        <GraphStudio
+          data={graphData}
+          pool={vars}
+          poolNames={{ toggle: "Use my Variables", from: "from Variables" }}
+          update={(patch) => updateBlock(data.id, { smartGraph: { ...(current()?.smartGraph ?? {}), ...patch } })}
+          frame={tabFrame("smart-tab-graph")}
+        />
+      )}
+
+      {tab === "calc" && (
+        <>
+          {variables.length > 0 && (
+            <div className="smart-var-chips">
+              {variables
+                .filter((v) => v.name && values[v.name]?.latex !== undefined)
+                .map((v) => (
+                  <button
+                    key={v.id}
+                    className="chip"
+                    title="Put this name in the line"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      field.current?.insert(v.name.length > 1 ? `\\mathrm{${v.name}}` : v.name);
+                      field.current?.focus();
+                    }}
+                  >
+                    <Tex math={`${v.name.length > 1 ? `\\mathrm{${v.name}}` : v.name} = ${values[v.name].latex}`} />
+                  </button>
+                ))}
+            </div>
+          )}
+          <div className="smart-tape nowheel" ref={tape}>
+            {!entries.length && <div className="smart-empty">Type math — numbers, x, an equation, or r = 4 to save a value — and press Enter.</div>}
+            {entries.map((entry) => {
+              const r = entry.result;
+              const handoffs = (
+                <>
+                  {r.work && (
+                    <button className="chip is-handoff" onClick={() => showWork(r.work_latex ?? entry.latex)}>
+                      ✎ Show work
+                    </button>
+                  )}
+                  {!!r.graph?.length && (
+                    <button className="chip is-handoff" onClick={() => sendToGraph(r.graph!, r.graph_window)}>
+                      📈 Graph
+                    </button>
+                  )}
+                </>
+              );
+              return (
+                <div key={entry.id} className="smart-entry">
+                  <button
+                    className="smart-in"
+                    title="Put this in the line (at the cursor)"
+                    onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
+                    onClick={() => reuse(entry.latex)}
+                  >
+                    <Tex math={r.input_latex} />
+                  </button>
+                  {r.kind === "choose" ? (
+                    <div className="smart-choose">
+                      <span>What should I do?</span>
+                      {(r.choices ?? []).map((c) => (
+                        <button key={c.label} className="chip" onClick={() => run(entry.latex, c, entry.id)}>
+                          {c.label}
+                        </button>
+                      ))}
+                      {handoffs}
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        className="smart-out"
+                        title="Put this answer in the line (at the cursor)"
+                        onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
+                        onClick={() => r.result_latex && reuse(r.action?.kind === "solve" ? r.result_latex.replace(/^[a-zA-Z]\s*=\s*/, "") : r.kind === "assign" ? (r.ans ?? "") : r.result_latex)}
+                      >
+                        {r.kind === "assign" && <span className="smart-saved">saved</span>}
+                        <Tex math={r.result_latex ?? ""} />
+                        {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
+                      </button>
+                      {(r.others?.length || r.steps?.length || r.work || r.graph?.length) && (
+                        <div className="smart-more">
+                          {(r.others ?? []).map((o) => (
+                            <button key={o.label} className="chip" onClick={() => run(entry.latex, o, entry.id)}>
+                              {o.label}
+                            </button>
+                          ))}
+                          {!!r.steps?.length && (
+                            <button className="chip" onClick={() => setOpenSteps(openSteps === entry.id ? null : entry.id)}>
+                              {openSteps === entry.id ? "Hide steps" : "Steps"}
+                            </button>
+                          )}
+                          {handoffs}
+                        </div>
+                      )}
+                      {openSteps === entry.id && r.steps && <StepList steps={r.steps} />}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="smart-line">
+            <MathInput
+              ref={field}
+              className="smart-field"
+              value={draft}
+              placeholder="type math, then Enter"
+              onChange={(latex) => {
+                setDraft(latex);
+                setError(null);
+              }}
+              onEnter={enter}
+              onArrow={cycle}
+            />
+            <div className={`smart-preview${error ? " is-error" : ""}`}>{error ? error : previewText ? <Tex math={previewText} /> : null}</div>
+          </div>
+
+          <div className="smart-keys">
+            {KEYS.map((key) => (
+              <button
+                key={key.label}
+                className={`smart-key${"run" in key && key.run === "enter" ? " is-enter" : ""}${"insert" in key && DIGIT.test(key.insert) ? " is-digit" : ""}${"command" in key || ("run" in key && key.run === "clear") ? " is-tool" : ""}`}
+                title={key.title}
+                // act on press, like a real calculator (and keep the line focused)
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  press(key);
+                }}
+              >
+                {key.tex ? <Tex math={key.label} /> : key.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -38,3 +38,31 @@ def test_ans_and_half_typed():
     assert run("\\mathrm{Ans}^{2}", ans=run("\\sqrt{8}")["ans"])["result_latex"] == "8"
     with pytest.raises(MathInputError):
         run("\\frac{3}{")
+
+
+def test_variables_resolve_in_any_order_and_report_loops():
+    from mathcore.smartcalc import resolve_variables
+
+    v = resolve_variables([{"name": "d", "latex": "2r"}, {"name": "r", "latex": "4"}, {"name": "a", "latex": "b"}, {"name": "b", "latex": "a"}])
+    assert v["d"]["latex"] == "8" and "itself" in v["a"]["error"]
+
+
+def test_lines_use_variables_and_can_save_them():
+    from mathcore.smartcalc import resolve_variables
+
+    plain = {k: x["plain"] for k, x in resolve_variables([{"name": "r", "latex": "4"}, {"name": "rate", "latex": "\\frac{7}{100}"}]).items()}
+    assert run("\\pi r^{2}", vars=plain)["result_latex"] == "16 \\pi"
+    assert run("100\\cdot rate", vars=plain)["result_latex"] == "7"  # a multi-letter name stays whole
+    saved = run("cost=250", vars=plain)
+    assert saved["kind"] == "assign" and saved["name"] == "cost"
+    assert run("xy=6")["kind"] == "choose"  # two letters: an equation, not a name
+    solved = run("2x+r=11", vars=plain)
+    assert solved["result_latex"].startswith("x = \\frac{7}{2}") and solved["graph"] == ["y = 2*x + r", "y = 11"]
+    assert set(run("100\\cdot rate", vars=plain)["names"]) == {"rate"}
+
+
+def test_handoffs_fill_in_values_and_frame_the_solution():
+    r = run("2x+r=30", vars={"r": "10"})
+    assert r["work_latex"] == "2x + 10 = 30"
+    w = r["graph_window"]
+    assert w["xmin"] < 10 < w["xmax"] and w["ymin"] < 30 < w["ymax"]

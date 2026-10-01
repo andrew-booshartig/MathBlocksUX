@@ -4450,3 +4450,177 @@ body,
   font-size: 18px;
   font-weight: 700;
 }
+
+/* the smart calculator's sections */
+.smart-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: #121218;
+  border: 1px solid #262632;
+  border-radius: 9px;
+}
+
+.smart-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  color: #8a8aa0;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+.smart-tab:hover {
+  color: #e8e8f0;
+}
+
+.smart-tab.is-on {
+  background: #26262f;
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px #34343f;
+}
+
+.smart-tab-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #ffb45433;
+  color: #ffc46e;
+  font-size: 10.5px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.smart-var-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.smart-var-chips .chip .katex {
+  font-size: 1em;
+}
+
+.chip.is-handoff {
+  border-color: #ffb45455;
+  color: #ffc46e;
+}
+
+.smart-saved {
+  font-size: 10.5px;
+  font-family: -apple-system, "Inter", Helvetica, sans-serif;
+  color: #8fd694;
+  border: 1px solid #2e9e4f66;
+  border-radius: 6px;
+  padding: 0 5px;
+  align-self: center;
+}
+
+/* Variables */
+.smart-vars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 200px;
+}
+
+.smart-vars-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #8a8aa0;
+}
+
+.smart-var {
+  display: grid;
+  grid-template-columns: 74px 14px 1fr 22px;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 4px 8px;
+  border-radius: 8px;
+  background: #17171f;
+}
+
+.smart-var-name {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #ffc46e;
+  font: italic 17px "KaTeX_Math", "Times New Roman", serif;
+  padding: 3px 4px;
+  min-width: 0;
+  outline: none;
+}
+
+.smart-var-name:hover,
+.smart-var-name:focus {
+  border-color: #2e2e3a;
+  background: #101016;
+}
+
+.smart-var-eq {
+  color: #8a8aa0;
+  text-align: center;
+}
+
+.smart-var-value math-field {
+  font-size: 17px;
+}
+
+.smart-var-remove {
+  background: transparent;
+  border: none;
+  color: #6a6a80;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.smart-var-remove:hover {
+  color: #f19a9a;
+}
+
+.smart-var-result {
+  grid-column: 3 / 5;
+  text-align: right;
+  color: #8fa2bc;
+  font-size: 13px;
+  min-height: 16px;
+  overflow-x: auto;
+}
+
+.smart-var-result.is-error {
+  color: #f19a9a;
+  font-size: 11.5px;
+}
+
+/* Work and Graph inside the calculator */
+.smart-tab-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 4px;
+}
+
+.smart-tab-work {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.smart-tab-graph {
+  height: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.smart-tab-graph > .graph-studio {
+  flex: 1;
+}

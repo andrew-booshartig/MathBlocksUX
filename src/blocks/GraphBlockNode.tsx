@@ -24,6 +24,7 @@ import { Plotly } from "../PlotlyChart";
 import { RichText, Tex } from "../ui";
 import Icon from "../Icon";
 import BlockShell from "./BlockShell";
+import type { Frame } from "./WorkBlockNode";
 
 const FEATURES: { value: MarkerFeature; label: string }[] = [
   { value: "intercepts", label: "Intercepts" },
@@ -59,10 +60,27 @@ const decimals = (step: number) => Math.max(0, Math.min(6, Math.ceil(-Math.log10
 const clean = (v: number, step: number) => Number(v.toFixed(decimals(step)));
 const fmtCoord = (n: number) => String(Math.round(n * 1000) / 1000);
 
-export default function GraphBlockNode({ id }: NodeProps) {
-  const data = useStore((state) => state.blocks[id]) as GraphBlockData | undefined;
-  const updateBlock = useStore((state) => state.updateBlock<GraphBlockData>);
-  const pool = useVariables();
+/** The graphing studio itself: everything but the block around it, so a
+ * tab inside another block (the smart calculator) can use it too. */
+export function GraphStudio({
+  data,
+  update,
+  frame,
+  pool: poolOverride,
+  poolNames = { toggle: "Use global variables", from: "from the canvas" },
+}: {
+  data: GraphBlockData;
+  update: (patch: Partial<GraphBlockData>) => void;
+  frame: Frame;
+  /** where letters' values come from (default: the canvas's Variable blocks) */
+  pool?: Record<string, string>;
+  /** what to call that source (default: "global variables", "from the canvas") */
+  poolNames?: { toggle: string; from: string };
+}) {
+  const canvasPool = useVariables();
+  const pool = poolOverride ?? canvasPool;
+  const latest = useRef(data);
+  latest.current = data;
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tool, setTool] = useState<GraphTool>("pan");
@@ -97,7 +115,7 @@ export default function GraphBlockNode({ id }: NodeProps) {
     const missing = [...new Set(result.series.flatMap((s) => s.missing ?? []))];
     const have = new Set(sliders.map((s) => s.name));
     const add = missing.filter((name) => !have.has(name));
-    if (add.length) updateBlock(id, { sliders: [...sliders, ...add.map((name) => ({ name, value: 1, min: -10, max: 10, step: 0.1 }))] });
+    if (add.length) update({ sliders: [...sliders, ...add.map((name) => ({ name, value: 1, min: -10, max: 10, step: 0.1 }))] });
   }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ▶ on a slider sweeps it back and forth
@@ -105,16 +123,16 @@ export default function GraphBlockNode({ id }: NodeProps) {
     if (!playing) return;
     let direction = 1;
     const timer = setInterval(() => {
-      const block = useStore.getState().blocks[id] as GraphBlockData | undefined;
+      const block = latest.current;
       const s = block?.sliders?.find((x) => x.name === playing);
       if (!block || !s) return setPlaying(null);
       let v = s.value + direction * Math.max(s.step, (s.max - s.min) / 150);
       if (v >= s.max) [v, direction] = [s.max, -1];
       if (v <= s.min) [v, direction] = [s.min, 1];
-      updateBlock(id, { sliders: block.sliders!.map((x) => (x.name === playing ? { ...x, value: clean(v, s.step) } : x)) });
+      update({ sliders: block.sliders!.map((x) => (x.name === playing ? { ...x, value: clean(v, s.step) } : x)) });
     }, 50);
     return () => clearInterval(timer);
-  }, [playing, id, updateBlock]);
+  }, [playing, update]);
 
   useEffect(() => {
     if (editing !== null) inputs.current[editing]?.focus();
@@ -138,7 +156,7 @@ export default function GraphBlockNode({ id }: NodeProps) {
 
   // ---- the equation list (styles stay lined up with the lines)
   const padded = (): GraphLineStyle[] => Array.from({ length: lines.length }, (_, k) => styles[k] ?? {});
-  const saveLines = (next: string[], nextStyles: GraphLineStyle[]) => updateBlock(id, { expr: next.join("\n"), styles: nextStyles });
+  const saveLines = (next: string[], nextStyles: GraphLineStyle[]) => update({ expr: next.join("\n"), styles: nextStyles });
   const setLine = (i: number, text: string) => saveLines(lines.map((l, k) => (k === i ? text : l)), padded());
   const insertLine = (at: number, text = "") => {
     const next = [...lines];
@@ -164,14 +182,14 @@ export default function GraphBlockNode({ id }: NodeProps) {
   const setStyle = (i: number, patch: Partial<GraphLineStyle>) => {
     const st = padded();
     st[i] = { ...st[i], ...patch };
-    updateBlock(id, { styles: st });
+    update({ styles: st });
   };
   const colorOf = (i: number) => styles[i]?.color ?? theme.palette[i % theme.palette.length];
 
   // ---- sliders
   const setSlider = (name: string, patch: Partial<GraphSlider>) =>
-    updateBlock(id, { sliders: sliders.map((s) => (s.name === name ? { ...s, ...patch } : s)) });
-  const removeSlider = (name: string) => updateBlock(id, { sliders: sliders.filter((s) => s.name !== name) });
+    update({ sliders: sliders.map((s) => (s.name === name ? { ...s, ...patch } : s)) });
+  const removeSlider = (name: string) => update({ sliders: sliders.filter((s) => s.name !== name) });
   const usedGlobals = useGlobals
     ? [
         ...new Set(
@@ -184,10 +202,10 @@ export default function GraphBlockNode({ id }: NodeProps) {
       ]
     : [];
 
-  const setAppearance = (patch: Partial<GraphAppearance>) => updateBlock(id, { appearance: { ...appearance, ...patch } });
+  const setAppearance = (patch: Partial<GraphAppearance>) => update({ appearance: { ...appearance, ...patch } });
   const setWindowField = (field: keyof GraphWindow, value: string) => {
     const n = Number(value);
-    if (value.trim() !== "" && Number.isFinite(n)) updateBlock(id, { window: { ...window, [field]: n } });
+    if (value.trim() !== "" && Number.isFinite(n)) update({ window: { ...window, [field]: n } });
   };
   const hide = data.hideMarkers ?? [];
   const drawings = data.drawings ?? [];
@@ -325,8 +343,8 @@ export default function GraphBlockNode({ id }: NodeProps) {
             className="graph-check"
             title="On: letters use the values of Variable and Slider blocks on the canvas, and anything they don't define gets a slider here. Off: this graph only uses its own sliders."
           >
-            <input type="checkbox" checked={useGlobals} onChange={(e) => updateBlock(id, { useGlobals: e.target.checked })} />
-            Use global variables
+            <input type="checkbox" checked={useGlobals} onChange={(e) => update({ useGlobals: e.target.checked })} />
+            {poolNames.toggle}
           </label>
         </div>
         {usedGlobals.map((name) => (
@@ -334,7 +352,7 @@ export default function GraphBlockNode({ id }: NodeProps) {
             <span className="graph-slider-name">
               <Tex math={name} /> = {pool[name]}
             </span>
-            <span className="graph-slider-note">from the canvas</span>
+            <span className="graph-slider-note">{poolNames.from}</span>
           </div>
         ))}
         {sliders.map((s) => {
@@ -412,7 +430,7 @@ export default function GraphBlockNode({ id }: NodeProps) {
         </div>
       )}
       {tool === "eraser" && drawings.length > 0 && (
-        <button className="graph-tool is-text" title="Remove every drawing" onClick={() => updateBlock(id, { drawings: [] })}>
+        <button className="graph-tool is-text" title="Remove every drawing" onClick={() => update({ drawings: [] })}>
           <Icon name="trash" size={14} /> Clear drawings
         </button>
       )}
@@ -422,13 +440,13 @@ export default function GraphBlockNode({ id }: NodeProps) {
             <Icon name="magnet" size={15} />
           </button>
         )}
-        <button className="graph-tool" title="Back to −10 … 10" onClick={() => updateBlock(id, { window: DEFAULT_WINDOW })}>
+        <button className="graph-tool" title="Back to −10 … 10" onClick={() => update({ window: DEFAULT_WINDOW })}>
           <Icon name="reset" size={15} />
         </button>
         <button className="graph-tool" title="Save as a picture (PNG, to Downloads)" onClick={exportPng}>
           <Icon name="download" size={15} />
         </button>
-        <button className={`graph-tool${panelHidden ? "" : " is-on"}`} title={panelHidden ? "Show the equation list" : "Hide the equation list"} onClick={() => updateBlock(id, { panel: panelHidden ? "shown" : "hidden" })}>
+        <button className={`graph-tool${panelHidden ? "" : " is-on"}`} title={panelHidden ? "Show the equation list" : "Hide the equation list"} onClick={() => update({ panel: panelHidden ? "shown" : "hidden" })}>
           <Icon name="panel" size={15} />
         </button>
       </div>
@@ -461,13 +479,13 @@ export default function GraphBlockNode({ id }: NodeProps) {
         </div>
         <div className="graph-presets">
           {PRESETS.map((p) => (
-            <button key={p.label} className="chip" onClick={() => updateBlock(id, { window: p.window })}>
+            <button key={p.label} className="chip" onClick={() => update({ window: p.window })}>
               {p.label}
             </button>
           ))}
         </div>
         <label className="graph-check" title="1 unit on x is the same length as 1 unit on y, so slopes look true">
-          <input type="checkbox" checked={data.equalAspect !== false} onChange={(e) => updateBlock(id, { equalAspect: e.target.checked })} />
+          <input type="checkbox" checked={data.equalAspect !== false} onChange={(e) => update({ equalAspect: e.target.checked })} />
           Equal scale on both axes
         </label>
       </section>
@@ -560,7 +578,7 @@ export default function GraphBlockNode({ id }: NodeProps) {
             <input
               type="checkbox"
               checked={!hide.includes(f.value)}
-              onChange={(e) => updateBlock(id, { hideMarkers: e.target.checked ? hide.filter((h) => h !== f.value) : [...hide, f.value] })}
+              onChange={(e) => update({ hideMarkers: e.target.checked ? hide.filter((h) => h !== f.value) : [...hide, f.value] })}
             />
             {f.label}
           </label>
@@ -570,25 +588,18 @@ export default function GraphBlockNode({ id }: NodeProps) {
         <button className="action-btn" onClick={exportPng}>
           <Icon name="download" size={14} /> Save picture
         </button>
-        <button className="action-btn" disabled={!drawings.length} onClick={() => updateBlock(id, { drawings: [] })}>
+        <button className="action-btn" disabled={!drawings.length} onClick={() => update({ drawings: [] })}>
           <Icon name="trash" size={14} /> Clear drawings
         </button>
       </section>
     </div>
   );
 
-  return (
-    <BlockShell
-      id={data.id}
-      title="Graph"
-      wide
-      help="One thing per line: y = 2x + 1, f(x) = x^2, x = 3, (2, 5), y < -x + 4. Letters get sliders. Drag to pan, scroll to zoom; pick a tool to draw."
-      headerExtra={
+  return frame(
         <button className={`block-icon-btn${settingsOpen ? " is-active" : ""}`} title="Graph settings: window, grid, labels, theme" onClick={() => setSettingsOpen(!settingsOpen)}>
           ⚙
-        </button>
-      }
-    >
+        </button>,
+    <>
       <div className={`graph-studio${panelHidden ? " is-panel-hidden" : ""}`}>
         <div className="graph-studio-main">
           {!panelHidden && panel}
@@ -600,7 +611,7 @@ export default function GraphBlockNode({ id }: NodeProps) {
               exprs={lines}
               vars={vars}
               window={window}
-              onWindowChange={(w) => updateBlock(id, { window: w })}
+              onWindowChange={(w) => update({ window: w })}
               equalAspect={data.equalAspect !== false}
               hide={hide}
               styles={styles}
@@ -618,14 +629,14 @@ export default function GraphBlockNode({ id }: NodeProps) {
                   snap={snap}
                   window={window}
                   drawings={drawings}
-                  onDrawings={(next: GraphDrawing[]) => updateBlock(id, { drawings: next })}
+                  onDrawings={(next: GraphDrawing[]) => update({ drawings: next })}
                   onPoint={(x, y) => {
                     const point = `(${fmtCoord(x)}, ${fmtCoord(y)})`;
                     const empty = lines.findIndex((l) => !l.trim());
                     if (empty >= 0) setLine(empty, point);
                     else saveLines([...lines, point], padded().concat({}));
                   }}
-                  onWindowChange={(w) => updateBlock(id, { window: w })}
+                  onWindowChange={(w) => update({ window: w })}
                 />
               )}
             />
@@ -634,6 +645,30 @@ export default function GraphBlockNode({ id }: NodeProps) {
         {settings}
         {notice && <div className="graph-notice">{notice}</div>}
       </div>
-    </BlockShell>
+    </>,
+  );
+}
+
+export default function GraphBlockNode({ id }: NodeProps) {
+  const data = useStore((state) => state.blocks[id]) as GraphBlockData | undefined;
+  const updateBlock = useStore((state) => state.updateBlock<GraphBlockData>);
+  const update = useCallback((patch: Partial<GraphBlockData>) => updateBlock(id, patch), [id, updateBlock]);
+  if (!data) return null;
+  return (
+    <GraphStudio
+      data={data}
+      update={update}
+      frame={(headerExtra, body) => (
+        <BlockShell
+          id={id}
+          title="Graph"
+          wide
+          help="One thing per line: y = 2x + 1, f(x) = x^2, x = 3, (2, 5), y < -x + 4. Letters get sliders. Drag to pan, scroll to zoom; pick a tool to draw."
+          headerExtra={headerExtra}
+        >
+          {body}
+        </BlockShell>
+      )}
+    />
   );
 }

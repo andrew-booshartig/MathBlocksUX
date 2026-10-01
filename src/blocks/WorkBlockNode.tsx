@@ -7,7 +7,7 @@
  *
  * Teachers choose how much help: live checking, check on request, or none
  * (tests), and can lock the problem so it can't be edited. */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeProps } from "@xyflow/react";
 import { type LanguageSpec, type WorkBlockData, type WorkCheck, useStore } from "../store";
 import { mathRequest, useLiveMath } from "../mathSidecar";
@@ -83,14 +83,32 @@ const CHECK_MODES: { value: WorkCheck; label: string; title: string }[] = [
   { value: "off", label: "No checking", title: "For tests: no marks or hints at all" },
 ];
 
-export default function WorkBlockNode({ id }: NodeProps) {
-  const data = useStore((state) => state.blocks[id]) as WorkBlockData;
-  const updateBlock = useStore((state) => state.updateBlock<WorkBlockData>);
-  const reportStatus = useStore((state) => state.reportStatus);
+/** Where a pad lives: a block of its own, or a tab inside another block
+ * (the smart calculator) — it hands over its header buttons and its body. */
+export type Frame = (headerExtra: ReactNode, body: ReactNode) => ReactNode;
+
+/** The Show-your-work pad itself: everything but the block around it. */
+export function WorkPad({
+  data,
+  update,
+  frame,
+  onStatus,
+}: {
+  data: WorkBlockData;
+  update: (patch: Partial<WorkBlockData>) => void;
+  frame: Frame;
+  /** solved or not — for guided-lesson goals */
+  onStatus?: (solved: boolean) => void;
+}) {
+  const latest = useRef(data);
+  latest.current = data;
   const [paper, setPaper] = useState(false);
   const [settings, setSettings] = useState(false);
   const [checkedKey, setCheckedKey] = useState<string | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
+  /** the line (or the problem) being typed right now: its errors and marks
+   * wait until Enter, or until you leave it — no complaints mid-thought */
+  const [typing, setTyping] = useState<number | "problem" | null>(null);
   /** what Clear removed, so it can be undone for a few seconds */
   /** what Clear (or the problem's ×) removed, so it can be undone for a few seconds */
   const [cleared, setCleared] = useState<{ lines?: string[]; reasons?: string[]; problem?: string } | null>(null);
@@ -131,8 +149,8 @@ export default function WorkBlockNode({ id }: NodeProps) {
   const finished = !!finalLine?.done && finalLine.status === "ok" && !checked.some((c) => c.status === "wrong" || c.status === "carried");
 
   useEffect(() => {
-    reportStatus(id, { solved: finished });
-  }, [id, finished, reportStatus]);
+    onStatus?.(finished);
+  }, [finished, onStatus]);
 
   useEffect(() => {
     const target = pendingFocus.current;
@@ -171,7 +189,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
 
   if (!data) return null;
 
-  const setLines = (next: string[], nextReasons = reasons) => updateBlock(data.id, { lines: next.length ? next : [""], reasons: nextReasons });
+  const setLines = (next: string[], nextReasons = reasons) => update({ lines: next.length ? next : [""], reasons: nextReasons });
 
   const insertLine = (at: number, text = "") => {
     const next = [...lines];
@@ -180,6 +198,39 @@ export default function WorkBlockNode({ id }: NodeProps) {
     nextReasons.splice(at, 0, "");
     pendingFocus.current = { index: at };
     setLines(next, nextReasons);
+    setTyping(null);
+  };
+
+  // ↑/↓ on a fresh line bring back an earlier stage of the work — the line
+  // above, then further up, all the way to the problem — so you edit the
+  // part that changes instead of retyping it all. Once you edit what came
+  // back, the arrows move around as usual again.
+  const recall = useRef<{ line: number; source: number; text: string } | null>(null);
+  const stage = (k: number) => ((k === -1 ? latest.current.problem : latest.current.lines[k]) ?? "").trim();
+  const cycle = (i: number, direction: "up" | "down", current: string, put: (text: string) => string): boolean => {
+    const r = recall.current;
+    const recalled = !!r && r.line === i && r.text === current;
+    if (current.trim() && !recalled) {
+      recall.current = null;
+      return false;
+    }
+    let k = recalled ? r!.source : i;
+    if (direction === "up") {
+      do k--;
+      while (k >= 0 && !stage(k));
+      if (k < -1 || !stage(k)) return true; // nothing further back: stay put
+    } else {
+      if (!recalled) return false; // an empty line: ↓ moves down as usual
+      do k++;
+      while (k < i && !stage(k));
+      if (k >= i) {
+        put("");
+        recall.current = null;
+        return true;
+      }
+    }
+    recall.current = { line: i, source: k, text: put(stage(k)) };
+    return true;
   };
 
   const onKey = (event: React.KeyboardEvent<HTMLInputElement>, i: number) => {
@@ -195,6 +246,15 @@ export default function WorkBlockNode({ id }: NodeProps) {
         lines.filter((_, j) => j !== i),
         reasons.filter((_, j) => j !== i),
       );
+    } else if (
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      cycle(i, event.key === "ArrowUp" ? "up" : "down", lines[i], (text) => {
+        setLines(lines.map((l, j) => (j === i ? text : l)));
+        setTyping(i);
+        return text;
+      })
+    ) {
+      event.preventDefault();
     } else if (event.key === "ArrowUp" && i > 0) {
       event.preventDefault();
       inputs.current[i - 1]?.focus();
@@ -223,7 +283,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
     setNotice(null);
     const from = language === "visual" ? "latex" : language;
     const to = next === "visual" ? "latex" : next;
-    if (from === to) return updateBlock(data.id, { input: next });
+    if (from === to) return update({ input: next });
     try {
       const { items } = await mathRequest<{ items: { text: string; ok: boolean }[] }>({
         op: "translate",
@@ -233,7 +293,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
         languages: available,
       });
       const kept = items.map((item, i) => (item.ok ? null : i)).filter((i): i is number => i !== null && (i === 0 ? data.problem : lines[i - 1]).trim() !== "");
-      updateBlock(data.id, { input: next, problem: items[0].text, lines: items.slice(1).map((item) => item.text) });
+      update({ input: next, problem: items[0].text, lines: items.slice(1).map((item) => item.text) });
       const name = nextName ?? (next === "visual" ? "Visual" : known.find((l) => l.id === next)?.name ?? next);
       setNotice(
         kept.length
@@ -272,13 +332,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
   const stepCount = checked.filter((c) => c.latex).length;
   const wrongCount = checked.filter((c) => c.status === "wrong").length;
 
-  return (
-    <BlockShell
-      id={data.id}
-      title="Show your work"
-      wide
-      help="Write each step yourself — plain math or LaTeX. Every line is checked against the line above. Enter = new line, ⇧Enter = copy this line down, ↑↓ to move."
-      headerExtra={
+  return frame(
         <>
           <button className={`block-icon-btn${paper ? " is-active" : ""}`} title="Paper view — the finished work, lined up" onClick={() => setPaper(!paper)}>
             📄
@@ -286,18 +340,17 @@ export default function WorkBlockNode({ id }: NodeProps) {
           <button className={`block-icon-btn${settings ? " is-active" : ""}`} title="Teacher settings" onClick={() => setSettings(!settings)}>
             ⚙
           </button>
-        </>
-      }
-    >
+        </>,
+    <>
       {settings && (
         <div className="work-settings nodrag">
-          <Segmented value={data.check} options={CHECK_MODES} onChange={(check) => updateBlock(data.id, { check })} />
+          <Segmented value={data.check} options={CHECK_MODES} onChange={(check) => update({ check })} />
           <label>
-            <input type="checkbox" checked={data.showReasons} onChange={(e) => updateBlock(data.id, { showReasons: e.target.checked })} />
+            <input type="checkbox" checked={data.showReasons} onChange={(e) => update({ showReasons: e.target.checked })} />
             Ask for a reason on every step
           </label>
           <label>
-            <input type="checkbox" checked={data.locked} onChange={(e) => updateBlock(data.id, { locked: e.target.checked })} />
+            <input type="checkbox" checked={data.locked} onChange={(e) => update({ locked: e.target.checked })} />
             Lock the problem (students can't change it)
           </label>
         </div>
@@ -314,7 +367,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
                 setCleared({ problem: data.problem });
                 clearTimeout(clearTimer.current);
                 clearTimer.current = setTimeout(() => setCleared(null), 8000);
-                updateBlock(data.id, { problem: "" });
+                update({ problem: "" });
                 setTimeout(() => problemMath.current?.focus(), 30);
               }}
             >
@@ -333,8 +386,15 @@ export default function WorkBlockNode({ id }: NodeProps) {
             onFocus={() => (activeMath.current = problemMath.current)}
             value={data.problem}
             placeholder="type the problem"
-            onChange={(problem) => updateBlock(data.id, { problem })}
-            onEnter={() => mathInputs.current[0]?.focus()}
+            onChange={(problem) => {
+              update({ problem });
+              setTyping("problem");
+            }}
+            onBlur={() => setTyping(null)}
+            onEnter={() => {
+              setTyping(null);
+              mathInputs.current[0]?.focus();
+            }}
             onMoveOut={(direction) => direction === "downward" && mathInputs.current[0]?.focus()}
           />
         ) : (
@@ -342,11 +402,16 @@ export default function WorkBlockNode({ id }: NodeProps) {
             className="nodrag block-input"
             value={data.problem}
             placeholder={language === "latex" ? LATEX_PLACEHOLDER : info?.placeholder ?? ""}
-            onChange={(e) => updateBlock(data.id, { problem: e.target.value })}
+            onChange={(e) => {
+              update({ problem: e.target.value });
+              setTyping("problem");
+            }}
+            onBlur={() => setTyping(null)}
+            onKeyDown={(e) => e.key === "Enter" && setTyping(null)}
           />
         )}
         {result && (data.locked || !visual) && <Tex math={result.problem_latex} block className="tex-block work-problem-tex" />}
-        <ErrorText error={error} />
+        <ErrorText error={typing === "problem" ? null : error} />
       </div>
 
       {paper && result ? (
@@ -422,7 +487,8 @@ export default function WorkBlockNode({ id }: NodeProps) {
           <ol className="work-lines nodrag">
             {lines.map((text, i) => {
               const c = checked[i];
-              const status = showMarks && c ? c.status : "empty";
+              const status = showMarks && c && typing !== i ? c.status : "empty";
+              const shown = showMarks && typing !== i;
               return (
                 <li key={i} className={`work-line is-${status}`}>
                   <span className="work-num">{i + 1}</span>
@@ -438,14 +504,25 @@ export default function WorkBlockNode({ id }: NodeProps) {
                           placeholder={i === 0 ? "first step…" : "next step…"}
                           onFocus={() => {
                             setFocus(i);
+                            setTyping(null);
                             activeMath.current = mathInputs.current[i];
                           }}
+                          onBlur={() => setTyping(null)}
                           onChange={(latex) => {
-                            const next = [...useStore.getState().blocks[data.id] ? (useStore.getState().blocks[data.id] as WorkBlockData).lines : lines];
+                            const next = [...latest.current.lines];
                             next[i] = latex;
                             setLines(next);
+                            setTyping(i);
                           }}
                           onEnter={(shift) => insertLine(i + 1, shift ? lines[i] : "")}
+                          onArrow={(direction) => {
+                            const field = mathInputs.current[i];
+                            if (!field) return false;
+                            return cycle(i, direction, field.getValue(), (text) => {
+                              field.setValue(text);
+                              return field.getValue();
+                            });
+                          }}
                           onBackspaceEmpty={() => deleteLine(i)}
                           onMoveOut={(direction) => {
                             if (direction === "upward") (i > 0 ? mathInputs.current[i - 1] : null)?.focus();
@@ -460,12 +537,17 @@ export default function WorkBlockNode({ id }: NodeProps) {
                         className="block-input work-input"
                         value={text}
                         placeholder={i === 0 ? "first step…  (Enter: new line · ⇧Enter: copy line down)" : "next step…"}
-                        onFocus={() => setFocus(i)}
+                        onFocus={() => {
+                          setFocus(i);
+                          setTyping(null);
+                        }}
+                        onBlur={() => setTyping(null)}
                         onKeyDown={(e) => onKey(e, i)}
                         onChange={(e) => {
                           const next = [...lines];
                           next[i] = e.target.value;
                           setLines(next);
+                          setTyping(i);
                         }}
                       />
                       )}
@@ -477,7 +559,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
                           onChange={(e) => {
                             const next = [...reasons];
                             next[i] = e.target.value;
-                            updateBlock(data.id, { reasons: next });
+                            update({ reasons: next });
                           }}
                         />
                       )}
@@ -486,13 +568,13 @@ export default function WorkBlockNode({ id }: NodeProps) {
                       </span>
                     </div>
                     {c?.latex && !visual && <Tex math={c.latex} block className="tex-block work-line-tex" />}
-                    {showMarks && c?.message && c.status !== "ok" && (
+                    {shown && c?.message && c.status !== "ok" && (
                       <div className="work-message">
                         <RichText text={c.message} />
                       </div>
                     )}
-                    {showMarks && c?.done && c.status === "ok" && <div className="work-done">✓ {<RichText text={c.done} />}</div>}
-                    {showMarks && c?.note && c.status === "ok" && !lines.slice(i + 1).some((l) => l.trim()) && (
+                    {shown && c?.done && c.status === "ok" && <div className="work-done">✓ {<RichText text={c.done} />}</div>}
+                    {shown && c?.note && c.status === "ok" && !lines.slice(i + 1).some((l) => l.trim()) && (
                       <div className="work-note">
                         <RichText text={c.note} />
                       </div>
@@ -514,7 +596,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
             className="action-btn is-primary"
             onClick={() => {
               clearTimeout(clearTimer.current);
-              updateBlock(data.id, cleared);
+              update(cleared);
               setCleared(null);
             }}
           >
@@ -530,7 +612,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
               clearTimeout(clearTimer.current);
               clearTimer.current = setTimeout(() => setCleared(null), 8000);
               pendingFocus.current = { index: 0 };
-              updateBlock(data.id, { lines: [""], reasons: [""] });
+              update({ lines: [""], reasons: [""] });
             }}
           >
             Clear
@@ -545,7 +627,7 @@ export default function WorkBlockNode({ id }: NodeProps) {
               setCleared({ problem: data.problem, lines, reasons });
               clearTimeout(clearTimer.current);
               clearTimer.current = setTimeout(() => setCleared(null), 8000);
-              updateBlock(data.id, { problem: "", lines: [""], reasons: [""] });
+              update({ problem: "", lines: [""], reasons: [""] });
               setTimeout(() => problemMath.current?.focus(), 30);
             }}
           >
@@ -571,6 +653,33 @@ export default function WorkBlockNode({ id }: NodeProps) {
               : ""}
         </span>
       </div>
-    </BlockShell>
+    </>,
+  );
+}
+
+export default function WorkBlockNode({ id }: NodeProps) {
+  const data = useStore((state) => state.blocks[id]) as WorkBlockData | undefined;
+  const updateBlock = useStore((state) => state.updateBlock<WorkBlockData>);
+  const reportStatus = useStore((state) => state.reportStatus);
+  const update = useCallback((patch: Partial<WorkBlockData>) => updateBlock(id, patch), [id, updateBlock]);
+  const onStatus = useCallback((solved: boolean) => reportStatus(id, { solved }), [id, reportStatus]);
+  if (!data) return null;
+  return (
+    <WorkPad
+      data={data}
+      update={update}
+      onStatus={onStatus}
+      frame={(headerExtra, body) => (
+        <BlockShell
+          id={id}
+          title="Show your work"
+          wide
+          help="Write each step yourself — plain math or LaTeX. Every line is checked against the line above. Enter = new line, ⇧Enter = copy this line down, ↑↓ to move."
+          headerExtra={headerExtra}
+        >
+          {body}
+        </BlockShell>
+      )}
+    />
   );
 }

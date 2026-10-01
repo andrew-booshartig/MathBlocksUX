@@ -33,6 +33,8 @@ export default function MathInput({
   onBackspaceEmpty,
   onMoveOut,
   onFocus,
+  onBlur,
+  onArrow,
   className,
   ref,
 }: {
@@ -44,14 +46,17 @@ export default function MathInput({
   onBackspaceEmpty?: () => void;
   onMoveOut?: (direction: "upward" | "downward") => void;
   onFocus?: () => void;
+  onBlur?: () => void;
+  /** ↑/↓ — return true to take the key (e.g. to cycle through history) */
+  onArrow?: (direction: "up" | "down") => boolean;
   className?: string;
   ref?: Ref<MathInputHandle>;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const field = useRef<MathfieldElement | null>(null);
   // the latest callbacks, without re-creating the field on every render
-  const handlers = useRef({ onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus });
-  handlers.current = { onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus };
+  const handlers = useRef({ onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow });
+  handlers.current = { onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow };
 
   useEffect(() => {
     const mf = new MathfieldElement();
@@ -66,6 +71,7 @@ export default function MathInput({
     mf.value = value;
     mf.addEventListener("input", () => handlers.current.onChange(mf.value));
     mf.addEventListener("focus", () => handlers.current.onFocus?.());
+    mf.addEventListener("blur", () => handlers.current.onBlur?.());
     // capture phase: runs before MathLive's own key handling inside the field
     mf.addEventListener(
       "keydown",
@@ -78,6 +84,9 @@ export default function MathInput({
           event.preventDefault();
           event.stopPropagation();
           handlers.current.onBackspaceEmpty();
+        } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && handlers.current.onArrow?.(event.key === "ArrowUp" ? "up" : "down")) {
+          event.preventDefault();
+          event.stopPropagation();
         }
       },
       { capture: true },

@@ -220,7 +220,7 @@ export interface SmartAction {
 }
 
 export interface SmartResult {
-  kind: "value" | "result" | "truth" | "choose";
+  kind: "value" | "result" | "truth" | "choose" | "assign";
   input_latex: string;
   result_latex?: string;
   decimal?: string | null;
@@ -230,6 +230,18 @@ export interface SmartResult {
   choices?: SmartAction[];
   /** this answer as math, for Ans */
   ans?: string | null;
+  /** every name the line uses (to redo it when a variable changes) */
+  names?: string[];
+  /** "r = 4": the variable it saves */
+  name?: string;
+  value_latex?: string;
+  /** where else it can go: the Work tab, and what the Graph tab would draw */
+  work?: boolean;
+  /** the line with the variables' values filled in, for the Work tab */
+  work_latex?: string;
+  graph?: string[];
+  /** a window that shows where the sides meet */
+  graph_window?: GraphWindow;
 }
 
 export interface SmartEntry {
@@ -276,6 +288,13 @@ export interface CalculatorBlockData extends BlockBase {
   profile: "smart" | "ti85" | "scientific" | "basic";
   /** the smart calculator's history (pretty math in, answers out) */
   smart?: SmartEntry[];
+  /** which of its sections is showing */
+  smartTab?: "calc" | "vars" | "work" | "graph";
+  /** its named values (LaTeX, as typed — they may use each other) */
+  smartVars?: { id: string; name: string; latex: string }[];
+  /** its Work and Graph sections: the same data as those blocks */
+  smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
+  smartGraph?: Partial<Omit<GraphBlockData, "id" | "type" | "position">>;
   ti?: TIState;
   /** the TI layout's extra-keys strip (fractions, powers…); on unless turned off */
   tiExtras?: boolean;
