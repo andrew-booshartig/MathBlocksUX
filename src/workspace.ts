@@ -38,6 +38,27 @@ export async function loadWorkspace(name: string): Promise<void> {
   useStore.getState().loadSnapshot(name === AUTOSAVE_NAME ? data : { ...data, savedName: name });
 }
 
+/** Which of your saved canvases is open? For a canvas opened before the
+ * app remembered names: the saved canvas that shares most of its blocks
+ * (at least half), or null if it's never been saved. */
+export async function guessSavedName(): Promise<string | null> {
+  const mine = new Set(useStore.getState().order);
+  if (!mine.size) return null;
+  let best: { name: string; score: number } | null = null;
+  for (const name of await listWorkspaces()) {
+    if (name === AUTOSAVE_NAME) continue;
+    try {
+      const saved = await invoke<WorkspaceSnapshot>("load_workspace", { name });
+      const order = saved.order ?? [];
+      const score = order.filter((id) => mine.has(id)).length / Math.max(mine.size, order.length);
+      if (score >= 0.5 && (!best || score > best.score)) best = { name, score };
+    } catch {
+      // unreadable file — not a match
+    }
+  }
+  return best?.name ?? null;
+}
+
 export async function listWorkspaces(): Promise<string[]> {
   return invoke<string[]>("list_workspaces");
 }

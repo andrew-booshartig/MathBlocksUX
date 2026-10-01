@@ -28,6 +28,7 @@ import {
   initAutosave,
   listWorkspaces,
   loadAutosaveIfPresent,
+  guessSavedName,
   loadWorkspace,
   parseLessonFile,
   saveWorkspace,
@@ -246,7 +247,15 @@ function App() {
   // otherwise the very act of loading would immediately autosave over
   // the file we're in the middle of reading.
   useEffect(() => {
-    loadAutosaveIfPresent().finally(initAutosave);
+    loadAutosaveIfPresent()
+      .then(async () => {
+        // reopened from before the app remembered names: work out which saved canvas this is
+        if (!useStore.getState().savedName) {
+          const name = await guessSavedName();
+          if (name && !useStore.getState().savedName) useStore.getState().setSavedName(name);
+        }
+      })
+      .finally(initAutosave);
     refreshSavedWorkspaces();
   }, [refreshSavedWorkspaces]);
 
@@ -302,10 +311,11 @@ function App() {
     });
   }, [saveAs]);
 
-  /** Save (⌘S): back to the canvas you opened — or ask for a name the first time. */
-  const quickSave = useCallback(() => {
-    const { savedName } = useStore.getState();
-    if (savedName) saveAs(savedName);
+  /** Save (⌘S): back to the canvas you're working on, no questions — only a
+   * canvas that's never been saved asks for a name (like any Untitled doc). */
+  const quickSave = useCallback(async () => {
+    const name = useStore.getState().savedName ?? (await guessSavedName());
+    if (name) saveAs(name);
     else handleSaveWorkspace();
   }, [saveAs, handleSaveWorkspace]);
 
