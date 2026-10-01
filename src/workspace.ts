@@ -4,18 +4,21 @@ import { useStore, newId, defaultRow, type WorkspaceSnapshot, type VariableBlock
 const AUTOSAVE_NAME = "__autosave__";
 
 export async function saveWorkspace(name: string): Promise<void> {
-  await invoke("save_workspace", { name, data: currentSnapshot() });
+  const autosave = name === AUTOSAVE_NAME;
+  await invoke("save_workspace", { name, data: autosave ? currentSnapshot() : { ...currentSnapshot(), savedName: name } });
+  if (!autosave) useStore.getState().setSavedName(name);
 }
 
 /** Everything that makes up a canvas/lesson, as saved and exported. */
 export function currentSnapshot(): WorkspaceSnapshot {
-  const { blocks, order, edges, tour, title, canvas, views, languages } = useStore.getState();
-  return { blocks, order, edges, tour, title, canvas, views, languages };
+  const { blocks, order, edges, tour, title, canvas, views, languages, savedName } = useStore.getState();
+  return { blocks, order, edges, tour, title, canvas, views, languages, savedName: savedName ?? undefined };
 }
 
 /** Writes the canvas to ~/Downloads as a shareable .matrixlab.json file. */
 export async function exportWorkspace(name: string): Promise<string> {
-  return invoke<string>("export_workspace", { name, data: { ...currentSnapshot(), title: useStore.getState().title || name } });
+  // a shared file isn't anyone's saved canvas: no savedName in it
+  return invoke<string>("export_workspace", { name, data: { ...currentSnapshot(), savedName: undefined, title: useStore.getState().title || name } });
 }
 
 /** Reads a lesson file picked by the user (.matrixlab.json, or an older
@@ -30,7 +33,9 @@ export function parseLessonFile(text: string): WorkspaceSnapshot {
 
 export async function loadWorkspace(name: string): Promise<void> {
   const data = await invoke<WorkspaceSnapshot>("load_workspace", { name });
-  useStore.getState().loadSnapshot(data);
+  // opening a saved canvas: Save goes back to it (the autosave remembers
+  // whichever canvas was open)
+  useStore.getState().loadSnapshot(name === AUTOSAVE_NAME ? data : { ...data, savedName: name });
 }
 
 export async function listWorkspaces(): Promise<string[]> {

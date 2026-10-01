@@ -126,18 +126,17 @@ function Menu({
  * which is why switching lessons did nothing). */
 type DialogSpec =
   | { kind: "confirm"; message: string; confirmLabel: string; onConfirm: () => void }
-  | { kind: "prompt"; message: string; confirmLabel: string; onSubmit: (value: string) => void }
+  | { kind: "prompt"; message: string; confirmLabel: string; onSubmit: (value: string) => void; initial?: string }
   | { kind: "alert"; message: string };
 
 function Dialog({ spec, close }: { spec: DialogSpec; close: () => void }) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(spec.kind === "prompt" ? (spec.initial ?? "") : "");
   const submit = () => {
-    if (spec.kind === "confirm") spec.onConfirm();
-    if (spec.kind === "prompt") {
-      if (!value.trim()) return;
-      spec.onSubmit(value.trim());
-    }
+    if (spec.kind === "prompt" && !value.trim()) return;
+    // close first: what runs next may open a dialog of its own
     close();
+    if (spec.kind === "confirm") spec.onConfirm();
+    if (spec.kind === "prompt") spec.onSubmit(value.trim());
   };
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -154,10 +153,17 @@ function Dialog({ spec, close }: { spec: DialogSpec; close: () => void }) {
         {spec.kind === "prompt" && (
           <input
             autoFocus
+            onFocus={(e) => e.target.select()}
             className="block-input"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              // this Enter is used up here — it mustn't also dismiss a
+              // dialog that submitting opens (like "that name is taken")
+              e.stopPropagation();
+              submit();
+            }}
           />
         )}
         <div className="dialog-buttons">
@@ -229,6 +235,7 @@ function App() {
   const [savedWorkspaces, setSavedWorkspaces] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
+  const savedName = useStore((s) => s.savedName);
   const selectionIsLocked = useStore((state) => selectedIds.some((id) => !!state.blocks[id]?.groupId));
 
   const refreshSavedWorkspaces = useCallback(() => {
@@ -256,22 +263,65 @@ function App() {
     }
   }, []);
 
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const saveAs = useCallback(
+    async (name: string) => {
+      if (name in BUILTIN_WORKSPACES) {
+        setDialog({ kind: "alert", message: `“${name}” is a built-in preset — save your version under another name.` });
+        return;
+      }
+      if (!useStore.getState().title) useStore.getState().setTitle(name);
+      // a keystroke typed just before ⌘S reaches the block's data a moment
+      // after it shows on screen (the math editor reports it late) — let it land
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      return saveWorkspace(name)
+        .then(() => {
+          useStore.getState().emit("saved");
+          refreshSavedWorkspaces();
+          setToast(`Saved “${name}”`);
+        })
+        .catch((error) => setDialog({ kind: "alert", message: `Couldn't save "${name}": ${error}` }));
+    },
+    [refreshSavedWorkspaces],
+  );
+
   const handleSaveWorkspace = useCallback(() => {
+    const { savedName, title } = useStore.getState();
     setDialog({
       kind: "prompt",
       message: "Save current canvas as:",
       confirmLabel: "Save",
-      onSubmit: (name) => {
-        if (!useStore.getState().title) useStore.getState().setTitle(name);
-        return saveWorkspace(name)
-          .then(() => {
-            useStore.getState().emit("saved");
-            refreshSavedWorkspaces();
-          })
-          .catch((error) => setDialog({ kind: "alert", message: `Couldn't save "${name}": ${error}` }));
-      },
+      initial: savedName ?? (title && !(title in BUILTIN_WORKSPACES) ? title : ""),
+      onSubmit: saveAs,
     });
-  }, [refreshSavedWorkspaces]);
+  }, [saveAs]);
+
+  /** Save (⌘S): back to the canvas you opened — or ask for a name the first time. */
+  const quickSave = useCallback(() => {
+    const { savedName } = useStore.getState();
+    if (savedName) saveAs(savedName);
+    else handleSaveWorkspace();
+  }, [saveAs, handleSaveWorkspace]);
+
+  // ⌘S saves, ⇧⌘S saves as — even while typing in a block
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (dialog) return;
+      if (event.shiftKey) handleSaveWorkspace();
+      else quickSave();
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [dialog, quickSave, handleSaveWorkspace]);
 
   // Only structural (add/remove) changes flow from the store into xyflow's
   // own node list — NOT position or content. If this effect re-derived
@@ -828,11 +878,21 @@ function App() {
                 className="palette-item"
                 onClick={() => {
                   setFileOpen(false);
+                  quickSave();
+                }}
+              >
+                <span className="palette-name">Save</span>
+                <span className="palette-desc">{savedName ? `to “${savedName}”` : "pick a name"} · ⌘S</span>
+              </button>
+              <button
+                className="palette-item"
+                onClick={() => {
+                  setFileOpen(false);
                   handleSaveWorkspace();
                 }}
               >
                 <span className="palette-name">Save as…</span>
-                <span className="palette-desc">keep this canvas under a name</span>
+                <span className="palette-desc">under a new name · ⇧⌘S</span>
               </button>
               <button
                 className="palette-item"
@@ -882,6 +942,7 @@ function App() {
         />
       </div>
       {dialog && <Dialog spec={dialog} close={() => setDialog(null)} />}
+      {toast && <div className="app-toast">✓ {toast}</div>}
       <TourPanel selectedIds={selectedIds} />
       <ReactFlow
         nodes={nodes}

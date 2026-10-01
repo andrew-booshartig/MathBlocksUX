@@ -429,6 +429,8 @@ export interface WorkspaceSnapshot {
   canvas?: CanvasSettings;
   views?: SavedView[];
   languages?: LanguageSpec[];
+  /** the name it was saved under (so Save / ⌘S writes back there) */
+  savedName?: string;
 }
 
 interface Store {
@@ -463,6 +465,9 @@ interface Store {
   /** blocks the camera is following (kept fitted as they change), if any */
   follow: string[] | null;
   setFollow: (ids: string[] | null) => void;
+  /** the saved canvas that's open, if any — where Save (⌘S) writes */
+  savedName: string | null;
+  setSavedName: (name: string | null) => void;
   setCanvas: (patch: Partial<CanvasSettings>) => void;
   setViews: (views: SavedView[]) => void;
   emit: (event: AppEvent) => void;
@@ -527,6 +532,7 @@ function normalizeSnapshot(snapshot: WorkspaceSnapshot): WorkspaceSnapshot {
     canvas: { ...DEFAULT_CANVAS, ...(snapshot.canvas ?? {}) },
     views: snapshot.views ?? [],
     languages: snapshot.languages ?? [],
+    savedName: snapshot.savedName,
   };
 }
 
@@ -607,6 +613,8 @@ export const useStore = create<Store>((set) => ({
     const normalized = normalizeSnapshot(snapshot);
     set({
       ...normalized,
+      // a lesson, preset or imported file isn't one of your saved canvases yet
+      savedName: normalized.savedName ?? null,
       tour: normalized.tour ?? [],
       tourIndex: normalized.tour?.length ? 0 : null,
       tourEditing: false,
@@ -626,6 +634,8 @@ export const useStore = create<Store>((set) => ({
   setLanguages: (languages) => set({ languages }),
   follow: null,
   setFollow: (follow) => set({ follow }),
+  savedName: null,
+  setSavedName: (savedName) => set({ savedName }),
   setCanvas: (patch) => set((state) => ({ canvas: { ...state.canvas, ...patch } })),
   setViews: (views) => set({ views }),
   emit: (event) => set((state) => ({ events: { ...state.events, [event]: (state.events[event] ?? 0) + 1 } })),

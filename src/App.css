@@ -4269,3 +4269,28 @@ body,
 .follow-pill button:hover {
   color: #ffffff;
 }
+
+/* a quiet "it worked" — Saved, etc. */
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: rgba(22, 22, 30, 0.96);
+  border: 1px solid #2e9e4f;
+  color: #c8f0d2;
+  border-radius: 999px;
+  padding: 7px 16px;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  animation: toast-in 0.18s ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
