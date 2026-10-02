@@ -66,3 +66,16 @@ def test_handoffs_fill_in_values_and_frame_the_solution():
     assert r["work_latex"] == "2x + 10 = 30"
     w = r["graph_window"]
     assert w["xmin"] < 10 < w["xmax"] and w["ymin"] < 30 < w["ymax"]
+
+
+def test_variables_console():
+    from mathcore.smartcalc import op_smart_console as console
+
+    have = [{"name": "y", "latex": "5"}, {"name": "x", "latex": "7"}]
+    saved = console({"text": "area = pi*r**2", "vars": [*have, {"name": "r", "latex": "3"}]})
+    assert saved["kind"] == "assign" and saved["name"] == "area" and saved["result_latex"] == "9 \\pi"
+    assert console({"text": "d = 2r", "vars": [{"name": "r", "latex": "3"}]})["result_latex"] == "6"
+    assert console({"text": "2*y + x", "vars": have})["result_latex"] == "17"
+    assert console({"text": "clear"}) == {"kind": "clear"} and console({"text": "del y"}) == {"kind": "delete", "name": "y"}
+    with pytest.raises(MathInputError, match="z has no value"):
+        console({"text": "z + 1", "vars": have})

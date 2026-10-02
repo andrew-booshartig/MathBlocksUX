@@ -297,3 +297,64 @@ def op_smart(req: dict) -> dict:
         # the other things this line could do, offered as one-tap chips
         "others": [a for a in actions if a != action],
     }
+
+
+# ------------------------------------------------- the Variables console
+
+
+# typed like Python (2*r, r**2) — or the everyday way (2r, r^2)
+CONSOLE = [{"id": "console", "name": "Console", "power": ["**", "^"], "equals": ["=", "=="], "implicit_multiplication": True}]
+_DELETE = re.compile(r"^\s*del\s+([A-Za-z][A-Za-z0-9_]*)\s*$")
+_CLEAR = re.compile(r"^\s*clear\s*(\(\s*\))?\s*$", re.I)
+
+
+def op_smart_console(req: dict) -> dict:
+    """One line typed in the Variables console. It changes nothing itself —
+    it says what the line means, and the calculator applies it:
+      y = 5 / y = 2x + 1   → set (or redefine) a variable
+      del y                → remove one       clear → remove them all
+      y, 2*y + x           → show a value"""
+    text = (req.get("text") or "").strip()
+    if not text:
+        raise MathInputError("")
+    if _CLEAR.match(text):
+        return {"kind": "clear"}
+    gone = _DELETE.match(text)
+    if gone:
+        return {"kind": "delete", "name": gone.group(1)}
+    try:
+        node = lang.parse(text, "console", CONSOLE)
+    except lang.Incomplete:
+        raise MathInputError("") from None
+    items = [v for v in (req.get("vars") or []) if (v.get("name") or "").strip()]
+    if isinstance(node, lang.Rel):
+        if node.ops != ["="] or not isinstance(node.parts[0], Sym):
+            raise MathInputError("to save a value, put a name on the left: y = 5")
+        name = node.parts[0].name
+        value_latex = lang.latex(node.parts[1])
+        # what it works out to, with this new value in place
+        values = resolve_variables([*[v for v in items if v["name"] != name], {"name": name, "latex": value_latex}])
+        mine = values.get(name, {})
+        return {
+            "kind": "assign",
+            "name": name,
+            "latex": value_latex,
+            "input_latex": lang.latex(node),
+            "result_latex": mine.get("latex"),
+            "decimal": mine.get("decimal"),
+            "error": mine.get("error"),
+        }
+    # just a value: work it out with the variables
+    values = resolve_variables(items)
+    plain = {n: v["plain"] for n, v in values.items() if "plain" in v}
+    text_plain = lang.write(node, "plain", PLAIN)
+    missing = _letters(text_plain, plain)
+    if missing:
+        raise MathInputError(f"{', '.join(missing)} {'has' if len(missing) == 1 else 'have'} no value yet — give it one: {missing[0]} = …")
+    value = op_calc({"expr": text_plain, "angle": req.get("angle", "deg"), "vars": plain})
+    return {
+        "kind": "value",
+        "input_latex": lang.latex(node),
+        "result_latex": value["exact_latex"],
+        "decimal": value["decimal"] if value["exact_differs"] else None,
+    }

@@ -313,7 +313,16 @@ export interface CalculatorBlockData extends BlockBase {
   /** which of its sections is showing */
   smartTab?: "calc" | "vars" | "work" | "graph";
   /** its named values (LaTeX, as typed — they may use each other) */
-  smartVars?: { id: string; name: string; latex: string }[];
+  smartVars?: { id: string; name: string; latex: string; text?: string }[];
+  /** the Variables console: what was typed, and what came back */
+  smartConsole?: {
+    id: string;
+    input: string;
+    kind: "assign" | "value" | "delete" | "clear" | "error";
+    latex?: string;
+    decimal?: string | null;
+    message?: string;
+  }[];
   /** its Work and Graph sections: the same data as those blocks */
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
   smartGraph?: Partial<Omit<GraphBlockData, "id" | "type" | "position">>;
