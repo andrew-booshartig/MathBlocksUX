@@ -258,13 +258,10 @@ export interface SmartResult {
   name?: string;
   params?: string[];
   value_latex?: string;
-  /** where else it can go: the Work tab, and what the Graph tab would draw */
+  /** can it go to the Work tab? */
   work?: boolean;
   /** the line with the variables' values filled in, for the Work tab */
   work_latex?: string;
-  graph?: string[];
-  /** a window that shows where the sides meet */
-  graph_window?: GraphWindow;
 }
 
 export interface SmartEntry {
@@ -312,7 +309,7 @@ export interface CalculatorBlockData extends BlockBase {
   /** the smart calculator's history (pretty math in, answers out) */
   smart?: SmartEntry[];
   /** which of its sections is showing */
-  smartTab?: "calc" | "vars" | "work" | "graph";
+  smartTab?: "calc" | "vars" | "work";
   /** its named values (LaTeX, as typed — they may use each other) */
   /** with `params` it's a function: f(x) = x² + 1 */
   smartVars?: { id: string; name: string; latex: string; params?: string[] }[];
@@ -327,9 +324,8 @@ export interface CalculatorBlockData extends BlockBase {
     decimal?: string | null;
     message?: string;
   }[];
-  /** its Work and Graph sections: the same data as those blocks */
+  /** its Work section: the same data as a Show-your-work block */
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
-  smartGraph?: Partial<Omit<GraphBlockData, "id" | "type" | "position">>;
   ti?: TIState;
   /** the TI layout's extra-keys strip (fractions, powers…); on unless turned off */
   tiExtras?: boolean;

@@ -201,40 +201,6 @@ def op_smart_vars(req: dict) -> dict:
 # ---------------------------------------------------------------- a line
 
 
-def _graph_lines(node, text: str, letters: list[str]) -> list[str]:
-    """What the Graph tab would draw for this line (empty: nothing sensible)."""
-    if set(letters) == {"x"}:
-        if isinstance(node, lang.Rel) and len(node.ops) == 1:
-            # each side as a line: where they cross is the solution
-            return [f"y = {lang.write(side, 'plain', PLAIN)}" for side in node.parts]
-        if not isinstance(node, lang.Rel):
-            return [f"y = {text}"]
-    if set(letters) == {"x", "y"}:
-        return [text]
-    return []
-
-
-def _graph_window(text: str, vars_: dict) -> dict | None:
-    """A window that shows where the two sides of an equation in x meet."""
-    sides = _RELATION.split(text)
-    if len(sides) != 2:
-        return None
-    scope = build_scope(vars_)
-    x = sympy.Symbol("x")
-    left, right = parse(sides[0], scope), parse(sides[1], scope)
-    found = [s for s in sympy.solve(sympy.Eq(left, right), x) if s.is_real]
-    if len(found) != 1:
-        return None
-    sx, sy = float(found[0]), float(left.subs(x, found[0]))
-    pad = max(5.0, abs(sx) * 0.4, abs(sy) * 0.4)
-    return {
-        "xmin": round(min(-10.0, sx - pad), 3),
-        "xmax": round(max(10.0, sx + pad), 3),
-        "ymin": round(min(-10.0, sy - pad), 3),
-        "ymax": round(max(10.0, sy + pad), 3),
-    }
-
-
 def op_smart(req: dict) -> dict:
     latex = _typed(req.get("latex") or "")
     if not latex:
@@ -315,16 +281,9 @@ def op_smart(req: dict) -> dict:
     actions = (
         [{"kind": "solve", "var": v, "label": f"Solve for {v}"} for v in letters] if relation else EXPRESSION_ACTIONS
     )
-    # where else this line can go: the Work and Graph tabs (Work gets the
-    # variables' values filled in, so its checks agree with this answer)
-    handoff = {"work": len(letters) == 1, "graph": _graph_lines(node, text, letters)}
-    if handoff["graph"] and relation and set(letters) == {"x"}:
-        try:
-            window = _graph_window(text, vars_)
-            if window:
-                handoff["graph_window"] = window
-        except Exception:  # noqa: BLE001 — the default window, then
-            pass
+    # it can go on to the Work tab, with the variables' values filled in
+    # (so its checks agree with this answer)
+    handoff = {"work": len(letters) == 1}
     used = [n for n in names if n in vars_]
     if handoff["work"] and used:
         try:

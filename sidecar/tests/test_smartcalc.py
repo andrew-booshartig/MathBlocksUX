@@ -57,15 +57,13 @@ def test_lines_use_variables_and_can_save_them():
     assert saved["kind"] == "assign" and saved["name"] == "cost"
     assert run("xy=6")["kind"] == "choose"  # two letters: an equation, not a name
     solved = run("2x+r=11", vars=plain)
-    assert solved["result_latex"].startswith("x = \\frac{7}{2}") and solved["graph"] == ["y = 2*x + r", "y = 11"]
+    assert solved["result_latex"].startswith("x = \\frac{7}{2}")
     assert set(run("100\\cdot rate", vars=plain)["names"]) == {"rate"}
 
 
-def test_handoffs_fill_in_values_and_frame_the_solution():
+def test_work_handoff_fills_in_values():
     r = run("2x+r=30", vars={"r": "10"})
-    assert r["work_latex"] == "2x + 10 = 30"
-    w = r["graph_window"]
-    assert w["xmin"] < 10 < w["xmax"] and w["ymin"] < 30 < w["ymax"]
+    assert r["work_latex"] == "2x + 10 = 30" and "graph" not in r
 
 
 def test_variables_console():

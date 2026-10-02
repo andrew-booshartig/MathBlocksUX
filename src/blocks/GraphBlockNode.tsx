@@ -60,25 +60,17 @@ const decimals = (step: number) => Math.max(0, Math.min(6, Math.ceil(-Math.log10
 const clean = (v: number, step: number) => Number(v.toFixed(decimals(step)));
 const fmtCoord = (n: number) => String(Math.round(n * 1000) / 1000);
 
-/** The graphing studio itself: everything but the block around it, so a
- * tab inside another block (the smart calculator) can use it too. */
+/** The graphing studio itself: everything but the block around it. */
 export function GraphStudio({
   data,
   update,
   frame,
-  pool: poolOverride,
-  poolNames = { toggle: "Use global variables", from: "from the canvas" },
 }: {
   data: GraphBlockData;
   update: (patch: Partial<GraphBlockData>) => void;
   frame: Frame;
-  /** where letters' values come from (default: the canvas's Variable blocks) */
-  pool?: Record<string, string>;
-  /** what to call that source (default: "global variables", "from the canvas") */
-  poolNames?: { toggle: string; from: string };
 }) {
-  const canvasPool = useVariables();
-  const pool = poolOverride ?? canvasPool;
+  const pool = useVariables();
   const latest = useRef(data);
   latest.current = data;
 
@@ -391,7 +383,7 @@ export function GraphStudio({
             title="On: letters use the values of Variable and Slider blocks on the canvas, and anything they don't define gets a slider here. Off: this graph only uses its own sliders."
           >
             <input type="checkbox" checked={useGlobals} onChange={(e) => update({ useGlobals: e.target.checked })} />
-            {poolNames.toggle}
+            Use global variables
           </label>
         </div>
         {usedGlobals.map((name) => (
@@ -399,7 +391,7 @@ export function GraphStudio({
             <span className="graph-slider-name">
               <Tex math={name} /> = {pool[name]}
             </span>
-            <span className="graph-slider-note">{poolNames.from}</span>
+            <span className="graph-slider-note">from the canvas</span>
           </div>
         ))}
         {sliders.map((s) => {

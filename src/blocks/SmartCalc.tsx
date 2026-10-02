@@ -6,8 +6,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   type CalculatorBlockData,
-  type GraphBlockData,
-  type GraphWindow,
   type SmartAction,
   type SmartEntry,
   type SmartResult,
@@ -16,7 +14,6 @@ import {
   useStore,
 } from "../store";
 import { WorkPad } from "./WorkBlockNode";
-import { GraphStudio } from "./GraphBlockNode";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { StepList, Tex } from "../ui";
@@ -82,7 +79,6 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "calc", label: "Calculate" },
   { value: "vars", label: "Variables" },
   { value: "work", label: "Work" },
-  { value: "graph", label: "Graph" },
 ];
 
 type VarValue = { plain?: string; latex?: string; decimal?: string | null; error?: string; params?: string[] };
@@ -106,7 +102,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const updateBlock = useStore((state) => state.updateBlock<CalculatorBlockData>);
   const entries = data.smart ?? [];
   const variables = data.smartVars ?? [];
-  const tab: Tab = data.smartTab ?? "calc";
+  const tab: Tab = data.smartTab && TABS.some((t) => t.value === data.smartTab) ? data.smartTab : "calc";
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   /** a quiet line under the field: "Copied …" */
@@ -383,12 +379,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const showWork = (latex: string) => {
     updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), problem: latex, lines: [""], reasons: [""] }, smartTab: "work" });
   };
-  const sendToGraph = (lines: string[], window?: GraphWindow) => {
-    const graph = current()?.smartGraph ?? {};
-    const have = (graph.expr ?? "").split("\n").filter((l) => l.trim());
-    const add = lines.filter((l) => !have.includes(l));
-    updateBlock(data.id, { smartGraph: { ...graph, expr: [...have, ...add].join("\n"), ...(window ? { window } : {}) }, smartTab: "graph" });
-  };
 
   const previewText =
     preview?.kind === "choose"
@@ -410,8 +400,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     </div>
   );
 
-  // ---- the Work and Graph tabs: the same pad and studio as their blocks,
-  // kept inside this calculator
+  // ---- the Work tab: the same pad as the Show-your-work block, kept inside
+  // this calculator
   const workData: WorkBlockData = {
     id: `${data.id}:work`,
     type: "work",
@@ -424,14 +414,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     locked: false,
     input: "visual",
     ...(data.smartWork ?? {}),
-  };
-  const graphData: GraphBlockData = {
-    id: `${data.id}:graph`,
-    type: "graph",
-    position: { x: 0, y: 0 },
-    expr: "",
-    equalAspect: true,
-    ...(data.smartGraph ?? {}),
   };
   const tabFrame = (className: string) => (headerExtra: ReactNode, body: ReactNode) => (
     <div className={className}>
@@ -534,16 +516,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
         />
       )}
 
-      {tab === "graph" && (
-        <GraphStudio
-          data={graphData}
-          pool={vars}
-          poolNames={{ toggle: "Use my Variables", from: "from Variables" }}
-          update={(patch) => updateBlock(data.id, { smartGraph: { ...(current()?.smartGraph ?? {}), ...patch } })}
-          frame={tabFrame("smart-tab-graph")}
-        />
-      )}
-
       {tab === "calc" && (
         <>
           {variables.length > 0 && (
@@ -576,11 +548,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                   {r.work && (
                     <button className="chip is-handoff" onClick={() => showWork(r.work_latex ?? entry.latex)}>
                       ✎ Show work
-                    </button>
-                  )}
-                  {!!r.graph?.length && (
-                    <button className="chip is-handoff" onClick={() => sendToGraph(r.graph!, r.graph_window)}>
-                      📈 Graph
                     </button>
                   )}
                 </>

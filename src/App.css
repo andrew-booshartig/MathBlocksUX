@@ -4635,17 +4635,6 @@ body,
   gap: 8px;
 }
 
-.smart-tab-graph {
-  height: 560px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.smart-tab-graph > .graph-studio {
-  flex: 1;
-}
-
 /* Show your work: history of finished problems */
 .work-history-btn {
   position: relative;
