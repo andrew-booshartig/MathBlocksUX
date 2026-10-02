@@ -99,6 +99,22 @@ pub fn save_image(app: AppHandle, name: String, data_url: String) -> Result<Stri
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Saves a document (a web page — e.g. a Show-your-work history) to
+/// ~/Downloads as `<name>.html`. Never overwrites: adds " (2)", " (3)", …
+#[tauri::command]
+pub fn save_document(app: AppHandle, name: String, html: String) -> Result<String, String> {
+    let name = safe_filename(&name)?;
+    let dir = app.path().download_dir().map_err(|e| e.to_string())?;
+    let mut path = dir.join(format!("{name}.html"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("{name} ({n}).html"));
+        n += 1;
+    }
+    fs::write(&path, html).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// Standard base64 (no crate needed for one PNG now and then).
 fn decode_base64(text: &str) -> Result<Vec<u8>, String> {
     fn value(c: u8) -> Option<u32> {

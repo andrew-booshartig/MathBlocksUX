@@ -202,6 +202,17 @@ export function GraphStudio({
       ]
     : [];
 
+  /** zoom about the middle of the view, like a browser's + / − */
+  const zoomBy = (k: number) => {
+    const w = latest.current.window ?? DEFAULT_WINDOW;
+    const cx = (w.xmin + w.xmax) / 2;
+    const cy = (w.ymin + w.ymax) / 2;
+    const hx = ((w.xmax - w.xmin) / 2) * k;
+    const hy = ((w.ymax - w.ymin) / 2) * k;
+    const r = (n: number) => Math.round(n * 1000) / 1000;
+    update({ window: { xmin: r(cx - hx), xmax: r(cx + hx), ymin: r(cy - hy), ymax: r(cy + hy) } });
+  };
+
   const setAppearance = (patch: Partial<GraphAppearance>) => update({ appearance: { ...appearance, ...patch } });
   const setWindowField = (field: keyof GraphWindow, value: string) => {
     const n = Number(value);
@@ -440,6 +451,12 @@ export function GraphStudio({
             <Icon name="magnet" size={15} />
           </button>
         )}
+        <button className="graph-tool" title="Zoom out" onClick={() => zoomBy(1.5)}>
+          <Icon name="zoomOut" size={15} />
+        </button>
+        <button className="graph-tool" title="Zoom in" onClick={() => zoomBy(1 / 1.5)}>
+          <Icon name="zoom" size={15} />
+        </button>
         <button className="graph-tool" title="Back to −10 … 10" onClick={() => update({ window: DEFAULT_WINDOW })}>
           <Icon name="reset" size={15} />
         </button>
@@ -636,7 +653,6 @@ export function GraphStudio({
                     if (empty >= 0) setLine(empty, point);
                     else saveLines([...lines, point], padded().concat({}));
                   }}
-                  onWindowChange={(w) => update({ window: w })}
                 />
               )}
             />

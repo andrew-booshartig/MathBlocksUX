@@ -209,6 +209,26 @@ export interface WorkBlockData extends BlockBase {
   /** The input language — always chosen, never guessed: "visual" (type
    *  the way it looks), "latex", or a text language by id. */
   input?: WorkLanguage;
+  /** finished problems, with their work — an assignment's worth */
+  history?: WorkHistoryEntry[];
+  /** the problem the current lines were written for (a new problem + Enter
+   *  files them away in the history) */
+  workFor?: string;
+}
+
+export interface WorkHistoryEntry {
+  id: string;
+  at: number;
+  /** as typed, so it can be restored */
+  problem: string;
+  lines: string[];
+  reasons: string[];
+  /** as checked when it was filed: for showing and documents */
+  kind: "equation" | "inequality" | "expression";
+  problemLatex: string;
+  problemParts: [string, string, string] | null;
+  steps: { latex: string; parts: [string, string, string] | null; status: string }[];
+  solved: boolean;
 }
 
 /** What the smart calculator did with a line: a value, a simplified or

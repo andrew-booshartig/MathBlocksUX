@@ -16,6 +16,7 @@ pub fn run() {
             workspace::delete_workspace,
             workspace::export_workspace,
             workspace::save_image,
+            workspace::save_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

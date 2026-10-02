@@ -95,7 +95,7 @@ export default function StatsBlockNode({ id }: NodeProps) {
           />
           <StepList steps={result.steps} defaultOpen={false} />
           {plot && (
-            <div className="graph-view nodrag nowheel">
+            <div className="graph-view nodrag">
               <Plot data={plot.data} layout={plot.layout} config={{ displayModeBar: false }} />
             </div>
           )}

@@ -9,7 +9,9 @@
  * (tests), and can lock the problem so it can't be edited. */
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeProps } from "@xyflow/react";
-import { type LanguageSpec, type WorkBlockData, type WorkCheck, useStore } from "../store";
+import { type LanguageSpec, type WorkBlockData, type WorkCheck, type WorkHistoryEntry, newId, useStore } from "../store";
+import { invoke } from "@tauri-apps/api/core";
+import { alignedWork, documentHtml, documentLatex, snapshot } from "../workHistory";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import { ErrorText, RichText, Segmented, Tex } from "../ui";
 import MathInput, { type MathInputHandle } from "../MathInput";
@@ -111,7 +113,17 @@ export function WorkPad({
   const [typing, setTyping] = useState<number | "problem" | null>(null);
   /** what Clear removed, so it can be undone for a few seconds */
   /** what Clear (or the problem's ×) removed, so it can be undone for a few seconds */
-  const [cleared, setCleared] = useState<{ lines?: string[]; reasons?: string[]; problem?: string } | null>(null);
+  const [cleared, setCleared] = useState<{ lines?: string[]; reasons?: string[]; problem?: string; filed?: string } | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [openEntry, setOpenEntry] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  /** a quiet line under the problem: "filed in History", "saved to …" */
+  const [flash, setFlash] = useState<string | null>(null);
+  useEffect(() => {
+    if (!flash) return;
+    const timer = setTimeout(() => setFlash(null), 5000);
+    return () => clearTimeout(timer);
+  }, [flash]);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const mathInputs = useRef<(MathInputHandle | null)[]>([]);
@@ -189,7 +201,76 @@ export function WorkPad({
 
   if (!data) return null;
 
-  const setLines = (next: string[], nextReasons = reasons) => update({ lines: next.length ? next : [""], reasons: nextReasons });
+  const setLines = (next: string[], nextReasons = reasons) => {
+    // the first step written: remember which problem this work is for
+    const starting = !latest.current.lines.some((l) => l.trim()) && next.some((l) => l.trim());
+    update({ lines: next.length ? next : [""], reasons: nextReasons, ...(starting ? { workFor: latest.current.problem } : {}) });
+  };
+
+  // ---- history: an assignment's worth of finished problems
+  const history = data.history ?? [];
+  /** File the work in the history (checked once more, as it stands). The id
+   * is picked first so an Undo can take it back out. */
+  const fileWork = (problem: string, workLines: string[], workReasons: string[], id = newId("problem")) =>
+    snapshot(problem, workLines, workReasons, syntax, customLanguages).then(
+      (entry) => {
+        if (!entry) return null;
+        update({ history: [...(latest.current.history ?? []), { ...entry, id }] });
+        return id;
+      },
+      () => null,
+    );
+  const removeFiled = (id: string) => update({ history: (latest.current.history ?? []).filter((h) => h.id !== id) });
+
+  /** Enter on the problem: a new problem files the old work and starts fresh.
+   * `typed` is the field's own text — its change event can lag the last key. */
+  const problemEntered = (typed?: string) => {
+    setTyping(null);
+    const d = latest.current;
+    const problem = typed ?? d.problem;
+    const hasWork = d.lines.some((l) => l.trim());
+    const before = d.workFor ?? "";
+    if (hasWork && before.trim() && before.trim() !== problem.trim()) {
+      fileWork(before, d.lines, d.reasons).then((id) => id && setFlash(`Last problem filed in History (${(latest.current.history ?? []).length})`));
+      update({ problem, lines: [""], reasons: [""], workFor: undefined });
+    } else if (problem !== d.problem) update({ problem });
+    setTimeout(() => (visual ? mathInputs.current[0]?.focus() : inputs.current[0]?.focus()), 40);
+  };
+
+  const restoreEntry = (entry: WorkHistoryEntry) => {
+    const d = latest.current;
+    const rest = (d.history ?? []).filter((h) => h.id !== entry.id);
+    // whatever was in the pad goes into the history first
+    if (d.lines.some((l) => l.trim())) fileWork(d.workFor ?? d.problem, d.lines, d.reasons);
+    update({ history: rest, problem: entry.problem, lines: entry.lines.length ? entry.lines : [""], reasons: entry.reasons, workFor: entry.problem });
+    setHistoryOpen(false);
+  };
+
+  /** the history (and whatever's in the pad now) as a document */
+  const allProblems = async (): Promise<WorkHistoryEntry[]> => {
+    const d = latest.current;
+    const now = d.lines.some((l) => l.trim()) ? await snapshot(d.problem, d.lines, d.reasons, syntax, customLanguages).catch(() => null) : null;
+    return [...(d.history ?? []), ...(now ? [now] : [])];
+  };
+  const documentTitle = () => `Show your work — ${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+  const saveDocument = async () => {
+    const entries = await allProblems();
+    if (!entries.length) return setFlash("Nothing to save yet — finish a problem first");
+    try {
+      const path = await invoke<string>("save_document", { name: documentTitle().replace(/[\\/:*?"<>|]/g, "-"), html: documentHtml(documentTitle(), entries) });
+      setFlash(`Saved to ${path} — open it in your browser to print or save as PDF`);
+    } catch (err) {
+      setFlash(`Couldn't save the document: ${err}`);
+    }
+  };
+  const copyDocumentLatex = async () => {
+    const entries = await allProblems();
+    if (!entries.length) return setFlash("Nothing to copy yet — finish a problem first");
+    navigator.clipboard?.writeText(documentLatex(documentTitle(), entries)).then(
+      () => setFlash("The whole history is on the clipboard as a LaTeX document"),
+      () => setFlash("Couldn't copy to the clipboard"),
+    );
+  };
 
   const insertLine = (at: number, text = "") => {
     const next = [...lines];
@@ -334,6 +415,13 @@ export function WorkPad({
 
   return frame(
         <>
+          <button
+            className={`block-icon-btn work-history-btn${historyOpen ? " is-active" : ""}`}
+            title="History — every problem you've finished, ready to turn into a document"
+            onClick={() => setHistoryOpen(!historyOpen)}
+          >
+            🗂{history.length > 0 && <span className="work-history-count">{history.length}</span>}
+          </button>
           <button className={`block-icon-btn${paper ? " is-active" : ""}`} title="Paper view — the finished work, lined up" onClick={() => setPaper(!paper)}>
             📄
           </button>
@@ -342,6 +430,75 @@ export function WorkPad({
           </button>
         </>,
     <>
+      {historyOpen && (
+        <div className="work-history nodrag nowheel">
+          <div className="work-history-head">
+            <span className="work-label">
+              History · {history.length} problem{history.length === 1 ? "" : "s"}
+            </span>
+            <button className="block-icon-btn" title="Close" onClick={() => setHistoryOpen(false)}>
+              ×
+            </button>
+          </div>
+          {!history.length && <div className="work-history-empty">Finished problems collect here. Type the next problem and press Enter — the last one (and all its work) is filed here.</div>}
+          <ol className="work-history-list">
+            {history.map((h, i) => (
+              <li key={h.id} className="work-history-item">
+                <button className="work-history-row" onClick={() => setOpenEntry(openEntry === h.id ? null : h.id)}>
+                  <span className="work-history-num">{i + 1}</span>
+                  <Tex math={h.problemLatex} />
+                  <span className={`work-history-status${h.solved ? " is-solved" : ""}`}>{h.solved ? "✓ solved" : "unfinished"}</span>
+                </button>
+                {openEntry === h.id && (
+                  <div className="work-history-detail">
+                    <Tex math={alignedWork(h.kind, h.problemLatex, h.problemParts, h.steps)} block className="tex-block" />
+                    <div className="work-history-detail-actions">
+                      <button className="chip" title="Bring it back into the pad to keep working on it" onClick={() => restoreEntry(h)}>
+                        ↺ Keep working on it
+                      </button>
+                      <button className="chip" onClick={() => removeFiled(h.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
+          <div className="work-history-actions">
+            <button className="action-btn is-primary" onClick={saveDocument} title="A page in Downloads with every problem and its work — print it or save it as a PDF">
+              Save as document
+            </button>
+            <button className="action-btn" onClick={copyDocumentLatex}>
+              Copy as LaTeX
+            </button>
+            {history.length > 0 &&
+              (confirmClear ? (
+                <span className="work-history-confirm">
+                  Clear all {history.length}?
+                  <button
+                    className="action-btn is-danger"
+                    onClick={() => {
+                      update({ history: [] });
+                      setConfirmClear(false);
+                      setOpenEntry(null);
+                    }}
+                  >
+                    Clear
+                  </button>
+                  <button className="action-btn" onClick={() => setConfirmClear(false)}>
+                    Keep
+                  </button>
+                </span>
+              ) : (
+                <button className="action-btn" onClick={() => setConfirmClear(true)}>
+                  Clear history
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+      {flash && <div className="work-flash">{flash}</div>}
       {settings && (
         <div className="work-settings nodrag">
           <Segmented value={data.check} options={CHECK_MODES} onChange={(check) => update({ check })} />
@@ -391,10 +548,7 @@ export function WorkPad({
               setTyping("problem");
             }}
             onBlur={() => setTyping(null)}
-            onEnter={() => {
-              setTyping(null);
-              mathInputs.current[0]?.focus();
-            }}
+            onEnter={() => problemEntered(problemMath.current?.getValue())}
             onMoveOut={(direction) => direction === "downward" && mathInputs.current[0]?.focus()}
           />
         ) : (
@@ -407,7 +561,7 @@ export function WorkPad({
               setTyping("problem");
             }}
             onBlur={() => setTyping(null)}
-            onKeyDown={(e) => e.key === "Enter" && setTyping(null)}
+            onKeyDown={(e) => e.key === "Enter" && problemEntered((e.target as HTMLInputElement).value)}
           />
         )}
         {result && (data.locked || !visual) && <Tex math={result.problem_latex} block className="tex-block work-problem-tex" />}
@@ -596,7 +750,9 @@ export function WorkPad({
             className="action-btn is-primary"
             onClick={() => {
               clearTimeout(clearTimer.current);
-              update(cleared);
+              const { filed, ...restored } = cleared;
+              if (filed) removeFiled(filed);
+              update({ ...restored, ...(restored.lines ? { workFor: restored.problem ?? latest.current.problem } : {}) });
               setCleared(null);
             }}
           >
@@ -624,10 +780,13 @@ export function WorkPad({
             disabled={!lines.some((l) => l.trim()) && !data.problem.trim()}
             title="All clear — erase the problem and every step"
             onClick={() => {
-              setCleared({ problem: data.problem, lines, reasons });
+              // the work goes into the history (Undo takes it back out)
+              const filed = lines.some((l) => l.trim()) && (data.workFor ?? data.problem).trim() ? newId("problem") : undefined;
+              if (filed) fileWork(data.workFor ?? data.problem, lines, reasons, filed);
+              setCleared({ problem: data.problem, lines, reasons, filed });
               clearTimeout(clearTimer.current);
               clearTimer.current = setTimeout(() => setCleared(null), 8000);
-              update({ problem: "", lines: [""], reasons: [""] });
+              update({ problem: "", lines: [""], reasons: [""], workFor: undefined });
               setTimeout(() => problemMath.current?.focus(), 30);
             }}
           >

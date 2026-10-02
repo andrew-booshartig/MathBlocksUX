@@ -53,7 +53,6 @@ export default function GraphDrawLayer({
   drawings,
   onDrawings,
   onPoint,
-  onWindowChange,
 }: {
   plot: PlotDiv;
   size: { width: number; height: number };
@@ -66,7 +65,6 @@ export default function GraphDrawLayer({
   onDrawings: (drawings: GraphDrawing[]) => void;
   /** the point tool adds a point to the graph's math, not a drawing */
   onPoint: (x: number, y: number) => void;
-  onWindowChange: (window: GraphWindow) => void;
 }) {
   const layer = useRef<HTMLDivElement>(null);
   const [stroke, setStroke] = useState<Px[] | null>(null);
@@ -165,18 +163,6 @@ export default function GraphDrawLayer({
     setTyping(null);
   };
 
-  // a drawing tool covers the plot, so do the scroll-to-zoom here
-  const onWheel = (e: React.WheelEvent) => {
-    const [cx, cy] = geo.toGraph(local(e));
-    const k = Math.exp(Math.max(-0.5, Math.min(0.5, e.deltaY * 0.0025)));
-    onWindowChange({
-      xmin: round(cx - (cx - window.xmin) * k),
-      xmax: round(cx + (window.xmax - cx) * k),
-      ymin: round(cy - (cy - window.ymin) * k),
-      ymax: round(cy + (window.ymax - cy) * k),
-    });
-  };
-
   const preview = stroke && stroke.length > 1 && (
     <svg className="graph-draw-preview" width={size.width} height={size.height}>
       {tool === "pen" ? (
@@ -199,7 +185,6 @@ export default function GraphDrawLayer({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={() => setStroke(null)}
-      onWheel={onWheel}
     >
       {preview}
       {typing && (

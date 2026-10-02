@@ -399,7 +399,9 @@ export default function GraphView({
   };
 
   return (
-    <div className={`graph-view nodrag nowheel${fill ? " is-fill" : ""}`} ref={box}>
+    // no wheel zoom: scrolling over a graph scrolls the page like anywhere
+    // else (a big graph used to trap the wheel) — zoom with the buttons
+    <div className={`graph-view nodrag${fill ? " is-fill" : ""}`} ref={box}>
       <Plot
         data={data}
         layout={layout}
@@ -408,7 +410,7 @@ export default function GraphView({
         config={{
           displayModeBar: fill ? false : "hover",
           displaylogo: false,
-          scrollZoom: true,
+          scrollZoom: false,
           modeBarButtonsToRemove: ["lasso2d", "select2d", "toggleSpikelines", "hoverClosestCartesian", "hoverCompareCartesian", "autoScale2d"],
         }}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

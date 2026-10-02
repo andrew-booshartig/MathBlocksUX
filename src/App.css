@@ -4624,3 +4624,140 @@ body,
 .smart-tab-graph > .graph-studio {
   flex: 1;
 }
+
+/* Show your work: history of finished problems */
+.work-history-btn {
+  position: relative;
+}
+
+.work-history-count {
+  position: absolute;
+  top: -5px;
+  right: -7px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #5cc8f0;
+  color: #0b1a22;
+  font: 700 9.5px/15px -apple-system, Helvetica, sans-serif;
+  text-align: center;
+}
+
+.work-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  margin-bottom: 4px;
+  border: 1px solid #2a3a48;
+  border-radius: 10px;
+  background: #121a22;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.work-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.work-history-empty {
+  font-size: 12.5px;
+  color: #8a8aa0;
+  line-height: 1.45;
+}
+
+.work-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.work-history-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: none;
+  background: #18202a;
+  color: #e8e8f0;
+  cursor: pointer;
+  text-align: left;
+  font-size: 15px;
+  overflow-x: auto;
+}
+
+.work-history-row:hover {
+  background: #1e2834;
+}
+
+.work-history-num {
+  color: #6a7a8e;
+  font-size: 12px;
+  min-width: 14px;
+}
+
+.work-history-status {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font: 600 11px -apple-system, Helvetica, sans-serif;
+  color: #e0b25c;
+  background: #e0b25c1a;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.work-history-status.is-solved {
+  color: #8fd694;
+  background: #2e9e4f22;
+}
+
+.work-history-detail {
+  padding: 6px 10px 8px 34px;
+}
+
+.work-history-detail .tex-block {
+  overflow-x: auto;
+}
+
+.work-history-detail-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.work-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid #22303c;
+}
+
+.work-history-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #f0c0c0;
+}
+
+.action-btn.is-danger {
+  border-color: #d6454566;
+  color: #f19a9a;
+}
+
+.work-flash {
+  font-size: 12px;
+  color: #8fd694;
+  padding: 0 2px 4px;
+  overflow-wrap: anywhere;
+}
