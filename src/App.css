@@ -4332,8 +4332,7 @@ math-field {
 }
 
 .smart-tape {
-  max-height: 280px;
-  min-height: 60px;
+  height: 240px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -4345,6 +4344,26 @@ math-field {
   color: #6a6a80;
   font-size: 12.5px;
   padding: 8px 4px;
+}
+
+.smart-tape > * {
+  flex-shrink: 0;
+}
+
+/* answers settle at the bottom, next to the line (newest last) */
+.smart-tape > :first-child {
+  margin-top: auto;
+}
+
+.smart-tape > .smart-empty {
+  margin: auto 0;
+  text-align: center;
+  padding: 8px 24px;
+}
+
+/* older answers above: fade the top edge */
+.smart-tape.is-scrolled {
+  mask-image: linear-gradient(to bottom, transparent, #000 24px);
 }
 
 .smart-entry {

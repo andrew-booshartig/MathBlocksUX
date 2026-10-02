@@ -107,6 +107,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const field = useRef<MathInputHandle>(null);
   const tape = useRef<HTMLDivElement>(null);
   const strip = useRef<HTMLDivElement>(null);
+  /** the history is scrolled down: older answers are up above (it fades there) */
+  const [tapeScrolled, setTapeScrolled] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const recall = useRef<{ index: number; text: string } | null>(null);
   const ans = [...entries].reverse().find((e) => e.result.ans)?.result.ans ?? undefined;
@@ -384,41 +386,42 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
         <>
           {/* the variables: one slim line that scrolls sideways (the newest
               first, then the canvas's), so the calculator never grows */}
-          {(items.length > 0 || wiped || entries.length > 0) && (
-            <div className="smart-vars">
-              <div className="smart-vars-scroll" ref={strip}>
-                {[...[...localItems].reverse().map((v) => ({ ...v, own: true })), ...globalItems.map((v) => ({ ...v, own: false }))]
-                  .filter((v) => values[v.name]?.latex !== undefined)
-                  .map((v) => (
-                    <button
-                      key={`${v.own ? "own" : "canvas"}:${v.name}`}
-                      className={`chip${v.own ? "" : " is-canvas"}`}
-                      title={v.own ? "This calculator's own — tap to put it in the line" : "From a Variables block — tap to put it in the line"}
-                      onPointerDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        // a function goes in ready for its input: f(▢)
-                        field.current?.insert(v.params?.length ? `${nameTex(v.name)}\\left(#?\\right)` : nameTex(v.name));
-                        field.current?.focus();
-                      }}
-                    >
-                      <Tex math={`${signature(v)} = ${values[v.name].latex}`} />
-                    </button>
-                  ))}
-              </div>
-              {wiped ? (
-                <button className="smart-vars-action is-undo" title="Bring back what was just cleared" onClick={undoClear}>
-                  ↶ Undo
-                </button>
-              ) : (
-                (entries.length > 0 || variables.length > 0) && (
-                  <button className="smart-vars-action" title="Clear every answer and this calculator's variables (or type clear) — Undo brings them back" onClick={clearEverything}>
-                    Clear all
+          {/* always there (empty or not), so the calculator never changes size */}
+          <div className="smart-vars">
+            <div className="smart-vars-scroll" ref={strip}>
+              {[...[...localItems].reverse().map((v) => ({ ...v, own: true })), ...globalItems.map((v) => ({ ...v, own: false }))]
+                .filter((v) => values[v.name]?.latex !== undefined)
+                .map((v) => (
+                  <button
+                    key={`${v.own ? "own" : "canvas"}:${v.name}`}
+                    className={`chip${v.own ? "" : " is-canvas"}`}
+                    title={v.own ? "This calculator's own — tap to put it in the line" : "From a Variables block — tap to put it in the line"}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      // a function goes in ready for its input: f(▢)
+                      field.current?.insert(v.params?.length ? `${nameTex(v.name)}\\left(#?\\right)` : nameTex(v.name));
+                      field.current?.focus();
+                    }}
+                  >
+                    <Tex math={`${signature(v)} = ${values[v.name].latex}`} />
                   </button>
-                )
-              )}
+                ))}
             </div>
-          )}
-          <div className="smart-tape nowheel" ref={tape}>
+            {wiped ? (
+              <button className="smart-vars-action is-undo" title="Bring back what was just cleared" onClick={undoClear}>
+                ↶ Undo
+              </button>
+            ) : (
+              (entries.length > 0 || variables.length > 0) && (
+                <button className="smart-vars-action" title="Clear every answer and this calculator's variables (or type clear) — Undo brings them back" onClick={clearEverything}>
+                  Clear all
+                </button>
+              )
+            )}
+          </div>
+          {/* the history: a fixed-height window that scrolls, so the calculator
+              stays one size however many answers there are */}
+          <div className={`smart-tape${tapeScrolled ? " is-scrolled" : ""}`} ref={tape} onScroll={(e) => setTapeScrolled(e.currentTarget.scrollTop > 4)}>
             {!entries.length && <div className="smart-empty">Type math — numbers, x, an equation, or r = 4 to save a value — and press Enter.</div>}
             {entries.map((entry) => {
               const r = entry.result;
