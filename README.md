@@ -28,3 +28,14 @@ sidecar/.venv/bin/python -m pytest sidecar/tests   # engine tests
 - `src/lessons.ts` — built-in lessons and tours
 - `sidecar/` — the math engine (`engine.py` dispatches to `mathcore/`)
 - `src-tauri/` — the desktop shell and the bridge to the engine
+
+## Sharing the app
+
+```sh
+npm run tauri build -- --bundles app,dmg
+```
+
+The build freezes the math engine with PyInstaller (`npm run build:engine`)
+and puts it inside the app, so the `.dmg` runs on any Apple Silicon Mac with
+nothing installed. It's signed locally (not by Apple), so the first time,
+macOS asks: **System Settings → Privacy & Security → Open Anyway**.

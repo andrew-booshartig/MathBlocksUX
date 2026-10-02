@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:engine": "cd sidecar && .venv/bin/python -m PyInstaller --noconfirm --clean --onedir --name engine --distpath dist --workpath build/pyinstaller --specpath build --collect-submodules mathcore --exclude-module tkinter --exclude-module PyInstaller --exclude-module pytest --log-level WARN engine.py"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

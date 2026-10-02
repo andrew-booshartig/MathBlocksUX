@@ -27,3 +27,7 @@ dist-ssr
 .venv
 .pytest_cache
 *.pyc
+
+# the frozen engine (npm run build:engine)
+sidecar/dist
+sidecar/build

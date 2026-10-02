@@ -25,20 +25,29 @@ pub struct SidecarState {
 }
 
 impl SidecarState {
-    pub fn spawn() -> Self {
-        // Dev-mode path resolution: the sidecar's own venv, next to this
-        // crate. Production packaging will need this bundled as a real
-        // Tauri sidecar binary instead of a path relative to the source tree.
-        let python = concat!(env!("CARGO_MANIFEST_DIR"), "/../sidecar/.venv/bin/python");
-        let script = concat!(env!("CARGO_MANIFEST_DIR"), "/../sidecar/engine.py");
+    /// A built app carries its own engine — engine.py frozen with PyInstaller
+    /// (Python, sympy and all) in Contents/Resources/engine — so it runs on
+    /// a Mac with nothing installed. Development runs the sidecar's own venv,
+    /// next to this crate.
+    fn engine() -> Command {
+        let bundled = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.join("../Resources/engine/engine")));
+        if let Some(engine) = bundled.filter(|path| path.exists()) {
+            return Command::new(engine);
+        }
+        let mut dev = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../sidecar/.venv/bin/python"));
+        dev.arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../sidecar/engine.py"));
+        dev
+    }
 
-        let mut child = Command::new(python)
-            .arg(script)
+    pub fn spawn() -> Self {
+        let mut child = Self::engine()
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .expect("failed to start math sidecar (python engine.py)");
+            .expect("failed to start the math engine");
 
         let stdin = child.stdin.take().expect("sidecar stdin");
         let stdout = BufReader::new(child.stdout.take().expect("sidecar stdout"));
