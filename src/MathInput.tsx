@@ -13,6 +13,65 @@ import { MathfieldElement } from "mathlive";
 MathfieldElement.fontsDirectory = "/mathlive/fonts";
 MathfieldElement.soundsDirectory = null;
 
+// ---- selecting the way it's circled on paper: a fraction (root, power…)
+// is one piece. MathLive's model numbers every spot inside it, so a plain
+// selection could cut a fraction in half, or a ⇧-arrow press could move
+// through it without anything changing on screen.
+type Atom = { type: string; parent?: Atom; parentBranch?: unknown; leftSibling?: Atom };
+type Model = { at(offset: number): Atom | undefined; offsetOf(atom: Atom): number; lastOffset: number };
+const modelOf = (mf: MathfieldElement) => (mf as unknown as { _mathfield?: { model?: Model } })._mathfield?.model;
+
+/** [start, end] grown so neither end is inside a structure the other isn't */
+function wholePieces(model: Model, start: number, end: number): [number, number] {
+  const chain = (offset: number) => {
+    const out: Atom[] = [];
+    for (let a = model.at(offset); a?.parent; a = a.parent) out.push(a);
+    return out;
+  };
+  const branch = (a: Atom) => [a.parent, JSON.stringify(a.parentBranch)] as const;
+  const from = chain(start);
+  const to = chain(end);
+  for (let i = 0; i < from.length; i++) {
+    const [parent, key] = branch(from[i]);
+    const j = to.findIndex((a) => a.parent === parent && JSON.stringify(a.parentBranch) === key);
+    if (j < 0) continue;
+    // climbed out of a structure: take all of it
+    const s = i === 0 ? start : from[i].leftSibling ? model.offsetOf(from[i].leftSibling!) : start;
+    const e = j === 0 ? end : model.offsetOf(to[j]);
+    return [s, e];
+  }
+  return [start, end];
+}
+
+function currentRange(mf: MathfieldElement) {
+  const [a, b] = mf.selection.ranges[0];
+  const [lo, hi] = [Math.min(a, b), Math.max(a, b)];
+  return mf.selection.direction === "backward" ? { anchor: hi, focus: lo } : { anchor: lo, focus: hi };
+}
+
+/** ⇧← / ⇧→: one press, one visible step — a whole fraction at a time */
+function extendByPiece(mf: MathfieldElement, step: -1 | 1): boolean {
+  const model = modelOf(mf);
+  if (!model) return false; // MathLive changed inside — leave it to its own
+  const { anchor } = currentRange(mf);
+  let { focus } = currentRange(mf);
+  const shown = (lo: number, hi: number) => (lo === hi ? "" : wholePieces(model, lo, hi).join(","));
+  const before = shown(Math.min(anchor, focus), Math.max(anchor, focus));
+  while (focus + step >= 0 && focus + step <= model.lastOffset) {
+    focus += step;
+    const lo = Math.min(anchor, focus);
+    const hi = Math.max(anchor, focus);
+    if (shown(lo, hi) === before) continue;
+    if (lo === hi) mf.position = lo;
+    else {
+      const [s, e] = wholePieces(model, lo, hi);
+      mf.selection = { ranges: [[s, e]], direction: focus < anchor ? "backward" : "forward" };
+    }
+    break;
+  }
+  return true;
+}
+
 export interface MathInputHandle {
   focus: () => void;
   /** Insert LaTeX at the caret. #? = an empty slot, #@ = the selection / what's just before the caret. */
@@ -70,12 +129,30 @@ export default function MathInput({
     mf.popoverPolicy = "off";
     mf.menuItems = [];
     mf.smartFence = true;
+    // copied into another app, math reads as math: (3x)/4+5, not $$\frac{3x}{4}+5$$
+    // (pasting back in here uses MathLive's own copy, so nothing is lost)
+    mf.onExport = (_from, latex, range) => {
+      try {
+        return mf.getValue(range[0], range[1], "ascii-math") || latex;
+      } catch {
+        return latex;
+      }
+    };
     // a space is a (thin) space, so 2 1/3 types as the mixed number 2⅓ —
     // MathLive drops spaces by default, which made it 21/3
     mf.mathModeSpace = "\\,";
     mf.value = value;
     mf.addEventListener("input", () => handlers.current.onChange(mf.value));
     mf.addEventListener("focus", () => handlers.current.onFocus?.());
+    // a mouse drag (or ⇧⌥ / ⇧⌘ arrows) never ends halfway into a fraction
+    mf.addEventListener("selection-change", () => {
+      const model = modelOf(mf);
+      if (!model || mf.selectionIsCollapsed) return;
+      const { anchor, focus } = currentRange(mf);
+      const [lo, hi] = [Math.min(anchor, focus), Math.max(anchor, focus)];
+      const [s, e] = wholePieces(model, lo, hi);
+      if (s !== lo || e !== hi) mf.selection = { ranges: [[s, e]], direction: focus < anchor ? "backward" : "forward" };
+    });
     // a press puts the keyboard here at once: MathLive's own pointer
     // handling (it does mouse selection) blocks the browser's focusing and
     // moves the keyboard over 60ms later — keys typed in between were lost.
@@ -103,6 +180,11 @@ export default function MathInput({
         } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && handlers.current.onArrow?.(event.key === "ArrowUp" ? "up" : "down")) {
           event.preventDefault();
           event.stopPropagation();
+        } else if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && event.shiftKey && !event.metaKey && !event.altKey && !event.ctrlKey) {
+          if (extendByPiece(mf, event.key === "ArrowLeft" ? -1 : 1)) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
         }
       },
       { capture: true },
