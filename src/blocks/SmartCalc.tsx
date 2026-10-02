@@ -20,6 +20,7 @@ import { GraphStudio } from "./GraphBlockNode";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { StepList, Tex } from "../ui";
+import Icon from "../Icon";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
@@ -94,6 +95,13 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const tab: Tab = data.smartTab ?? "calc";
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /** a quiet line under the field: "Copied …" */
+  const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!note) return;
+    const timer = setTimeout(() => setNote(null), 2500);
+    return () => clearTimeout(timer);
+  }, [note]);
   const [openSteps, setOpenSteps] = useState<string | null>(null);
   const field = useRef<MathInputHandle>(null);
   const tape = useRef<HTMLDivElement>(null);
@@ -235,6 +243,26 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       }
     } else if ("command" in key) field.current?.command(key.command);
     else field.current?.insert(key.insert);
+  };
+
+  // ---- an answer, as a clean step: no "≈ 3.5" tail
+  const asStep = (r: SmartResult) => (r.result_latex ?? "").replace(/\s*\\approx\s*[^,]*$/, "").trim();
+  const copyAnswer = (r: SmartResult) =>
+    navigator.clipboard?.writeText(asStep(r)).then(
+      () => setNote("Copied — ⌘V puts it in any line"),
+      () => setNote("Couldn't copy"),
+    );
+  /** the answer as the next line in the Work tab */
+  const answerToWork = (r: SmartResult) => {
+    const work = current()?.smartWork ?? {};
+    const lines = work.lines?.length ? [...work.lines] : [""];
+    const step = asStep(r);
+    if (lines[lines.length - 1].trim()) lines.push(step);
+    else lines[lines.length - 1] = step;
+    lines.push(""); // and a fresh line under it, ready for the next step
+    const reasons = Array.from({ length: lines.length }, (_, i) => work.reasons?.[i] ?? "");
+    const starting = !(work.lines ?? []).some((l) => l.trim());
+    updateBlock(data.id, { smartWork: { ...work, lines, reasons, ...(starting ? { workFor: work.problem ?? "" } : {}) }, smartTab: "work" });
   };
 
   // ---- hand-offs to the other tabs
@@ -435,6 +463,17 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                     </div>
                   ) : (
                     <>
+                      <div className="smart-answer">
+                        {r.kind !== "truth" && (
+                          <span className="smart-answer-tools">
+                            <button className="smart-icon" title="Copy this answer (⌘V puts it in any line)" onClick={() => copyAnswer(r)}>
+                              <Icon name="copy" size={13} />
+                            </button>
+                            <button className="smart-icon" title="Add this answer to the Work tab as the next line" onClick={() => answerToWork(r)}>
+                              <Icon name="toWork" size={13} />
+                            </button>
+                          </span>
+                        )}
                       <button
                         className="smart-out"
                         title="Put this answer in the line (at the cursor)"
@@ -445,6 +484,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                         <Tex math={r.result_latex ?? ""} />
                         {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
+                      </div>
                       {(r.others?.length || r.steps?.length || r.work || r.graph?.length) && (
                         <div className="smart-more">
                           {(r.others ?? []).map((o) => (
@@ -481,7 +521,9 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
               onEnter={enter}
               onArrow={cycle}
             />
-            <div className={`smart-preview${error ? " is-error" : ""}`}>{error ? error : previewText ? <Tex math={previewText} /> : null}</div>
+            <div className={`smart-preview${error ? " is-error" : ""}`}>
+              {error ? error : note ? <span className="smart-note">{note}</span> : previewText ? <Tex math={previewText} /> : null}
+            </div>
           </div>
 
           <div className="smart-keys">

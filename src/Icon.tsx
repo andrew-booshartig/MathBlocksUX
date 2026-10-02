@@ -34,6 +34,8 @@ const PATHS: Record<string, string> = {
   play: "M8 5v14l11-7z",
   pause: "M8 5v14M16 5v14",
   trash: "M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13",
+  copy: "M9 9h11v11H9zM5 15V4h11",
+  toWork: "M4 12h13M12 6l6 6-6 6M20 5v14",
 };
 
 export default function Icon({ name, size = 17 }: { name: keyof typeof PATHS | string; size?: number }) {

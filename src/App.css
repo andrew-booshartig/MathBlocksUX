@@ -4761,3 +4761,45 @@ body,
   padding: 0 2px 4px;
   overflow-wrap: anywhere;
 }
+
+/* an answer's copy / send-to-Work buttons */
+.smart-answer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.smart-answer-tools {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: auto;
+  opacity: 0.35;
+  transition: opacity 0.12s;
+}
+
+.smart-entry:hover .smart-answer-tools {
+  opacity: 1;
+}
+
+.smart-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #9a9ab0;
+  cursor: pointer;
+}
+
+.smart-icon:hover {
+  background: #26262f;
+  color: #ffc46e;
+}
+
+.smart-note {
+  color: #8fd694;
+  font-size: 12px;
+}
