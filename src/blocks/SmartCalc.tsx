@@ -106,6 +106,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const [openSteps, setOpenSteps] = useState<string | null>(null);
   const field = useRef<MathInputHandle>(null);
   const tape = useRef<HTMLDivElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const recall = useRef<{ index: number; text: string } | null>(null);
   const ans = [...entries].reverse().find((e) => e.result.ans)?.result.ans ?? undefined;
@@ -177,6 +178,10 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     });
     setWiped(null);
   };
+
+  useEffect(() => {
+    strip.current?.scrollTo({ left: 0, behavior: "smooth" });
+  }, [variables.length]);
 
   // a quiet preview of the answer while typing
   const { result: preview } = useLiveMath<SmartResult>(draft.trim() ? { op: "smart", latex: draft, angle: data.angle, ans, vars } : null, 250);
@@ -375,34 +380,39 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
 
       {tab === "calc" && (
         <>
+          {/* the variables: one slim line that scrolls sideways (the newest
+              first, then the canvas's), so the calculator never grows */}
           {(items.length > 0 || wiped || entries.length > 0) && (
-            <div className="smart-var-chips">
-              {wiped && (
-                <button className="chip is-handoff" title="Bring back what was just cleared" onClick={undoClear}>
-                  ↶ Undo clear
+            <div className="smart-vars">
+              <div className="smart-vars-scroll" ref={strip}>
+                {[...[...localItems].reverse().map((v) => ({ ...v, own: true })), ...globalItems.map((v) => ({ ...v, own: false }))]
+                  .filter((v) => values[v.name]?.latex !== undefined)
+                  .map((v) => (
+                    <button
+                      key={`${v.own ? "own" : "canvas"}:${v.name}`}
+                      className={`chip${v.own ? "" : " is-canvas"}`}
+                      title={v.own ? "This calculator's own — tap to put it in the line" : "From a Variables block — tap to put it in the line"}
+                      onPointerDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        // a function goes in ready for its input: f(▢)
+                        field.current?.insert(v.params?.length ? `${nameTex(v.name)}\\left(#?\\right)` : nameTex(v.name));
+                        field.current?.focus();
+                      }}
+                    >
+                      <Tex math={`${signature(v)} = ${values[v.name].latex}`} />
+                    </button>
+                  ))}
+              </div>
+              {wiped ? (
+                <button className="smart-vars-action is-undo" title="Bring back what was just cleared" onClick={undoClear}>
+                  ↶ Undo
                 </button>
-              )}
-              {[...localItems.map((v) => ({ ...v, own: true })), ...globalItems.map((v) => ({ ...v, own: false }))]
-                .filter((v) => values[v.name]?.latex !== undefined)
-                .map((v) => (
-                  <button
-                    key={`${v.own ? "own" : "canvas"}:${v.name}`}
-                    className={`chip${v.own ? "" : " is-canvas"}`}
-                    title={v.own ? "This calculator's own — put it in the line (AC clears it)" : "From a Variables block — put it in the line"}
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      // a function goes in ready for its input: f(▢)
-                      field.current?.insert(v.params?.length ? `${nameTex(v.name)}\\left(#?\\right)` : nameTex(v.name));
-                      field.current?.focus();
-                    }}
-                  >
-                    <Tex math={`${signature(v)} = ${values[v.name].latex}`} />
+              ) : (
+                (entries.length > 0 || variables.length > 0) && (
+                  <button className="smart-vars-action" title="Clear every answer and this calculator's variables (or type clear) — Undo brings them back" onClick={clearEverything}>
+                    Clear all
                   </button>
-                ))}
-              {!wiped && (entries.length > 0 || variables.length > 0) && (
-                <button className="chip smart-clear-all" title="Clear every answer and this calculator's variables (or type clear) — Undo brings them back" onClick={clearEverything}>
-                  Clear all
-                </button>
+                )
               )}
             </div>
           )}
@@ -419,6 +429,19 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                   )}
                 </>
               );
+              // a saved variable: one slim line (it's up in the variables strip too)
+              if (r.kind === "assign") {
+                const worked = r.result_latex && r.result_latex.replace(/\s/g, "") !== r.input_latex.replace(/\s/g, "") ? r.result_latex : null;
+                return (
+                  <div key={entry.id} className="smart-entry is-assign">
+                    <button className="smart-in" title="Put this in the line (at the cursor)" onPointerDown={(e) => e.preventDefault()} onClick={() => reuse(entry.latex)}>
+                      <Tex math={r.input_latex} />
+                    </button>
+                    {worked && <Tex math={`\\Rightarrow ${worked}`} />}
+                    <span className="smart-saved">saved</span>
+                  </div>
+                );
+              }
               return (
                 <div key={entry.id} className="smart-entry">
                   <button
@@ -445,9 +468,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                         className="smart-out"
                         title="Put this answer in the line (at the cursor)"
                         onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
-                        onClick={() => r.result_latex && reuse(r.action?.kind === "solve" ? r.result_latex.replace(/^[a-zA-Z]\s*=\s*/, "") : r.kind === "assign" ? (r.ans ?? "") : r.result_latex)}
+                        onClick={() => r.result_latex && reuse(r.action?.kind === "solve" ? r.result_latex.replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)}
                       >
-                        {r.kind === "assign" && <span className="smart-saved">saved</span>}
                         <Tex math={r.result_latex ?? ""} />
                         {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>

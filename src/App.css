@@ -4348,6 +4348,22 @@ body,
   background: #17171f;
 }
 
+/* a saved variable on the tape: one slim line */
+.smart-entry.is-assign {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  color: #c8c8d8;
+  font-size: 14px;
+}
+
+.smart-entry.is-assign .smart-in {
+  align-self: center;
+  margin-right: auto;
+  font-size: 14px;
+}
+
 .smart-in,
 .smart-out {
   background: transparent;
@@ -4508,14 +4524,59 @@ body,
   box-shadow: inset 0 0 0 1px #34343f;
 }
 
-.smart-var-chips {
+/* the calculator's variables: one slim line that scrolls sideways */
+.smart-vars {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
 }
 
-.smart-var-chips .chip .katex {
-  font-size: 1em;
+.smart-vars-scroll {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  /* fades out at the edge when there's more to scroll to */
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+
+.smart-vars-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.smart-vars-scroll .chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
+.smart-vars-scroll .chip .katex {
+  font-size: 1.05em;
+}
+
+.smart-vars-action {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  padding: 2px 2px;
+  color: #74748a;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.smart-vars-action:hover {
+  color: #e6e6f0;
+}
+
+.smart-vars-action.is-undo {
+  color: #ffc46e;
 }
 
 .chip.is-handoff {
@@ -4533,83 +4594,6 @@ body,
   align-self: center;
 }
 
-/* Variables */
-.smart-vars {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 200px;
-}
-
-.smart-vars-hint {
-  font-size: 12px;
-  line-height: 1.45;
-  color: #8a8aa0;
-}
-
-.smart-var {
-  display: grid;
-  grid-template-columns: 74px 14px 1fr 22px;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 6px 4px 8px;
-  border-radius: 8px;
-  background: #17171f;
-}
-
-.smart-var-name {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: #ffc46e;
-  font: italic 17px "KaTeX_Math", "Times New Roman", serif;
-  padding: 3px 4px;
-  min-width: 0;
-  outline: none;
-}
-
-.smart-var-name:hover,
-.smart-var-name:focus {
-  border-color: #2e2e3a;
-  background: #101016;
-}
-
-.smart-var-eq {
-  color: #8a8aa0;
-  text-align: center;
-}
-
-.smart-var-value math-field {
-  font-size: 17px;
-}
-
-.smart-var-remove {
-  background: transparent;
-  border: none;
-  color: #6a6a80;
-  cursor: pointer;
-  font-size: 15px;
-}
-
-.smart-var-remove:hover {
-  color: #f19a9a;
-}
-
-.smart-var-result {
-  grid-column: 3 / 5;
-  text-align: right;
-  color: #8fa2bc;
-  font-size: 13px;
-  min-height: 16px;
-  overflow-x: auto;
-}
-
-.smart-var-result.is-error {
-  color: #f19a9a;
-  font-size: 11.5px;
-}
-
-/* Work and Graph inside the calculator */
 .smart-tab-tools {
   display: flex;
   justify-content: flex-end;
@@ -4861,10 +4845,6 @@ body,
   border-radius: 9px;
   background: #0d0d12;
   cursor: text;
-}
-
-.chip.smart-clear-all {
-  margin-left: auto;
 }
 
 /* a variable from a Variables block, on a calculator (its own are solid) */
