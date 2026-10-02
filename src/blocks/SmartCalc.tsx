@@ -84,7 +84,9 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const [openSteps, setOpenSteps] = useState<string | null>(null);
   const field = useRef<MathInputHandle>(null);
   const tape = useRef<HTMLDivElement>(null);
-  const strip = useRef<HTMLDivElement>(null);
+  /** the variables list is open (it folds away — type a name to see its value) */
+  const [varsOpen, setVarsOpen] = useState(false);
+  const varsPanel = useRef<HTMLDivElement>(null);
   /** the history is scrolled down: older answers are up above (it fades there) */
   const [tapeScrolled, setTapeScrolled] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -159,9 +161,36 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     setWiped(null);
   };
 
+  // the list closes on a click anywhere else, or Esc
   useEffect(() => {
-    strip.current?.scrollTo({ left: 0, behavior: "smooth" });
-  }, [variables.length]);
+    if (!varsOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest(".smart-vars-panel, .smart-vars-toggle")) setVarsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setVarsOpen(false);
+      field.current?.focus(); // back to the line
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [varsOpen]);
+  /** the variables there are: this calculator's own (newest first), then the canvas's */
+  const allVariables = [...[...localItems].reverse().map((v) => ({ ...v, own: true })), ...globalItems.map((v) => ({ ...v, own: false }))].filter(
+    (v) => values[v.name]?.latex !== undefined,
+  );
+  /** × in the list: the variable goes, and so does its "saved" line (it isn't true any more) */
+  const removeOwnVariable = (name: string) => {
+    const d = current();
+    updateBlock(data.id, {
+      smartVars: (d?.smartVars ?? []).filter((v) => v.name !== name),
+      smart: (d?.smart ?? []).filter((e) => !(e.result.kind === "assign" && e.result.name === name)),
+    });
+  };
 
   // a quiet preview of the answer while typing
   const { result: preview } = useLiveMath<SmartResult>(draft.trim() ? { op: "smart", latex: draft, angle: data.angle, ans, vars } : null, 250);
@@ -362,29 +391,18 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
 
       {tab === "calc" && (
         <>
-          {/* the variables: one slim line that scrolls sideways (the newest
-              first, then the canvas's), so the calculator never grows */}
-          {/* always there (empty or not), so the calculator never changes size */}
-          <div className="smart-vars">
-            <div className="smart-vars-scroll" ref={strip}>
-              {[...[...localItems].reverse().map((v) => ({ ...v, own: true })), ...globalItems.map((v) => ({ ...v, own: false }))]
-                .filter((v) => values[v.name]?.latex !== undefined)
-                .map((v) => (
-                  <button
-                    key={`${v.own ? "own" : "canvas"}:${v.name}`}
-                    className={`chip${v.own ? "" : " is-canvas"}`}
-                    title={v.own ? "This calculator's own — tap to put it in the line" : "From a Variables block — tap to put it in the line"}
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      // a function goes in ready for its input: f(▢)
-                      field.current?.insert(v.params?.length ? `${nameTex(v.name)}\\left(#?\\right)` : nameTex(v.name));
-                      field.current?.focus();
-                    }}
-                  >
-                    <Tex math={`${signature(v)} = ${values[v.name].latex}`} />
-                  </button>
-                ))}
-            </div>
+          {/* a quiet bar: the variables fold away behind a count (type a name
+              and Enter to see its value), and Clear all */}
+          <div className="smart-bar">
+            {allVariables.length > 0 && (
+              <button
+                className={`smart-vars-toggle${varsOpen ? " is-on" : ""}`}
+                title="Your variables — or type a name and press Enter to see its value"
+                onClick={() => setVarsOpen((open) => !open)}
+              >
+                Variables · {allVariables.length} {varsOpen ? "▴" : "▾"}
+              </button>
+            )}
             {wiped ? (
               <button className="smart-vars-action is-undo" title="Bring back what was just cleared" onClick={undoClear}>
                 ↶ Undo
@@ -395,6 +413,36 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                   Clear all
                 </button>
               )
+            )}
+            {varsOpen && allVariables.length > 0 && (
+              <div className="smart-vars-panel" ref={varsPanel}>
+                {allVariables.map((v) => (
+                  <div key={`${v.own ? "own" : "canvas"}:${v.name}`} className="smart-vars-item">
+                    <button
+                      className="smart-vars-use"
+                      title="Put it in the line"
+                      onPointerDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        // a function goes in ready for its input: f(▢)
+                        field.current?.insert(v.params?.length ? `${nameTex(v.name)}\\left(#?\\right)` : nameTex(v.name));
+                        field.current?.focus();
+                        setVarsOpen(false);
+                      }}
+                    >
+                      <Tex math={`${signature(v)} = ${values[v.name].latex}`} />
+                    </button>
+                    {v.own ? (
+                      <button className="smart-vars-remove" title={`Remove ${v.name}`} onClick={() => removeOwnVariable(v.name)}>
+                        ×
+                      </button>
+                    ) : (
+                      <span className="smart-vars-from" title="Set in a Variables block — change it there">
+                        Variables block
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
           {/* the history: a fixed-height window that scrolls, so the calculator
@@ -412,7 +460,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                   )}
                 </>
               );
-              // a saved variable: one slim line (it's up in the variables strip too)
+              // a saved variable: one slim line (it's in the Variables list too)
               if (r.kind === "assign") {
                 const worked = r.result_latex && r.result_latex.replace(/\s/g, "") !== r.input_latex.replace(/\s/g, "") ? r.result_latex : null;
                 return (

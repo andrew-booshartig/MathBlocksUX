@@ -4555,41 +4555,92 @@ math-field {
   box-shadow: inset 0 0 0 1px #34343f;
 }
 
-/* the calculator's variables: one slim line that scrolls sideways */
-.smart-vars {
+/* the calculator's quiet bar: Variables · n ▾ (folded away) and Clear all */
+.smart-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+}
+
+.smart-vars-toggle {
+  background: none;
+  border: none;
+  padding: 2px 2px;
+  color: #74748a;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.smart-vars-toggle:hover,
+.smart-vars-toggle.is-on {
+  color: #e6e6f0;
+}
+
+/* the list, floating over the history (the calculator doesn't change size) */
+.smart-vars-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 200px;
+  max-width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid #2e2e3a;
+  border-radius: 10px;
+  background: #1a1a22;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+.smart-vars-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 26px;
 }
 
-.smart-vars-scroll {
+.smart-vars-use {
   flex: 1;
   min-width: 0;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 5px;
   overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  /* fades out at the edge when there's more to scroll to */
-  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #ffd391;
+  font-size: 15px;
+  cursor: pointer;
 }
 
-.smart-vars-scroll::-webkit-scrollbar {
-  display: none;
+.smart-vars-use:hover {
+  background: #26262f;
 }
 
-.smart-vars-scroll .chip {
+.smart-vars-remove {
+  background: none;
+  border: none;
+  color: #6a6a7a;
+  font-size: 14px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.smart-vars-remove:hover {
+  color: #f08787;
+}
+
+.smart-vars-from {
   flex: 0 0 auto;
-  white-space: nowrap;
-  padding: 2px 9px;
-  border-radius: 999px;
+  font-size: 10px;
+  color: #6a6a80;
+  padding-right: 6px;
 }
 
-.smart-vars-scroll .chip .katex {
-  font-size: 1.05em;
+.smart-bar .smart-vars-action {
+  margin-left: auto;
 }
 
 .smart-vars-action {
@@ -4876,12 +4927,6 @@ math-field {
   border-radius: 9px;
   background: #0d0d12;
   cursor: text;
-}
-
-/* a variable from a Variables block, on a calculator (its own are solid) */
-.chip.is-canvas {
-  background: transparent;
-  border-style: dashed;
 }
 
 .smart-console-entry {
