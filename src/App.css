@@ -4504,10 +4504,8 @@ math-field {
   box-shadow: 0 0.5px 0 #101014;
 }
 
-.smart-key.is-digit {
-  background: #30303d;
-  font-size: 16px;
-  font-weight: 500;
+.smart-key.is-wide {
+  grid-column: span 2;
 }
 
 .smart-key.is-tool {

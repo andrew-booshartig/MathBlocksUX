@@ -180,6 +180,14 @@ export default function MathInput({
         } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && handlers.current.onArrow?.(event.key === "ArrowUp" ? "up" : "down")) {
           event.preventDefault();
           event.stopPropagation();
+        } else if (event.key === "|" && !event.metaKey && !event.ctrlKey) {
+          // | shares the backslash key, which MathLive takes as "type a raw
+          // LaTeX command" — so a bar for |x| would strand you in that mode.
+          // It's just a bar here (|-3| reads as an absolute value).
+          event.preventDefault();
+          event.stopPropagation();
+          mf.insert("|", { format: "latex" });
+          handlers.current.onChange(mf.value);
         } else if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && event.shiftKey && !event.metaKey && !event.altKey && !event.ctrlKey) {
           if (extendByPiece(mf, event.key === "ArrowLeft" ? -1 : 1)) {
             event.preventDefault();

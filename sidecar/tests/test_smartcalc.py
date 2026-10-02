@@ -142,3 +142,9 @@ def test_variables_block_rows_and_the_canvas():
     made = console({"latex": "h(x)=f(x)+m", "vars": {"m": "10", "f(x)": "x**2"}})
     assert made["plain"] == "f(x) + m" and made["params"] == ["x"]
     assert console({"latex": "h(2)", "items": [{"name": "h", "latex": made["latex"], "params": ["x"]}], "vars": {"m": "10", "f(x)": "x**2"}})["result_latex"] == "14"
+
+
+def test_plain_bars_are_absolute_value():
+    # typed | is a plain bar in the field (not MathLive's LaTeX mode)
+    assert run("|-3|")["result_latex"] == "3"
+    assert run("2|x-1|=4")["result_latex"] == "x = -1 \\quad\\text{or}\\quad x = 3"

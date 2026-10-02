@@ -26,45 +26,23 @@ type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { run: "enter" | "clear" }
 );
 
-/** six columns: tools, digits, operators, structures */
+/** Just the commands a keyboard doesn't have — numbers, + − × ( ), ⌫ and
+ * Enter are on every laptop. (The full calculator keypad lives on the
+ * full-keypad branch, for a phone version.) Each says its keyboard way too. */
 const KEYS: Key[] = [
   { label: "AC", title: "Clear the line — your answers and variables stay", run: "clear" },
-  { label: "(", title: "Open bracket", insert: "(" },
-  { label: ")", title: "Close bracket", insert: ")" },
-  { label: "x", tex: true, title: "The letter x (type any letter on the keyboard)", insert: "x" },
-  { label: "\\dfrac{\\square}{\\square}", tex: true, title: "Fraction — type the top, ↓ for the bottom, → to step out", insert: "\\frac{#?}{#?}" },
-  { label: "⌫", title: "Delete", command: "deleteBackward" },
-
-  { label: "7", title: "7", insert: "7" },
-  { label: "8", title: "8", insert: "8" },
-  { label: "9", title: "9", insert: "9" },
-  { label: "÷", title: "Divide", insert: "\\div" },
-  { label: "\\square^{n}", tex: true, title: "Power — type the exponent, → to come back down", insert: "#@^{#?}" },
-  { label: "\\sqrt{\\square}", tex: true, title: "Square root — → to step out", insert: "\\sqrt{#?}" },
-
-  { label: "4", title: "4", insert: "4" },
-  { label: "5", title: "5", insert: "5" },
-  { label: "6", title: "6", insert: "6" },
-  { label: "×", title: "Multiply", insert: "\\times" },
+  { label: "\\dfrac{\\square}{\\square}", tex: true, title: "Fraction — type the top, ↓ for the bottom, → to step out (or type /)", insert: "\\frac{#?}{#?}" },
+  { label: "\\square^{n}", tex: true, title: "Power — type the exponent, → to come back down (or type ^)", insert: "#@^{#?}" },
   { label: "x^{2}", tex: true, title: "Squared", insert: "#@^{2}" },
-  { label: "|\\square|", tex: true, title: "Absolute value", insert: "\\left|#?\\right|" },
+  { label: "\\sqrt{\\square}", tex: true, title: "Square root — → to step out (or type sqrt)", insert: "\\sqrt{#?}" },
+  { label: "|\\square|", tex: true, title: "Absolute value (or type |)", insert: "\\left|#?\\right|" },
 
-  { label: "1", title: "1", insert: "1" },
-  { label: "2", title: "2", insert: "2" },
-  { label: "3", title: "3", insert: "3" },
-  { label: "−", title: "Subtract", insert: "-" },
-  { label: "=", title: "Equals — makes it an equation to solve", insert: "=" },
-  { label: "<", title: "Less than (type <= for ≤)", insert: "<" },
-
-  { label: "0", title: "0", insert: "0" },
-  { label: ".", title: "Decimal point", insert: "." },
-  { label: "\\pi", tex: true, title: "Pi", insert: "\\pi" },
-  { label: "+", title: "Add", insert: "+" },
+  { label: "\\pi", tex: true, title: "Pi (or type pi)", insert: "\\pi" },
+  { label: "\\le", tex: true, title: "Less than or equal to (or type <=)", insert: "\\le" },
+  { label: "\\ge", tex: true, title: "Greater than or equal to (or type >=)", insert: "\\ge" },
   { label: "Ans", title: "The last answer", insert: "\\mathrm{Ans}" },
-  { label: "⏎", title: "Work it out (Enter)", run: "enter" },
+  { label: "⏎", title: "Work it out (or press Enter)", run: "enter", wide: true },
 ];
-
-const DIGIT = /^[0-9.]$/;
 
 /** More than one term at the top level? (A + inside a fraction or a root
  * doesn't count: \frac{3x+1}{2} is one thing.) */
@@ -537,7 +515,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
             {KEYS.map((key) => (
               <button
                 key={key.label}
-                className={`smart-key${"run" in key && key.run === "enter" ? " is-enter" : ""}${"insert" in key && DIGIT.test(key.insert) ? " is-digit" : ""}${"command" in key || ("run" in key && key.run === "clear") ? " is-tool" : ""}`}
+                className={`smart-key${"run" in key && key.run === "enter" ? " is-enter" : ""}${key.wide ? " is-wide" : ""}${"command" in key || ("run" in key && key.run === "clear") ? " is-tool" : ""}`}
                 title={key.title}
                 // act on press, like a real calculator (and keep the line focused)
                 onPointerDown={(e) => {
