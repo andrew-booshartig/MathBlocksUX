@@ -4238,6 +4238,27 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
+}
+
+.work-problem-head .work-label {
+  margin-right: auto;
+}
+
+.work-next {
+  background: #5cc8f014;
+  border: 1px solid #5cc8f055;
+  color: #9fdcf5;
+  border-radius: 999px;
+  padding: 3px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.work-next:hover {
+  background: #5cc8f026;
+  color: #ffffff;
 }
 
 .follow-pill {

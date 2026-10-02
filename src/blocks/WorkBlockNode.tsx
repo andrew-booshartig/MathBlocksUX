@@ -237,6 +237,20 @@ export function WorkPad({
     setTimeout(() => (visual ? mathInputs.current[0]?.focus() : inputs.current[0]?.focus()), 40);
   };
 
+  /** Next problem: the current one (and its work) into the history, then a
+   * clean pad with the cursor in the problem */
+  const nextProblem = () => {
+    const d = latest.current;
+    const typed = problemMath.current?.getValue(); // the field itself: its change event can lag
+    const problem = typed?.trim() ? typed : d.problem;
+    if (d.lines.some((l) => l.trim())) {
+      fileWork(d.workFor ?? problem, d.lines, d.reasons).then((id) => id && setFlash(`Filed in History (${(latest.current.history ?? []).length})`));
+    }
+    update({ problem: "", lines: [""], reasons: [""], workFor: undefined });
+    setTyping(null);
+    setTimeout(() => problemMath.current?.focus(), 30);
+  };
+
   const restoreEntry = (entry: WorkHistoryEntry) => {
     const d = latest.current;
     const rest = (d.history ?? []).filter((h) => h.id !== entry.id);
@@ -516,6 +530,15 @@ export function WorkPad({
       <div className="work-problem">
         <div className="work-problem-head">
           <span className="work-label">Problem</span>
+          {!data.locked && (data.problem.trim() !== "" || lines.some((l) => l.trim())) && (
+            <button
+              className="work-next"
+              title="File this problem and its work in History, and start a fresh one"
+              onClick={nextProblem}
+            >
+              Next problem →
+            </button>
+          )}
           {!data.locked && data.problem.trim() !== "" && (
             <button
               className="block-icon-btn"
