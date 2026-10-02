@@ -4,7 +4,26 @@ import { useShallow } from "zustand/react/shallow";
 export interface VariableRow {
   id: string;
   name: string;
+  /** what every block reads: plain text (2, 2*r, x**2 + 1) — kept as typed,
+   * not worked out, so d = 2*r follows r wherever it's used */
   value: string;
+  /** the same, as typed in the console (pretty math); absent on rows from
+   * before the console, and once an Increment block nudges the number */
+  latex?: string;
+  /** a function: f(x) = … (it's in the pool as "f(x)") */
+  params?: string[];
+}
+
+/** One line of a Variables console: what was typed, and what came back. */
+export interface ConsoleEntry {
+  id: string;
+  input: string;
+  /** how a command line is shown (del y, clear) — the input is kept as typed for ↑ */
+  shown?: string;
+  kind: "assign" | "value" | "delete" | "clear" | "error";
+  latex?: string;
+  decimal?: string | null;
+  message?: string;
 }
 
 export function defaultRow(name: string, value: string): Omit<VariableRow, "id"> {
@@ -25,6 +44,8 @@ interface BlockBase {
 export interface VariableBlockData extends BlockBase {
   type: "variable";
   rows: VariableRow[];
+  /** the console's lines (the terminal under the variables) */
+  console?: ConsoleEntry[];
 }
 
 export type TransformMode = "simplify" | "expand" | "factor" | "evaluate" | "scientific";
@@ -309,21 +330,11 @@ export interface CalculatorBlockData extends BlockBase {
   /** the smart calculator's history (pretty math in, answers out) */
   smart?: SmartEntry[];
   /** which of its sections is showing */
-  smartTab?: "calc" | "vars" | "work";
-  /** its named values (LaTeX, as typed — they may use each other) */
-  /** with `params` it's a function: f(x) = x² + 1 */
+  smartTab?: "calc" | "work";
+  /** its own scratch values ("r = 4" on the line; LaTeX, as typed) — only
+   * this calculator sees them, and AC / Next problem wipe them. With
+   * `params` it's a function: f(x) = x² + 1 */
   smartVars?: { id: string; name: string; latex: string; params?: string[] }[];
-  /** the Variables console: what was typed, and what came back */
-  smartConsole?: {
-    id: string;
-    input: string;
-    /** how a command line is shown (del y, clear) — the input is kept as typed for ↑ */
-    shown?: string;
-    kind: "assign" | "value" | "delete" | "clear" | "error";
-    latex?: string;
-    decimal?: string | null;
-    message?: string;
-  }[];
   /** its Work section: the same data as a Show-your-work block */
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
   ti?: TIState;
@@ -757,7 +768,8 @@ export const useStore = create<Store>((set) => ({
           rows: target.rows.map((r) => {
             if (r.id !== edge.targetHandle) return r;
             const current = r.value.trim() === "" ? 0 : Number(r.value);
-            return Number.isFinite(current) ? { ...r, value: String(round(current + delta)) } : r;
+            // a plain number now: the typed form (if any) would be stale
+            return Number.isFinite(current) ? { ...r, value: String(round(current + delta)), latex: undefined } : r;
           }),
         };
       }
@@ -807,20 +819,29 @@ export const useStore = create<Store>((set) => ({
  * are unchanged — "changed" on every check, forever, which is an infinite
  * re-render loop (this is what crashed the app when the Solve block was
  * added). useShallow compares the object's keys/values instead of its
- * identity, so it only reports a change when a variable actually did. */
-export function useVariables(): Record<string, string> {
+ * identity, so it only reports a change when a variable actually did.
+ *
+ * Values are plain text, as typed — r → "4", d → "2*r" — and a function
+ * is keyed f(x) → "x**2 + 1". `except` leaves one block out (a Variables
+ * block reads the rest of the canvas around its own). */
+export function useVariables(except?: string): Record<string, string> {
   return useStore(
     useShallow((state) => {
       const vars: Record<string, string> = {};
       for (const id of state.order) {
         const block = state.blocks[id];
-        if (block?.type === "variable") {
+        if (block?.type === "variable" && id !== except) {
           for (const row of block.rows) {
-            if (!row.name.trim()) continue;
+            const name = row.name.trim();
+            if (!name) continue;
+            if (row.params?.length) {
+              vars[`${name}(${row.params.join(",")})`] = row.value;
+              continue;
+            }
             // a slider-driven row uses the slider's live value instead of
             // what's typed in the row itself
             const driver = findDrivingSlider(state, id, row.id);
-            vars[row.name.trim()] = driver ? String(driver.row.value) : row.value;
+            vars[name] = driver ? String(driver.row.value) : row.value;
           }
         }
       }

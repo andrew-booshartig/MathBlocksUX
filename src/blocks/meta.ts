@@ -14,7 +14,6 @@ import {
   type BlockData,
   CUSTOM_BLOCK_TEMPLATE,
   type TourGoal,
-  defaultRow,
   defaultSliderRow,
   newId,
 } from "../store";
@@ -64,16 +63,16 @@ const SOLVE_GOAL: TourGoal = { kind: "solve" };
 const REGISTRY: { [T in BlockType]: BlockMeta<T> } = {
   variable: {
     type: "variable",
-    title: "Variable",
-    description: "Name values (a = 2) that every block can use",
+    title: "Variables",
+    description: "Values and functions (m = 2, f(x) = x² + 1) every block can use — typed in a console",
     category: "Inputs",
     accent: "#e0b25c",
-    create: (id, position) => ({ id, type: "variable", position, rows: [{ id: newId("row"), ...defaultRow("a", "2") }] }),
+    create: (id, position) => ({ id, type: "variable", position, rows: [] }),
   },
   slider: {
     type: "slider",
     title: "Slider",
-    description: "Drag a value; wire it into a Variable row",
+    description: "Drag a value; wire it into a variable",
     category: "Inputs",
     accent: "#e0b25c",
     create: (id, position) => ({ id, type: "slider", position, rows: [defaultSliderRow("s1")] }),
@@ -82,7 +81,7 @@ const REGISTRY: { [T in BlockType]: BlockMeta<T> } = {
   increment: {
     type: "increment",
     title: "Increment",
-    description: "±1 / ±5 buttons; wire into a Variable row",
+    description: "±1 / ±5 buttons; wire into a variable",
     category: "Inputs",
     accent: "#55d6be",
     create: (id, position) => ({ id, type: "increment", position, deltas: [1, -1, 5, -5] }),

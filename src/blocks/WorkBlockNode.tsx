@@ -95,12 +95,15 @@ export function WorkPad({
   update,
   frame,
   onStatus,
+  onReset,
 }: {
   data: WorkBlockData;
   update: (patch: Partial<WorkBlockData>) => void;
   frame: Frame;
   /** solved or not — for guided-lesson goals */
   onStatus?: (solved: boolean) => void;
+  /** a fresh start — Next problem, AC, or a new problem entered over old work */
+  onReset?: () => void;
 }) {
   const latest = useRef(data);
   latest.current = data;
@@ -233,6 +236,7 @@ export function WorkPad({
     if (hasWork && before.trim() && before.trim() !== problem.trim()) {
       fileWork(before, d.lines, d.reasons).then((id) => id && setFlash(`Last problem filed in History (${(latest.current.history ?? []).length})`));
       update({ problem, lines: [""], reasons: [""], workFor: undefined });
+      onReset?.();
     } else if (problem !== d.problem) update({ problem });
     setTimeout(() => (visual ? mathInputs.current[0]?.focus() : inputs.current[0]?.focus()), 40);
   };
@@ -248,6 +252,7 @@ export function WorkPad({
     }
     update({ problem: "", lines: [""], reasons: [""], workFor: undefined });
     setTyping(null);
+    onReset?.();
     setTimeout(() => problemMath.current?.focus(), 30);
   };
 
@@ -810,6 +815,7 @@ export function WorkPad({
               clearTimeout(clearTimer.current);
               clearTimer.current = setTimeout(() => setCleared(null), 8000);
               update({ problem: "", lines: [""], reasons: [""], workFor: undefined });
+              onReset?.();
               setTimeout(() => problemMath.current?.focus(), 30);
             }}
           >

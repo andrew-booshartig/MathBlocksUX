@@ -122,3 +122,23 @@ def test_console_commands_from_pretty_math():
     assert console({"latex": "clear"}) == {"kind": "clear"}
     early = console({"latex": "area=\\pi r^2"})
     assert early["kind"] == "assign" and early["error"] == "r has no value"
+
+
+def test_variables_block_rows_and_the_canvas():
+    from mathcore.parsing import build_scope, parse
+    from mathcore.smartcalc import op_smart_console as console, resolve_variables
+
+    # the shared pool, in any order: d = 2*r before r = 4, and a function using d
+    assert parse("d + f(1)", build_scope({"d": "2*r", "r": "4", "f(x)": "x**2 + d"})) == 17
+    # rows from before the console are plain values; they show the way they read
+    v = resolve_variables([{"name": "d", "value": "2*r"}, {"name": "r", "value": "4"}])
+    assert v["d"]["plain"] == "8" and v["d"]["input_latex"] == "2r"
+    # other blocks' variables come in as context; this block's own win
+    v = resolve_variables([{"name": "g", "latex": "m+1"}, {"name": "m", "latex": "5"}], {"m": "10", "k": "3"})
+    assert v["g"]["plain"] == "6"
+    # a console line saves the body as typed, in plain text, for everything else to read
+    made = console({"latex": "k=2m+d", "items": [{"name": "d", "value": "2*r"}, {"name": "r", "value": "4"}], "vars": {"m": "10"}})
+    assert made["plain"] == "2*m + d" and made["result_latex"] == "28"
+    made = console({"latex": "h(x)=f(x)+m", "vars": {"m": "10", "f(x)": "x**2"}})
+    assert made["plain"] == "f(x) + m" and made["params"] == ["x"]
+    assert console({"latex": "h(2)", "items": [{"name": "h", "latex": made["latex"], "params": ["x"]}], "vars": {"m": "10", "f(x)": "x**2"}})["result_latex"] == "14"

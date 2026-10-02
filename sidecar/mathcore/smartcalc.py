@@ -127,14 +127,26 @@ def _letters(text: str, vars_: dict | None = None, names: list | None = None) ->
 # ------------------------------------------------------------- variables
 
 
-def resolve_variables(items: list[dict]) -> dict:
-    """[{name, latex, params?}] → {name: {plain, latex, decimal, params?} or {error}}.
+def _key_name(key: str) -> str:
+    """'f(x)' → 'f' (a function's key in a vars map), 'r' → 'r'."""
+    return key.split("(")[0].strip()
+
+
+def resolve_variables(items: list[dict], context: dict | None = None) -> dict:
+    """[{name, latex | value, params?}] → {name: {plain, latex, decimal, params?} or {error}}.
     A variable is a value; with `params` it's a function (f(x) = x² + 1).
-    They may use each other in any order (d = 2r before r = 4 is fine);
-    something that depends on itself is reported, not looped on."""
+    `latex` is pretty math as typed; `value` is plain text (2, 2*r — rows
+    from before the console, or nudged by an Increment block). They may use
+    each other in any order (d = 2r before r = 4 is fine), and `context`
+    (plain values from elsewhere on the canvas) — something that depends
+    on itself is reported, not looped on."""
+    context = context or {}
     out: dict[str, dict] = {}
     texts: dict[str, str] = {}
     params_of: dict[str, list[str]] = {}
+    names = [(i.get("name") or "").strip() for i in items]
+    marked_names = [n for n in [*names, *map(_key_name, context)] if _NAME.match(n)]
+    functions = [i["name"] for i in items if i.get("params")] + [_key_name(k) for k in context if "(" in k]
     for item in items:
         name = (item.get("name") or "").strip()
         if not name:
@@ -142,17 +154,18 @@ def resolve_variables(items: list[dict]) -> dict:
         if not _NAME.match(name):
             out[name] = {"error": "a name is letters (and digits after the first letter)"}
             continue
-        if not (item.get("latex") or "").strip():
+        typed = (item.get("latex") or "").strip()
+        if not typed and not str(item.get("value") or "").strip():
             out[name] = {"error": "no value yet"}
             continue
         try:
-            names = [(i.get("name") or "").strip() for i in items]
-            texts[name] = _calls(_plain(_mark_names(item["latex"], [n for n in names if _NAME.match(n)])), [i["name"] for i in items if i.get("params")])
+            texts[name] = _calls(_plain(_mark_names(typed, marked_names)) if typed else str(item["value"]).strip(), functions)
             if item.get("params"):
                 params_of[name] = list(item["params"])
         except Exception:  # noqa: BLE001 — half-typed or unreadable
             out[name] = {"error": "can't read this value yet"}
-    known: dict[str, str] = {}
+    # this list's own names win over the canvas's
+    known: dict[str, str] = {k: v for k, v in context.items() if _key_name(k) not in texts}
     pending = dict(texts)
     while pending:
         progress = False
@@ -191,11 +204,19 @@ def resolve_variables(items: list[dict]) -> dict:
             for name in pending:
                 out[name] = {"error": "depends on itself (through other variables)"}
             break
+    # a plain value (2*r) shown the way it reads: 2r
+    for item in items:
+        name = (item.get("name") or "").strip()
+        if name in out and not (item.get("latex") or "").strip() and str(item.get("value") or "").strip():
+            try:
+                out[name]["input_latex"] = lang.latex(lang.parse(str(item["value"]), "value", _VALUE_READER))
+            except Exception:  # noqa: BLE001
+                out[name]["input_latex"] = str(item["value"])
     return out
 
 
 def op_smart_vars(req: dict) -> dict:
-    return {"values": resolve_variables(req.get("vars") or [])}
+    return {"values": resolve_variables(req.get("vars") or [], req.get("context") or {})}
 
 
 # ---------------------------------------------------------------- a line
@@ -358,7 +379,9 @@ def op_smart_console(req: dict) -> dict:
         return {"kind": "delete", "name": gone.group(1)}
 
     items = [i for i in (req.get("items") or []) if (i.get("name") or "").strip()]
-    names = [i["name"] for i in items]
+    context = req.get("vars") or {}  # the rest of the canvas's variables (plain)
+    names = [i["name"] for i in items] + [_key_name(k) for k in context]
+    functions = [i["name"] for i in items if i.get("params")] + [_key_name(k) for k in context if "(" in k]
     saving = _NEW_NAME.match(latex)
     marked = _mark_names(latex, [*names, *([saving.group(1)] if saving else [])])
     try:
@@ -367,15 +390,20 @@ def op_smart_console(req: dict) -> dict:
         raise MathInputError("") from None
 
     def resolved_with(item):
-        values = resolve_variables([*[i for i in items if i["name"] != item["name"]], item])
+        values = resolve_variables([*[i for i in items if i["name"] != item["name"]], item], context)
         return values.get(item["name"], {})
+
+    def plain(body) -> str:
+        """the body as plain text, unresolved (2*r stays 2*r: when r changes,
+        everything using this follows) — what the rest of the canvas reads"""
+        return _calls(lang.write(body, "plain", PLAIN), functions)
 
     defined = _function_def(node)
     if defined:
         fname, param, body = defined
         item = {"name": fname, "latex": lang.latex(body), "params": [param]}
         mine = resolved_with(item)
-        return {"kind": "assign", **item, "input_latex": lang.latex(node), "result_latex": f"{fname}({param}) = {item['latex']}", "decimal": None, "error": mine.get("error")}
+        return {"kind": "assign", **item, "plain": plain(body), "input_latex": lang.latex(node), "result_latex": f"{fname}({param}) = {item['latex']}", "decimal": None, "error": mine.get("error")}
 
     # name = …: always saves (like a REPL), even if what it uses isn't there yet
     if isinstance(node, lang.Rel) and node.ops == ["="] and isinstance(node.parts[0], Sym):
@@ -384,6 +412,7 @@ def op_smart_console(req: dict) -> dict:
         return {
             "kind": "assign",
             **item,
+            "plain": plain(node.parts[1]),
             "input_latex": lang.latex(node),
             "result_latex": mine.get("latex"),
             "decimal": mine.get("decimal"),
@@ -391,12 +420,13 @@ def op_smart_console(req: dict) -> dict:
         }
 
     # anything else: worked out with the variables, like the Calculate line
-    values = resolve_variables(items)
-    vars_ = {(f"{n}({','.join(v['params'])})" if v.get("params") else n): v["plain"] for n, v in values.items() if "plain" in v}
+    values = resolve_variables(items, context)
+    own = {(f"{n}({','.join(v['params'])})" if v.get("params") else n): v["plain"] for n, v in values.items() if "plain" in v}
+    vars_ = {**{k: v for k, v in context.items() if _key_name(k) not in values}, **own}
     result = op_smart({"latex": latex, "vars": vars_, "angle": req.get("angle", "deg")})
     if result["kind"] == "choose":
         if isinstance(node, lang.Rel):
-            raise MathInputError("that's an equation with several unknowns — solve it on the Calculate tab")
+            raise MathInputError("that's an equation with several unknowns — solve it in a Calculator")
         result = op_smart({"latex": latex, "vars": vars_, "angle": req.get("angle", "deg"), "action": EXPRESSION_ACTIONS[0]})
     return {
         "kind": "value",

@@ -4508,18 +4508,6 @@ body,
   box-shadow: inset 0 0 0 1px #34343f;
 }
 
-.smart-tab-count {
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: #ffb45433;
-  color: #ffc46e;
-  font-size: 10.5px;
-  display: inline-grid;
-  place-items: center;
-}
-
 .smart-var-chips {
   display: flex;
   flex-wrap: wrap;
@@ -4814,23 +4802,23 @@ body,
   visibility: hidden;
 }
 
-/* the Variables console */
-.smart-console {
+/* the Variables block: its variables, then a little terminal in pretty math */
+.variables-block {
+  width: 280px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
-.smart-console-vars {
+.variable-line {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 8px;
-  border-radius: 9px;
-  background: #17171f;
+  align-items: center;
+  gap: 4px;
 }
 
-.smart-console-var {
+.variable-def {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -4845,36 +4833,40 @@ body,
   overflow-x: auto;
 }
 
-.smart-console-var:hover {
+.variable-def:hover:not(:disabled) {
   background: #22222c;
 }
 
-.smart-console-var.is-error {
+.variable-def:disabled {
+  cursor: default;
+  color: #ffd391;
+}
+
+.variable-line.is-error .variable-def {
   color: #f19a9a;
 }
 
-.smart-console-empty {
-  font-size: 12.5px;
-  color: #7a7a90;
-  padding: 2px 2px 0;
+.variable-error {
+  padding-left: 8px;
 }
 
-.smart-term {
-  height: 340px;
+.variables-term {
+  max-height: 220px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding: 10px 10px 6px;
+  gap: 6px;
+  padding: 6px 8px;
   border: 1px solid #262632;
-  border-radius: 10px;
+  border-radius: 9px;
   background: #0d0d12;
   cursor: text;
 }
 
-/* the history sits at the bottom, right above the prompt, like a terminal */
-.smart-term > :first-child {
-  margin-top: auto;
+/* a variable from a Variables block, on a calculator (its own are solid) */
+.chip.is-canvas {
+  background: transparent;
+  border-style: dashed;
 }
 
 .smart-console-entry {
@@ -4935,13 +4927,6 @@ body,
 .smart-console-field math-field:focus-within {
   background: transparent;
   border-color: transparent;
-}
-
-.smart-console-vars-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4px 2px;
 }
 
 .smart-console-preview {

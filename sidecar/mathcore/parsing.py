@@ -240,6 +240,26 @@ def typed_latex(text: str) -> str:
     return _tex(normalize_symbols(text))
 
 
+def _dependency_order(vars_: dict) -> list[tuple[str, str]]:
+    """Definitions so each comes after the ones it uses (d = 2*r after
+    r = 4, whatever order they were made in); a loop keeps its order."""
+    entries = [(str(k), str(v)) for k, v in vars_.items()]
+    defined = {k.split("(")[0].strip(): k for k, _ in entries}
+    ordered, done, pending = [], set(), list(entries)
+    while pending:
+        ready = [
+            (k, v) for k, v in pending
+            if not any(other != k and other not in done and re.search(rf"\b{re.escape(n)}\b", v) for n, other in defined.items())
+        ]
+        if not ready:  # a loop: what's left, as it came
+            ready = pending
+        for entry in ready:
+            ordered.append(entry)
+            done.add(entry[0])
+        pending = [e for e in pending if e not in ready]
+    return ordered
+
+
 def build_scope(vars_: dict | None = None, keep_symbolic=()) -> dict:
     """Variable-block values as sympy objects, plus x/y as free symbols.
 
@@ -247,7 +267,7 @@ def build_scope(vars_: dict | None = None, keep_symbolic=()) -> dict:
     a stray `x = 2` in a Variable block must not turn x into a number."""
     scope: dict = {"x": X, "y": Y, **_SHADOWED}
     keep = {str(k) for k in keep_symbolic}
-    for name, value in (vars_ or {}).items():
+    for name, value in _dependency_order(vars_ or {}):
         name = str(name).strip()
         # a function: "f(x)": "x^2 + 1" → f(3) is 10, everywhere
         call = re.fullmatch(r"([A-Za-z]\w*)\(\s*([A-Za-z]\w*(?:\s*,\s*[A-Za-z]\w*)*)\s*\)", name)
