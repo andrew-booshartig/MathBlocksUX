@@ -76,6 +76,17 @@ export default function MathInput({
     mf.value = value;
     mf.addEventListener("input", () => handlers.current.onChange(mf.value));
     mf.addEventListener("focus", () => handlers.current.onFocus?.());
+    // a press puts the keyboard here at once: MathLive's own pointer
+    // handling (it does mouse selection) blocks the browser's focusing and
+    // moves the keyboard over 60ms later — keys typed in between were lost.
+    // The browser's own focus is immediate (MathLive takes it from there).
+    mf.addEventListener(
+      "pointerdown",
+      () => {
+        if (document.activeElement !== mf) HTMLElement.prototype.focus.call(mf, { preventScroll: true });
+      },
+      { capture: true },
+    );
     mf.addEventListener("blur", () => handlers.current.onBlur?.());
     // capture phase: runs before MathLive's own key handling inside the field
     mf.addEventListener(
@@ -103,8 +114,40 @@ export default function MathInput({
         handlers.current.onMoveOut?.(direction);
       }
     });
+    // a selection as one clean band: MathLive draws a box per piece (a
+    // fraction's top, its bottom, the rest, with gaps between), so merge
+    // them into a single rounded highlight each time it draws them
+    let selectionWatch: MutationObserver | null = null;
+    const watchSelection = (tries: number) => {
+      const root = mf.shadowRoot;
+      if (!root) {
+        if (tries > 0) requestAnimationFrame(() => watchSelection(tries - 1));
+        return;
+      }
+      const style = document.createElement("style");
+      style.textContent = ".ML__selection { border-radius: 5px; }";
+      root.appendChild(style);
+      selectionWatch = new MutationObserver(() => {
+        const boxes = [...root.querySelectorAll<HTMLElement>(".ML__selection")].filter((el) => el.style.display !== "none");
+        if (boxes.length < 2) return;
+        let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+        for (const el of boxes) {
+          const x = parseFloat(el.style.left), y = parseFloat(el.style.top);
+          left = Math.min(left, x);
+          top = Math.min(top, y);
+          right = Math.max(right, x + parseFloat(el.style.width));
+          bottom = Math.max(bottom, y + parseFloat(el.style.height));
+        }
+        const [band, ...rest] = boxes;
+        Object.assign(band.style, { left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px` });
+        for (const el of rest) el.style.display = "none";
+      });
+      selectionWatch.observe(root, { childList: true, subtree: true });
+    };
+    watchSelection(10);
     field.current = mf;
     return () => {
+      selectionWatch?.disconnect();
       mf.remove();
       field.current = null;
     };

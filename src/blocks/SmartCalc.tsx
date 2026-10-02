@@ -217,7 +217,9 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           save(list.map((e) => (e.id === replace ? { ...e, result } : e)));
           return;
         }
-        save([...list, { id: newId("calc"), latex, result }]);
+        // y = 4 after y = 7: the old y = 7 line goes (it isn't true any more)
+        const kept = result.kind === "assign" && result.name ? list.filter((e) => !(e.result.kind === "assign" && e.result.name === result.name)) : list;
+        save([...kept, { id: newId("calc"), latex, result }]);
         // "r = 4": that's a variable now
         if (result.kind === "assign" && result.name && result.value_latex) setVariable(result.name, result.value_latex, result.params);
         // clear the field itself: our copy of the line may never have
@@ -439,6 +441,14 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                     </button>
                     {worked && <Tex math={`\\Rightarrow ${worked}`} />}
                     <span className="smart-saved">saved</span>
+                    <span className="smart-assign-actions">
+                      <button className="chip is-handoff" title="Copy this — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
+                        ⧉ Copy
+                      </button>
+                      <button className="chip is-handoff" title="Add this to the Work tab as your next step" onClick={() => answerToWork(r)}>
+                        → Add to Work
+                      </button>
+                    </span>
                   </div>
                 );
               }

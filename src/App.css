@@ -263,6 +263,14 @@ body,
   align-items: center;
 }
 
+/* Blocks are user-select: none (so dragging a block doesn't select its
+   text) — but MathLive reads that off the field and turns off selecting
+   with the mouse. Math fields stay selectable. */
+math-field {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* --- variable block --- */
 
 .variable-rows {
@@ -4351,6 +4359,7 @@ body,
 /* a saved variable on the tape: one slim line */
 .smart-entry.is-assign {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 3px 8px;
@@ -4360,8 +4369,13 @@ body,
 
 .smart-entry.is-assign .smart-in {
   align-self: center;
-  margin-right: auto;
   font-size: 14px;
+}
+
+.smart-assign-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
 }
 
 .smart-in,
