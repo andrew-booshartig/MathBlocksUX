@@ -28,7 +28,7 @@ type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
 
 /** six columns: tools, digits, operators, structures */
 const KEYS: Key[] = [
-  { label: "AC", title: "All clear — the line, and this calculator's own variables", run: "clear" },
+  { label: "Clear", title: "Clear everything — the line, every answer, and this calculator's variables (Undo brings them back)", run: "clear" },
   { label: "(", title: "Open bracket", insert: "(" },
   { label: ")", title: "Close bracket", insert: ")" },
   { label: "x", tex: true, title: "The letter x (type any letter on the keyboard)", insert: "x" },
@@ -75,6 +75,10 @@ function severalTerms(latex: string): boolean {
   return /[+\-=<>]|\\(le|ge|pm)\b/.test(flat.replace(/^\s*-/, ""));
 }
 const MAX_ENTRIES = 60;
+
+/** the line is the word "clear" (typed as letters, or clear()) */
+const isClearCommand = (latex: string) =>
+  /^clear(\(\))?$/i.test(latex.replace(/\\(?:mathrm|operatorname|text)\{([^{}]*)\}/g, "$1").replace(/\\left|\\right|\\[,;:! ]|\s/g, ""));
 
 type Tab = NonNullable<CalculatorBlockData["smartTab"]>;
 const TABS: { value: Tab; label: string }[] = [
@@ -137,8 +141,9 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       smartVars: at >= 0 ? list.map((v, i) => (i === at ? { ...v, ...item } : v)) : [...list, { id: newId("var"), name, ...item }],
     });
   };
-  /** AC, Next problem, a fresh pad: this calculator's own variables go (Undo brings them back) */
-  const [wiped, setWiped] = useState<NonNullable<CalculatorBlockData["smartVars"]> | null>(null);
+  /** Clear (everything), or Next problem / a fresh Work pad (just the
+   * variables) — Undo brings back what went */
+  const [wiped, setWiped] = useState<{ vars: NonNullable<CalculatorBlockData["smartVars"]>; entries: SmartEntry[] } | null>(null);
   useEffect(() => {
     if (!wiped) return;
     const timer = setTimeout(() => setWiped(null), 8000);
@@ -148,7 +153,29 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     const list = current()?.smartVars ?? [];
     if (!list.length) return;
     updateBlock(data.id, { smartVars: [] });
-    setWiped(list);
+    setWiped({ vars: list, entries: [] });
+  };
+  /** Clear: the line, every answer, and this calculator's variables */
+  const clearEverything = () => {
+    field.current?.setValue("");
+    setError(null);
+    recall.current = null;
+    const d = current();
+    const vars = d?.smartVars ?? [];
+    const entries = d?.smart ?? [];
+    if (!vars.length && !entries.length) return;
+    updateBlock(data.id, { smartVars: [], smart: [] });
+    setOpenSteps(null);
+    setWiped({ vars, entries });
+  };
+  const undoClear = () => {
+    if (!wiped) return;
+    const d = current();
+    updateBlock(data.id, {
+      smartVars: [...wiped.vars, ...(d?.smartVars ?? []).filter((v) => !wiped.vars.some((w) => w.name === v.name))],
+      smart: [...wiped.entries, ...(d?.smart ?? [])].slice(-MAX_ENTRIES),
+    });
+    setWiped(null);
   };
 
   // a quiet preview of the answer while typing
@@ -223,7 +250,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const enter = () => {
     // read the field itself: its change event can arrive a keystroke late
     const line = field.current?.getValue() ?? draft;
-    if (line.trim()) run(line);
+    if (isClearCommand(line)) clearEverything();
+    else if (line.trim()) run(line);
   };
 
   /** ↑/↓ on an empty line (or one just brought back) walk the history */
@@ -254,10 +282,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     if ("run" in key) {
       if (key.run === "enter") enter();
       else {
-        // all clear: the line, and this calculator's own variables
-        field.current?.setValue("");
-        setError(null);
-        clearOwnVariables();
+        clearEverything();
         field.current?.focus();
       }
     } else if ("command" in key) field.current?.command(key.command);
@@ -289,8 +314,9 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), problem: latex, lines: [""], reasons: [""] }, smartTab: "work" });
   };
 
-  const previewText =
-    preview?.kind === "choose"
+  const previewText = isClearCommand(draft)
+    ? "\\text{Enter clears everything}"
+    : preview?.kind === "choose"
       ? "\\text{Enter — then pick what to do}"
       : preview?.kind === "assign"
         ? `\\text{saves } ${preview.result_latex}`
@@ -348,14 +374,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           {(items.length > 0 || wiped) && (
             <div className="smart-var-chips">
               {wiped && (
-                <button
-                  className="chip is-handoff"
-                  title="Bring back the variables AC cleared"
-                  onClick={() => {
-                    updateBlock(data.id, { smartVars: [...wiped, ...(current()?.smartVars ?? []).filter((v) => !wiped.some((w) => w.name === v.name))] });
-                    setWiped(null);
-                  }}
-                >
+                <button className="chip is-handoff" title="Bring back what was just cleared" onClick={undoClear}>
                   ↶ Undo clear
                 </button>
               )}
