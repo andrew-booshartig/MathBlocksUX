@@ -102,7 +102,7 @@ export function WorkPad({
   frame: Frame;
   /** solved or not — for guided-lesson goals */
   onStatus?: (solved: boolean) => void;
-  /** a fresh start — Next problem, AC, or a new problem entered over old work */
+  /** moving on — Next problem, or a new problem entered over old work */
   onReset?: () => void;
 }) {
   const latest = useRef(data);
@@ -815,7 +815,6 @@ export function WorkPad({
               clearTimeout(clearTimer.current);
               clearTimer.current = setTimeout(() => setCleared(null), 8000);
               update({ problem: "", lines: [""], reasons: [""], workFor: undefined });
-              onReset?.();
               setTimeout(() => problemMath.current?.focus(), 30);
             }}
           >

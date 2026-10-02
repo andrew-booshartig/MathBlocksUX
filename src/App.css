@@ -4863,6 +4863,10 @@ body,
   cursor: text;
 }
 
+.chip.smart-clear-all {
+  margin-left: auto;
+}
+
 /* a variable from a Variables block, on a calculator (its own are solid) */
 .chip.is-canvas {
   background: transparent;

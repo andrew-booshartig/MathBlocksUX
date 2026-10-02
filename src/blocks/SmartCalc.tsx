@@ -28,7 +28,7 @@ type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
 
 /** six columns: tools, digits, operators, structures */
 const KEYS: Key[] = [
-  { label: "Clear", title: "Clear everything — the line, every answer, and this calculator's variables (Undo brings them back)", run: "clear" },
+  { label: "AC", title: "Clear the line — your answers and variables stay", run: "clear" },
   { label: "(", title: "Open bracket", insert: "(" },
   { label: ")", title: "Close bracket", insert: ")" },
   { label: "x", tex: true, title: "The letter x (type any letter on the keyboard)", insert: "x" },
@@ -141,8 +141,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       smartVars: at >= 0 ? list.map((v, i) => (i === at ? { ...v, ...item } : v)) : [...list, { id: newId("var"), name, ...item }],
     });
   };
-  /** Clear (everything), or Next problem / a fresh Work pad (just the
-   * variables) — Undo brings back what went */
+  /** Clear all (everything), or Next problem in Work (just the variables)
+   * — Undo brings back what went */
   const [wiped, setWiped] = useState<{ vars: NonNullable<CalculatorBlockData["smartVars"]>; entries: SmartEntry[] } | null>(null);
   useEffect(() => {
     if (!wiped) return;
@@ -155,7 +155,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     updateBlock(data.id, { smartVars: [] });
     setWiped({ vars: list, entries: [] });
   };
-  /** Clear: the line, every answer, and this calculator's variables */
+  /** Clear all: the line, every answer, and this calculator's variables */
   const clearEverything = () => {
     field.current?.setValue("");
     setError(null);
@@ -282,7 +282,11 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     if ("run" in key) {
       if (key.run === "enter") enter();
       else {
-        clearEverything();
+        // AC: just the line — the answers and variables stay for what's next
+        field.current?.setValue("");
+        setError(null);
+        setNote(null);
+        recall.current = null;
         field.current?.focus();
       }
     } else if ("command" in key) field.current?.command(key.command);
@@ -315,7 +319,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   };
 
   const previewText = isClearCommand(draft)
-    ? "\\text{Enter clears everything}"
+    ? "\\text{Enter clears all — answers and this calculator's variables}"
     : preview?.kind === "choose"
       ? "\\text{Enter — then pick what to do}"
       : preview?.kind === "assign"
@@ -371,7 +375,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
 
       {tab === "calc" && (
         <>
-          {(items.length > 0 || wiped) && (
+          {(items.length > 0 || wiped || entries.length > 0) && (
             <div className="smart-var-chips">
               {wiped && (
                 <button className="chip is-handoff" title="Bring back what was just cleared" onClick={undoClear}>
@@ -395,6 +399,11 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                     <Tex math={`${signature(v)} = ${values[v.name].latex}`} />
                   </button>
                 ))}
+              {!wiped && (entries.length > 0 || variables.length > 0) && (
+                <button className="chip smart-clear-all" title="Clear every answer and this calculator's variables (or type clear) — Undo brings them back" onClick={clearEverything}>
+                  Clear all
+                </button>
+              )}
             </div>
           )}
           <div className="smart-tape nowheel" ref={tape}>
