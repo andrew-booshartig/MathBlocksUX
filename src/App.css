@@ -4870,14 +4870,22 @@ body,
   padding: 2px 2px 0;
 }
 
-.smart-console-log {
-  max-height: 260px;
-  min-height: 40px;
+.smart-term {
+  height: 340px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 2px 2px 0;
+  gap: 7px;
+  padding: 10px 10px 6px;
+  border: 1px solid #262632;
+  border-radius: 10px;
+  background: #0d0d12;
+  cursor: text;
+}
+
+/* the history sits at the bottom, right above the prompt, like a terminal */
+.smart-term > :first-child {
+  margin-top: auto;
 }
 
 .smart-console-entry {
@@ -4887,10 +4895,11 @@ body,
 }
 
 .smart-console-in {
-  font: 13px ui-monospace, "SF Mono", Menlo, monospace;
-  color: #a9a9bd;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  display: flex;
+  align-items: baseline;
+  color: #b8b8cc;
+  font-size: 15px;
+  overflow-x: auto;
 }
 
 .smart-console-prompt {
@@ -4921,32 +4930,34 @@ body,
 .smart-console-line {
   display: flex;
   align-items: center;
-  border: 1px solid #2e2e3a;
-  border-radius: 8px;
-  background: #0e0e12;
-  padding: 0 10px;
+  flex: 0 0 auto;
 }
 
-.smart-console-line:focus-within {
-  border-color: #5cc8f0;
-}
-
-.smart-console-input {
+.smart-console-field {
   flex: 1;
   min-width: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #e8e8f0;
-  font: 15px/38px ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-.smart-console-input::placeholder {
-  color: #4f5866;
+.smart-console-field math-field {
+  font-size: 18px;
+  padding: 2px 4px;
+}
+
+.smart-console-field math-field:focus-within {
+  background: transparent;
+  border-color: transparent;
+}
+
+.smart-console-vars-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 2px;
 }
 
 .smart-console-preview {
-  min-height: 24px;
+  flex: 0 0 auto;
+  min-height: 22px;
   padding: 0 4px;
   text-align: right;
   color: #c8d2e0;

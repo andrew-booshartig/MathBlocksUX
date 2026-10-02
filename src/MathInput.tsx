@@ -23,6 +23,8 @@ export interface MathInputHandle {
   getValue: () => string;
   /** Replace what's in the field (even when the parent's copy already matches). */
   setValue: (latex: string) => void;
+  /** Is the cursor at the top level — not inside a fraction, power or root? */
+  atTopLevel: () => boolean;
 }
 
 export default function MathInput({
@@ -136,6 +138,13 @@ export default function MathInput({
       handlers.current.onChange(mf.value);
     },
     getValue: () => field.current?.value ?? "",
+    // inside a fraction (or power, root…) the math before the cursor comes
+    // back flattened, so it stops being the start of the whole line
+    atTopLevel: () => {
+      const mf = field.current;
+      if (!mf) return true;
+      return mf.value.startsWith(mf.getValue(0, mf.position, "latex"));
+    },
     setValue: (latex: string) => {
       const mf = field.current;
       if (!mf) return;

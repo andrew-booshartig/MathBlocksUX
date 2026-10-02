@@ -249,6 +249,16 @@ def build_scope(vars_: dict | None = None, keep_symbolic=()) -> dict:
     keep = {str(k) for k in keep_symbolic}
     for name, value in (vars_ or {}).items():
         name = str(name).strip()
+        # a function: "f(x)": "x^2 + 1" → f(3) is 10, everywhere
+        call = re.fullmatch(r"([A-Za-z]\w*)\(\s*([A-Za-z]\w*(?:\s*,\s*[A-Za-z]\w*)*)\s*\)", name)
+        if call and call.group(1) not in keep:
+            params = [sympy.Symbol(p.strip()) for p in call.group(2).split(",")]
+            try:
+                body = parse_expr(prep(str(value)), local_dict={**scope, **{str(p): p for p in params}}, transformations=TRANSFORMS)
+                scope[call.group(1)] = sympy.Lambda(tuple(params), body)
+            except Exception:
+                pass
+            continue
         if not name or name in keep or not name.isidentifier():
             continue
         try:

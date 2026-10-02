@@ -254,8 +254,9 @@ export interface SmartResult {
   ans?: string | null;
   /** every name the line uses (to redo it when a variable changes) */
   names?: string[];
-  /** "r = 4": the variable it saves */
+  /** "r = 4" / "f(x) = …": the variable (or function) it saves */
   name?: string;
+  params?: string[];
   value_latex?: string;
   /** where else it can go: the Work tab, and what the Graph tab would draw */
   work?: boolean;
@@ -313,11 +314,14 @@ export interface CalculatorBlockData extends BlockBase {
   /** which of its sections is showing */
   smartTab?: "calc" | "vars" | "work" | "graph";
   /** its named values (LaTeX, as typed — they may use each other) */
-  smartVars?: { id: string; name: string; latex: string; text?: string }[];
+  /** with `params` it's a function: f(x) = x² + 1 */
+  smartVars?: { id: string; name: string; latex: string; params?: string[] }[];
   /** the Variables console: what was typed, and what came back */
   smartConsole?: {
     id: string;
     input: string;
+    /** how a command line is shown (del y, clear) — the input is kept as typed for ↑ */
+    shown?: string;
     kind: "assign" | "value" | "delete" | "clear" | "error";
     latex?: string;
     decimal?: string | null;

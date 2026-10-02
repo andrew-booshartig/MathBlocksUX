@@ -20,7 +20,7 @@ import sympy
 from . import lang
 import dataclasses
 
-from .lang.ast import Const, Group, Num, Sym
+from .lang.ast import Const, Group, Mul, Num, Sym
 from .calculator import _fmt_decimal, op_calc
 from .parsing import MathInputError, build_scope, parse, tex
 from .solve import op_solve
@@ -73,6 +73,35 @@ def _fill_in(node, values: dict):
     return dataclasses.replace(node, **changes)
 
 
+_WORDS = {"pi", "E", "e", "oo", "sqrt", "abs", "sin", "cos", "tan", "asin", "acos", "atan", "ln", "log", "exp", "root"}
+
+
+def _calls(text: str, functions) -> str:
+    """'f*(3)' → 'f(3)' for the functions there are (otherwise it's f times 3)."""
+    for name in functions:
+        text = re.sub(rf"\b{re.escape(name)}\*\(", f"{name}(", text)
+    return text
+
+
+def _names(text: str) -> list[str]:
+    """Every name a line uses — letters, variables and functions."""
+    return sorted(set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text)) - _WORDS)
+
+
+def _function_def(node):
+    """f(x) = … → (f, x, the body) — or None."""
+    if not (isinstance(node, lang.Rel) and node.ops == ["="]):
+        return None
+    left = node.parts[0]
+    if isinstance(left, Mul) and len(left.factors) == 2 and isinstance(left.factors[0], Sym):
+        arg = left.factors[1]
+        if isinstance(arg, Group) and isinstance(arg.inner, Sym):
+            return left.factors[0].name, arg.inner.name, node.parts[1]
+        if isinstance(arg, Group) and isinstance(arg.inner, lang.Alts) and all(isinstance(i, Sym) for i in arg.inner.items):
+            raise MathInputError(f"functions take one input for now — like {left.factors[0].name}(x) = …")
+    return None
+
+
 def _plain(latex: str) -> str:
     return lang.write(lang.parse(latex, "latex"), "plain", PLAIN)
 
@@ -93,11 +122,13 @@ def _letters(text: str, vars_: dict | None = None, names: list | None = None) ->
 
 
 def resolve_variables(items: list[dict]) -> dict:
-    """[{name, latex}] → {name: {plain, latex, decimal} or {error}}.
-    Values may use each other in any order (d = 2r before r = 4 is fine);
+    """[{name, latex, params?}] → {name: {plain, latex, decimal, params?} or {error}}.
+    A variable is a value; with `params` it's a function (f(x) = x² + 1).
+    They may use each other in any order (d = 2r before r = 4 is fine);
     something that depends on itself is reported, not looped on."""
     out: dict[str, dict] = {}
     texts: dict[str, str] = {}
+    params_of: dict[str, list[str]] = {}
     for item in items:
         name = (item.get("name") or "").strip()
         if not name:
@@ -110,7 +141,9 @@ def resolve_variables(items: list[dict]) -> dict:
             continue
         try:
             names = [(i.get("name") or "").strip() for i in items]
-            texts[name] = _plain(_mark_names(item["latex"], [n for n in names if _NAME.match(n)]))
+            texts[name] = _calls(_plain(_mark_names(item["latex"], [n for n in names if _NAME.match(n)])), [i["name"] for i in items if i.get("params")])
+            if item.get("params"):
+                params_of[name] = list(item["params"])
         except Exception:  # noqa: BLE001 — half-typed or unreadable
             out[name] = {"error": "can't read this value yet"}
     known: dict[str, str] = {}
@@ -118,19 +151,27 @@ def resolve_variables(items: list[dict]) -> dict:
     while pending:
         progress = False
         for name, text in list(pending.items()):
+            params = params_of.get(name, [])
+            waiting = {n for n in set(pending) - {name} if re.search(rf"\b{re.escape(n)}\b", text)}
+            if waiting:
+                continue  # waits for another variable (or function) first
             try:
-                value = parse(text, build_scope(known))
+                value = parse(text, build_scope(known, keep_symbolic=params))
             except Exception:  # noqa: BLE001
                 out[name] = {"error": "can't read this value yet"}
                 del pending[name]
                 continue
-            free = {str(s) for s in value.free_symbols}
-            if free & (set(pending) - {name}):
-                continue  # waits for another variable first
+            free = {str(s) for s in value.free_symbols} - set(params)
             del pending[name]
             progress = True
             if free:
                 out[name] = {"error": f"{', '.join(sorted(free))} has no value"}
+                continue
+            if params:
+                # a function: its body, with the variables' values filled in
+                body = sympy.simplify(value)
+                known[f"{name}({','.join(params)})"] = str(body)
+                out[name] = {"plain": str(body), "latex": tex(body), "decimal": None, "params": params}
                 continue
             exact = sympy.nsimplify(value) if value.is_Float else sympy.simplify(value)
             numeric = complex(sympy.N(exact, 15))
@@ -198,16 +239,34 @@ def op_smart(req: dict) -> dict:
             raise MathInputError("there's no answer yet to use as Ans")
         latex = _ANS.sub(lambda _: f"\\left({ans}\\right)", latex)
     vars_ = req.get("vars") or {}
+    functions = [k.split("(")[0] for k in vars_ if "(" in k]
     saving = _NEW_NAME.match(latex)
-    latex = _mark_names(latex, [*vars_, *([saving.group(1)] if saving else [])])
+    latex = _mark_names(latex, [*(k.split("(")[0] for k in vars_), *([saving.group(1)] if saving else [])])
     try:
         node = lang.parse(latex, "latex")
     except lang.Incomplete:
         raise MathInputError("") from None
-    text = lang.write(node, "plain", PLAIN)
     input_latex = lang.latex(node)
+    # f(x) = …: a new function (like r = 4 saves a variable). One that
+    # exists already is solved for instead: f(x) = 10 → x = ±3
+    defined = _function_def(node)
+    if defined and defined[0] not in functions:
+        fname, param, body = defined
+        body_latex = lang.latex(body)
+        return {
+            "kind": "assign",
+            "name": fname,
+            "params": [param],
+            "value_latex": body_latex,
+            "input_latex": input_latex,
+            "names": _names(lang.write(body, "plain", PLAIN)),
+            "result_latex": f"{fname}({param}) = {body_latex}",
+            "decimal": None,
+            "ans": None,
+        }
+    text = _calls(lang.write(node, "plain", PLAIN), functions)
     relation = isinstance(node, lang.Rel)
-    names = _letters(text, names=[*vars_, *([saving.group(1)] if saving else [])])  # every name used (for live updates)
+    names = _names(text)  # every name used (for live updates)
     letters = _letters(text, vars_)  # the ones that are still unknown
     base = {"input_latex": input_latex, "names": names}
 
@@ -302,59 +361,81 @@ def op_smart(req: dict) -> dict:
 # ------------------------------------------------- the Variables console
 
 
-# typed like Python (2*r, r**2) — or the everyday way (2r, r^2)
-CONSOLE = [{"id": "console", "name": "Console", "power": ["**", "^"], "equals": ["=", "=="], "implicit_multiplication": True}]
-_DELETE = re.compile(r"^\s*del\s+([A-Za-z][A-Za-z0-9_]*)\s*$")
-_CLEAR = re.compile(r"^\s*clear\s*(\(\s*\))?\s*$", re.I)
+_DELETE = re.compile(r"^del([A-Za-z][A-Za-z0-9_]*)$")
+
+
+def _command(latex: str) -> str:
+    """The line's letters with the math markup stripped (del y → dely)."""
+    # MathLive turns a typed "del" into ∂ — read it back as the command
+    flat = re.sub(r"\\partial(?![A-Za-z])", "del", latex)
+    flat = re.sub(r"\\(?:mathrm|operatorname|text|textrm|mathit)\{([^{}]*)\}", r"\1", flat)
+    flat = re.sub(r"\\left|\\right|\\[ ,;:!]|~|\s", "", flat)
+    return flat
 
 
 def op_smart_console(req: dict) -> dict:
-    """One line typed in the Variables console. It changes nothing itself —
-    it says what the line means, and the calculator applies it:
-      y = 5 / y = 2x + 1   → set (or redefine) a variable
-      del y                → remove one       clear → remove them all
-      y, 2*y + x           → show a value"""
-    text = (req.get("text") or "").strip()
-    if not text:
+    """One line typed in the Variables console (pretty math, LaTeX). It
+    changes nothing itself — it says what the line means, and the
+    calculator applies it:
+      y = 5 · area = πr²     → set (or redefine) a variable, even before
+                                what it uses exists (it fills in later)
+      f(x) = x² + 1          → a function, usable everywhere as f(3)
+      del y · clear          → remove one · remove them all
+      anything else          → worked out, like the Calculate line"""
+    latex = (req.get("latex") or "").strip()
+    if not latex:
         raise MathInputError("")
-    if _CLEAR.match(text):
+    command = _command(latex)
+    if re.fullmatch(r"clear(\(\))?", command, re.I):
         return {"kind": "clear"}
-    gone = _DELETE.match(text)
+    gone = _DELETE.match(command)
     if gone:
         return {"kind": "delete", "name": gone.group(1)}
+
+    items = [i for i in (req.get("items") or []) if (i.get("name") or "").strip()]
+    names = [i["name"] for i in items]
+    saving = _NEW_NAME.match(latex)
+    marked = _mark_names(latex, [*names, *([saving.group(1)] if saving else [])])
     try:
-        node = lang.parse(text, "console", CONSOLE)
+        node = lang.parse(marked, "latex")
     except lang.Incomplete:
         raise MathInputError("") from None
-    items = [v for v in (req.get("vars") or []) if (v.get("name") or "").strip()]
-    if isinstance(node, lang.Rel):
-        if node.ops != ["="] or not isinstance(node.parts[0], Sym):
-            raise MathInputError("to save a value, put a name on the left: y = 5")
-        name = node.parts[0].name
-        value_latex = lang.latex(node.parts[1])
-        # what it works out to, with this new value in place
-        values = resolve_variables([*[v for v in items if v["name"] != name], {"name": name, "latex": value_latex}])
-        mine = values.get(name, {})
+
+    def resolved_with(item):
+        values = resolve_variables([*[i for i in items if i["name"] != item["name"]], item])
+        return values.get(item["name"], {})
+
+    defined = _function_def(node)
+    if defined:
+        fname, param, body = defined
+        item = {"name": fname, "latex": lang.latex(body), "params": [param]}
+        mine = resolved_with(item)
+        return {"kind": "assign", **item, "input_latex": lang.latex(node), "result_latex": f"{fname}({param}) = {item['latex']}", "decimal": None, "error": mine.get("error")}
+
+    # name = …: always saves (like a REPL), even if what it uses isn't there yet
+    if isinstance(node, lang.Rel) and node.ops == ["="] and isinstance(node.parts[0], Sym):
+        item = {"name": node.parts[0].name, "latex": lang.latex(node.parts[1])}
+        mine = resolved_with(item)
         return {
             "kind": "assign",
-            "name": name,
-            "latex": value_latex,
+            **item,
             "input_latex": lang.latex(node),
             "result_latex": mine.get("latex"),
             "decimal": mine.get("decimal"),
             "error": mine.get("error"),
         }
-    # just a value: work it out with the variables
+
+    # anything else: worked out with the variables, like the Calculate line
     values = resolve_variables(items)
-    plain = {n: v["plain"] for n, v in values.items() if "plain" in v}
-    text_plain = lang.write(node, "plain", PLAIN)
-    missing = _letters(text_plain, plain)
-    if missing:
-        raise MathInputError(f"{', '.join(missing)} {'has' if len(missing) == 1 else 'have'} no value yet — give it one: {missing[0]} = …")
-    value = op_calc({"expr": text_plain, "angle": req.get("angle", "deg"), "vars": plain})
+    vars_ = {(f"{n}({','.join(v['params'])})" if v.get("params") else n): v["plain"] for n, v in values.items() if "plain" in v}
+    result = op_smart({"latex": latex, "vars": vars_, "angle": req.get("angle", "deg")})
+    if result["kind"] == "choose":
+        if isinstance(node, lang.Rel):
+            raise MathInputError("that's an equation with several unknowns — solve it on the Calculate tab")
+        result = op_smart({"latex": latex, "vars": vars_, "angle": req.get("angle", "deg"), "action": EXPRESSION_ACTIONS[0]})
     return {
         "kind": "value",
-        "input_latex": lang.latex(node),
-        "result_latex": value["exact_latex"],
-        "decimal": value["decimal"] if value["exact_differs"] else None,
+        "input_latex": result["input_latex"],
+        "result_latex": result.get("result_latex"),
+        "decimal": result.get("decimal"),
     }

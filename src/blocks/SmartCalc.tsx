@@ -85,12 +85,13 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "graph", label: "Graph" },
 ];
 
-type VarValue = { plain?: string; latex?: string; decimal?: string | null; error?: string };
+type VarValue = { plain?: string; latex?: string; decimal?: string | null; error?: string; params?: string[] };
 
 type ConsoleEntry = NonNullable<CalculatorBlockData["smartConsole"]>[number];
 type ConsoleResult = {
   kind: "assign" | "value" | "delete" | "clear";
   name?: string;
+  params?: string[];
   latex?: string;
   input_latex?: string;
   result_latex?: string;
@@ -126,89 +127,117 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const current = () => useStore.getState().blocks[data.id] as CalculatorBlockData | undefined;
   const setTab = (smartTab: Tab) => updateBlock(data.id, { smartTab });
 
-  // ---- variables: worked out (in any order — d = 2r before r = 4 is fine)
-  const { result: resolved } = useLiveMath<{ values: Record<string, VarValue> }>(
-    variables.length ? { op: "smartvars", vars: variables.map(({ name, latex }) => ({ name, latex })) } : null,
-    150,
-  );
+  // ---- variables and functions: worked out (in any order — d = 2r before r = 4 is fine)
+  const items = variables.map(({ name, latex, params }) => ({ name, latex, ...(params?.length ? { params } : {}) }));
+  const { result: resolved } = useLiveMath<{ values: Record<string, VarValue> }>(variables.length ? { op: "smartvars", vars: items } : null, 150);
   const values = useMemo(() => resolved?.values ?? {}, [resolved]);
+  /** what the engines get: r → its value, and f(x) → its body */
   const vars = useMemo(() => {
     const out: Record<string, string> = {};
-    for (const [name, v] of Object.entries(values)) if (v.plain !== undefined) out[name] = v.plain;
+    for (const [name, v] of Object.entries(values)) if (v.plain !== undefined) out[v.params?.length ? `${name}(${v.params.join(",")})` : name] = v.plain;
     return out;
   }, [values]);
 
-  /** save a variable (from the Variables tab, or "r = 4" on the Calculate line) */
-  const setVariable = (name: string, latex: string, text?: string) => {
+  /** save a variable or function (from the console, or "r = 4" / "f(x) = …" on the Calculate line) */
+  const setVariable = (name: string, latex: string, params?: string[]) => {
     const list = current()?.smartVars ?? [];
     const at = list.findIndex((v) => v.name === name);
+    const item = { latex, params: params?.length ? params : undefined };
     updateBlock(data.id, {
-      smartVars: at >= 0 ? list.map((v, i) => (i === at ? { ...v, latex, text } : v)) : [...list, { id: newId("var"), name, latex, text }],
+      smartVars: at >= 0 ? list.map((v, i) => (i === at ? { ...v, ...item } : v)) : [...list, { id: newId("var"), name, ...item }],
     });
   };
+  /** f(x) or r, as math */
+  const signature = (v: { name: string; params?: string[] }) => `${nameTex(v.name)}${v.params?.length ? `(${v.params.join(", ")})` : ""}`;
 
-  // ---- the Variables console: y = 5 ⏎, x = 7 ⏎, del y, clear
+  // ---- the Variables console: a terminal, in pretty math
+  //   y = 5 ⏎ · f(x) = x² + 1 ⏎ · del y · clear · ↑/↓ for earlier lines
   const consoleEntries = data.smartConsole ?? [];
   const [consoleLine, setConsoleLine] = useState("");
-  const consoleInput = useRef<HTMLInputElement>(null);
+  const consoleField = useRef<MathInputHandle>(null);
   const consoleLog = useRef<HTMLDivElement>(null);
-  const consoleRecall = useRef<number | null>(null);
-  const logConsole = (entry: Omit<ConsoleEntry, "id">, reset = false) =>
-    updateBlock(data.id, { smartConsole: [...(reset ? [] : (current()?.smartConsole ?? [])), { id: newId("line"), ...entry }].slice(-MAX_ENTRIES) });
+  /** walking the history: where we are, and the half-typed line to come back to */
+  const walk = useRef<{ at: number; draft: string; shown: string } | null>(null);
+  const [cleared, setCleared] = useState<{ vars: NonNullable<CalculatorBlockData["smartVars"]> } | null>(null);
+  const logConsole = (entry: Omit<ConsoleEntry, "id">) =>
+    updateBlock(data.id, { smartConsole: [...(current()?.smartConsole ?? []), { id: newId("line"), ...entry }].slice(-MAX_ENTRIES * 2) });
+
+  const clearVariables = (input?: string) => {
+    const list = current()?.smartVars ?? [];
+    updateBlock(data.id, { smartVars: [] });
+    logConsole({ kind: "clear", input: input ?? "", shown: input ? "\\mathrm{clear}" : undefined, message: list.length ? `Cleared ${list.length} variable${list.length === 1 ? "" : "s"}` : "Nothing to clear" });
+    if (list.length) setCleared({ vars: list });
+  };
+  useEffect(() => {
+    if (!cleared) return;
+    const timer = setTimeout(() => setCleared(null), 8000);
+    return () => clearTimeout(timer);
+  }, [cleared]);
 
   const submitConsole = (typed: string) => {
-    const text = typed.trim();
-    if (!text) return;
-    setConsoleLine("");
-    consoleRecall.current = null;
+    const latex = typed.trim();
+    if (!latex) return;
+    consoleField.current?.setValue("");
+    walk.current = null;
     const list = current()?.smartVars ?? [];
-    mathRequest<ConsoleResult>({ op: "smartconsole", text, vars: list.map(({ name, latex }) => ({ name, latex })), angle: data.angle }).then(
+    const listItems = list.map(({ name, latex: l, params }) => ({ name, latex: l, ...(params?.length ? { params } : {}) }));
+    mathRequest<ConsoleResult>({ op: "smartconsole", latex, items: listItems, angle: data.angle }).then(
       (r) => {
         if (r.kind === "assign" && r.name && r.latex !== undefined) {
-          setVariable(r.name, r.latex, text.replace(/^[^=]*=\s*/, ""));
-          logConsole({ kind: "assign", input: text, latex: `${nameTex(r.name)} = ${r.result_latex ?? r.latex}`, decimal: r.decimal !== r.result_latex ? r.decimal : null, message: r.error ?? undefined });
+          setVariable(r.name, r.latex, r.params);
+          const shown = r.params?.length ? `${signature({ name: r.name, params: r.params })} = ${r.latex}` : `${nameTex(r.name)} = ${r.result_latex ?? r.latex}`;
+          logConsole({ kind: "assign", input: latex, latex: shown, decimal: r.decimal !== r.result_latex ? r.decimal : null, message: r.error ?? undefined });
         } else if (r.kind === "delete" && r.name) {
           const found = list.some((v) => v.name === r.name);
           if (found) updateBlock(data.id, { smartVars: list.filter((v) => v.name !== r.name) });
-          logConsole({ kind: "delete", input: text, message: found ? `Removed ${r.name}` : `There's no ${r.name}` });
+          logConsole({ kind: "delete", input: latex, shown: `\\mathrm{del}\\ ${nameTex(r.name)}`, message: found ? `Removed ${r.name}` : `There's no ${r.name}` });
         } else if (r.kind === "clear") {
-          updateBlock(data.id, { smartVars: [] });
-          logConsole({ kind: "clear", input: text, message: list.length ? `Cleared ${list.length} variable${list.length === 1 ? "" : "s"}` : "Nothing to clear" }, true);
+          clearVariables(latex);
         } else {
-          logConsole({ kind: "value", input: text, latex: `${r.input_latex} = ${r.result_latex}`, decimal: r.decimal });
+          logConsole({ kind: "value", input: latex, latex: r.result_latex ?? "", decimal: r.decimal });
         }
       },
-      (err) => logConsole({ kind: "error", input: text, message: String(err).replace(/^Error:\s*/, "") || "I can't read that" }),
+      (err) => logConsole({ kind: "error", input: latex, message: String(err).replace(/^Error:\s*/, "") || "I can't read that" }),
     );
   };
 
-  /** ↑/↓: earlier lines typed in the console */
-  const walkConsole = (step: number) => {
+  /** ↑/↓ — like a terminal: earlier lines, then back to what you were typing.
+   * Inside a fraction (or power, root) the arrows move in it instead. */
+  const walkConsole = (direction: "up" | "down"): boolean => {
+    const f = consoleField.current;
+    if (!f || !f.atTopLevel()) return false;
     const typed = (current()?.smartConsole ?? []).map((e) => e.input).filter((s) => s);
-    if (!typed.length) return;
-    const at = consoleRecall.current === null ? typed.length : consoleRecall.current;
-    const next = Math.max(0, Math.min(typed.length, at + step));
-    consoleRecall.current = next;
-    setConsoleLine(next === typed.length ? "" : typed[next]);
+    if (!typed.length) return false;
+    const now = f.getValue();
+    // typing anything after a recall starts fresh from the end again
+    const state = walk.current && walk.current.shown === now ? walk.current : { at: typed.length, draft: now, shown: now };
+    const at = Math.max(0, Math.min(typed.length, state.at + (direction === "up" ? -1 : 1)));
+    if (at === state.at && direction === "down" && at === typed.length) return false;
+    const text = at === typed.length ? state.draft : typed[at];
+    f.setValue(text);
+    walk.current = { at, draft: state.draft, shown: f.getValue() };
+    return true;
   };
 
   /** tap a variable: it goes on the line to be changed */
-  const editVariable = (v: { name: string; latex: string; text?: string }) => {
-    setConsoleLine(`${v.name} = ${v.text ?? v.latex}`);
-    setTimeout(() => consoleInput.current?.focus(), 20);
+  const editVariable = (v: { name: string; latex: string; params?: string[] }) => {
+    consoleField.current?.setValue(`${signature(v)}=${v.latex}`);
+    setTimeout(() => consoleField.current?.focus(), 20);
   };
 
-  // the line, as pretty math, as it's typed
+  // the line's answer, live, as it's typed
   const { result: consoleLive } = useLiveMath<ConsoleResult>(
-    consoleLine.trim() && tab === "vars" ? { op: "smartconsole", text: consoleLine, vars: variables.map(({ name, latex }) => ({ name, latex })), angle: data.angle } : null,
+    consoleLine.trim() && tab === "vars" ? { op: "smartconsole", latex: consoleLine, items, angle: data.angle } : null,
     150,
   );
   const consolePreview = !consoleLine.trim() || !consoleLive
     ? null
     : consoleLive.kind === "assign" && consoleLive.name
-      ? `${nameTex(consoleLive.name)} = ${consoleLive.latex}${consoleLive.result_latex && consoleLive.result_latex !== consoleLive.latex ? ` = ${consoleLive.result_latex}` : ""}`
-      : consoleLive.kind === "value"
-        ? `${consoleLive.input_latex} = ${consoleLive.result_latex}`
+      ? consoleLive.params?.length
+        ? `\\text{defines } ${signature({ name: consoleLive.name, params: consoleLive.params })}`
+        : `\\text{saves } ${nameTex(consoleLive.name)}${consoleLive.result_latex ? ` = ${consoleLive.result_latex}` : ""}`
+      : consoleLive.kind === "value" && consoleLive.result_latex
+        ? `= ${consoleLive.result_latex}`
         : consoleLive.kind === "clear"
           ? "\\text{clears every variable}"
           : consoleLive.kind === "delete"
@@ -255,7 +284,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
         }
         save([...list, { id: newId("calc"), latex, result }]);
         // "r = 4": that's a variable now
-        if (result.kind === "assign" && result.name && result.value_latex) setVariable(result.name, result.value_latex);
+        if (result.kind === "assign" && result.name && result.value_latex) setVariable(result.name, result.value_latex, result.params);
         // clear the field itself: our copy of the line may never have
         // caught up with the last keystroke, so setting it alone can miss
         field.current?.setValue("");
@@ -417,64 +446,82 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
 
       {tab === "vars" && (
         <div className="smart-console">
-          {variables.length > 0 ? (
-            <div className="smart-console-vars">
-              {variables.map((v) => {
+          <div className="smart-console-vars">
+            <div className="smart-console-vars-head">
+              <span className="graph-section-title">Variables{variables.length ? ` · ${variables.length}` : ""}</span>
+              {cleared ? (
+                <button
+                  className="chip"
+                  onClick={() => {
+                    updateBlock(data.id, { smartVars: cleared.vars });
+                    logConsole({ kind: "assign", input: "", message: `Brought back ${cleared.vars.length}` });
+                    setCleared(null);
+                  }}
+                >
+                  ↶ Undo clear
+                </button>
+              ) : (
+                variables.length > 0 && (
+                  <button className="chip" title="Remove every variable and function (same as typing clear)" onClick={() => clearVariables()}>
+                    Clear
+                  </button>
+                )
+              )}
+            </div>
+            {variables.length ? (
+              variables.map((v) => {
                 const value = values[v.name];
-                const shown = value?.latex !== undefined && value.latex !== v.latex ? ` = ${value.latex}` : "";
+                const worked = !v.params?.length && value?.latex !== undefined && value.latex !== v.latex ? ` = ${value.latex}` : "";
                 return (
                   <button key={v.id} className={`smart-console-var${value?.error ? " is-error" : ""}`} title={value?.error ?? "Tap to change it"} onClick={() => editVariable(v)}>
-                    <Tex math={`${nameTex(v.name)} = ${v.latex}${shown}`} />
+                    <Tex math={`${signature(v)} = ${v.latex}${worked}`} />
                     {value?.decimal && value.decimal !== value.latex && <span className="smart-decimal">≈ {value.decimal}</span>}
+                    {value?.error && <span className="smart-console-message">{value.error}</span>}
                   </button>
                 );
-              })}
-            </div>
-          ) : (
-            <div className="smart-console-empty">No variables yet — type one below, like y = 5.</div>
-          )}
-          <div className="smart-console-log nowheel" ref={consoleLog}>
+              })
+            ) : (
+              <div className="smart-console-empty">None yet — type one below: y = 5, or f(x) = x² + 1</div>
+            )}
+          </div>
+
+          {/* the terminal: history above, the prompt at the bottom */}
+          <div className="smart-term" ref={consoleLog} onPointerDown={(e) => !(e.target as HTMLElement).closest("math-field, button") && setTimeout(() => consoleField.current?.focus(), 0)}>
             {consoleEntries.map((e) => (
               <div key={e.id} className={`smart-console-entry is-${e.kind}`}>
-                <div className="smart-console-in">
-                  <span className="smart-console-prompt">›</span>
-                  {e.input}
-                </div>
-                <div className="smart-console-out">
-                  {e.latex ? <Tex math={e.latex} /> : null}
-                  {e.decimal && <span className="smart-decimal">≈ {e.decimal}</span>}
-                  {e.message && <span className="smart-console-message">{e.message}</span>}
-                </div>
+                {e.input && (
+                  <div className="smart-console-in">
+                    <span className="smart-console-prompt">›</span>
+                    <Tex math={e.shown ?? e.input} />
+                  </div>
+                )}
+                {(e.latex || e.decimal || e.message) && (
+                  <div className="smart-console-out">
+                    {e.latex ? <Tex math={e.kind === "value" ? `= ${e.latex}` : e.latex} /> : null}
+                    {e.decimal && <span className="smart-decimal">≈ {e.decimal}</span>}
+                    {e.message && <span className="smart-console-message">{e.message}</span>}
+                  </div>
+                )}
               </div>
             ))}
-          </div>
-          <div className="smart-console-line">
-            <span className="smart-console-prompt">›</span>
-            <input
-              ref={consoleInput}
-              className="smart-console-input nokey"
-              value={consoleLine}
-              placeholder="y = 5"
-              spellCheck={false}
-              autoCapitalize="off"
-              autoComplete="off"
-              onChange={(e) => {
-                setConsoleLine(e.target.value);
-                consoleRecall.current = null;
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  submitConsole((e.target as HTMLInputElement).value);
-                } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-                  e.preventDefault();
-                  walkConsole(e.key === "ArrowUp" ? -1 : 1);
-                }
-              }}
-            />
-          </div>
-          <div className="smart-console-preview">
-            {consolePreview ? <Tex math={consolePreview} /> : <span className="smart-console-hint">y = 5 · y = 2x + 1 · del y · clear — ↑ for earlier lines</span>}
+            <div className="smart-console-line">
+              <span className="smart-console-prompt">›</span>
+              <MathInput
+                ref={consoleField}
+                className="smart-console-field"
+                value={consoleLine}
+                placeholder="y = 5"
+                onChange={(latex) => {
+                  setConsoleLine(latex);
+                  if (walk.current && walk.current.shown !== latex) walk.current = null;
+                }}
+                onEnter={() => submitConsole(consoleField.current?.getValue() ?? consoleLine)}
+                onArrow={walkConsole}
+              />
+            </div>
+            <div className="smart-console-preview">
+              {consolePreview ? <Tex math={consolePreview} /> : !consoleEntries.length && <span className="smart-console-hint">y = 5 · f(x) = x² + 1 · del y · clear — ↑ for earlier lines</span>}
+            </div>
           </div>
         </div>
       )}
@@ -510,11 +557,12 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                     title="Put this name in the line"
                     onPointerDown={(e) => e.preventDefault()}
                     onClick={() => {
-                      field.current?.insert(v.name.length > 1 ? `\\mathrm{${v.name}}` : v.name);
+                      // a function goes in ready for its input: f(▢)
+                      field.current?.insert(v.params?.length ? `${nameTex(v.name)}\\left(#?\\right)` : nameTex(v.name));
                       field.current?.focus();
                     }}
                   >
-                    <Tex math={`${v.name.length > 1 ? `\\mathrm{${v.name}}` : v.name} = ${values[v.name].latex}`} />
+                    <Tex math={`${signature(v)} = ${values[v.name].latex}`} />
                   </button>
                 ))}
             </div>

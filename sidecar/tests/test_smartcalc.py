@@ -72,10 +72,50 @@ def test_variables_console():
     from mathcore.smartcalc import op_smart_console as console
 
     have = [{"name": "y", "latex": "5"}, {"name": "x", "latex": "7"}]
-    saved = console({"text": "area = pi*r**2", "vars": [*have, {"name": "r", "latex": "3"}]})
+    saved = console({"latex": "area=\\pi r^2", "items": [*have, {"name": "r", "latex": "3"}]})
     assert saved["kind"] == "assign" and saved["name"] == "area" and saved["result_latex"] == "9 \\pi"
-    assert console({"text": "d = 2r", "vars": [{"name": "r", "latex": "3"}]})["result_latex"] == "6"
-    assert console({"text": "2*y + x", "vars": have})["result_latex"] == "17"
-    assert console({"text": "clear"}) == {"kind": "clear"} and console({"text": "del y"}) == {"kind": "delete", "name": "y"}
-    with pytest.raises(MathInputError, match="z has no value"):
-        console({"text": "z + 1", "vars": have})
+    assert console({"latex": "d=2r", "items": [{"name": "r", "latex": "3"}]})["result_latex"] == "6"
+    assert console({"latex": "2y+x", "items": have})["result_latex"] == "17"
+
+
+def test_functions():
+    from mathcore.smartcalc import op_smart_console as console, resolve_variables
+
+    made = console({"latex": "f\\left(x\\right)=x^2+1"})
+    assert made["kind"] == "assign" and made["params"] == ["x"] and made["result_latex"] == "f(x) = x^{2} + 1"
+    items = [{"name": "a", "latex": "2"}, {"name": "f", "latex": "x^{2}+1", "params": ["x"]}, {"name": "g", "latex": "at-1", "params": ["t"]}]
+    assert console({"latex": "f(2)+g(3)", "items": items})["result_latex"] == "10"
+    # functions may use variables and other functions, in any order
+    v = resolve_variables([{"name": "g", "latex": "f(x)+a", "params": ["x"]}, {"name": "f", "latex": "x^{2}", "params": ["x"]}, {"name": "a", "latex": "3"}])
+    assert v["g"]["plain"] == "x**2 + 3"
+    # on the Calculate line: f(3) is a call; f(x) = 10 (f exists) is solved; a new h(x) = … is defined
+    vars_ = {"f(x)": "x**2 + 1"}
+    assert run("2f(3)", vars=vars_)["result_latex"] == "20"
+    assert run("f(x)=10", vars=vars_)["result_latex"].startswith("x = -3")
+    assert run("h(x)=3x", vars=vars_)["kind"] == "assign"
+    # one input for now: g(a, b) = … says so plainly
+    with pytest.raises(MathInputError, match="one input"):
+        console({"latex": "g\\left(a,b\\right)=a+b"})
+
+
+def test_console_fractions():
+    from mathcore.smartcalc import op_smart_console as console
+
+    # MathLive writes 7/3 as \frac73 (no braces)
+    for typed, plain in [("y=\\frac73", "\\frac{7}{3}"), ("y=\\frac{10}{3}", "\\frac{10}{3}"), ("y=-\\frac{7}{3}", "-\\frac{7}{3}")]:
+        made = console({"latex": typed})
+        assert made["kind"] == "assign" and made["latex"] == plain and made["error"] is None
+    items = [{"name": "y", "latex": "\\frac73"}]
+    assert console({"latex": "2y", "items": items})["result_latex"] == "\\frac{14}{3}"
+
+
+def test_console_commands_from_pretty_math():
+    from mathcore.smartcalc import op_smart_console as console
+
+    assert console({"latex": "\\mathrm{del}\\ y"}) == {"kind": "delete", "name": "y"}
+    # MathLive turns a typed "del" into ∂
+    assert console({"latex": "\\partial y"}) == {"kind": "delete", "name": "y"}
+    assert console({"latex": "\\partial\\mathrm{area}"}) == {"kind": "delete", "name": "area"}
+    assert console({"latex": "clear"}) == {"kind": "clear"}
+    early = console({"latex": "area=\\pi r^2"})
+    assert early["kind"] == "assign" and early["error"] == "r has no value"
