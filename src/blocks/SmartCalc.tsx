@@ -20,7 +20,6 @@ import { GraphStudio } from "./GraphBlockNode";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { StepList, Tex } from "../ui";
-import Icon from "../Icon";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
@@ -463,17 +462,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                     </div>
                   ) : (
                     <>
-                      <div className="smart-answer">
-                        {r.kind !== "truth" && (
-                          <span className="smart-answer-tools">
-                            <button className="smart-icon" title="Copy this answer (⌘V puts it in any line)" onClick={() => copyAnswer(r)}>
-                              <Icon name="copy" size={13} />
-                            </button>
-                            <button className="smart-icon" title="Add this answer to the Work tab as the next line" onClick={() => answerToWork(r)}>
-                              <Icon name="toWork" size={13} />
-                            </button>
-                          </span>
-                        )}
                       <button
                         className="smart-out"
                         title="Put this answer in the line (at the cursor)"
@@ -484,8 +472,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                         <Tex math={r.result_latex ?? ""} />
                         {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
-                      </div>
-                      {(r.others?.length || r.steps?.length || r.work || r.graph?.length) && (
+                      {r.kind !== "truth" && (
                         <div className="smart-more">
                           {(r.others ?? []).map((o) => (
                             <button key={o.label} className="chip" onClick={() => run(entry.latex, o, entry.id)}>
@@ -498,6 +485,12 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                             </button>
                           )}
                           {handoffs}
+                          <button className="chip is-handoff" title="Copy this answer — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
+                            ⧉ Copy
+                          </button>
+                          <button className="chip is-handoff" title="Add this answer to the Work tab as your next step" onClick={() => answerToWork(r)}>
+                            → Add to Work
+                          </button>
                         </div>
                       )}
                       {openSteps === entry.id && r.steps && <StepList steps={r.steps} />}
