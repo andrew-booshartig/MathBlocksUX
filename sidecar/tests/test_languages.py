@@ -22,6 +22,8 @@ SAMPLES = [
     ("latex", r"-2(x-3)^2"),
     ("latex", r"\frac{2x}{3y}-\frac{1}{4}"),
     ("latex", r"-3\le2x+1<7"),
+    ("latex", r"x+2\frac13=-1\frac{1}{2}"),
+    ("latex", r"6\div2\frac{1}{3}x"),
     ("python", "6*s - 4 == 8*(2 + 1/4*s)"),
     ("python", "x**2 - 5*x + 6 == 0"),
     ("python", "sqrt(x + 1) == 3"),
@@ -106,3 +108,34 @@ def test_teacher_defined_language():
     assert out == "x pow 2 EQUALS ROOT(9) OR 2*x EQUALS PI"
     back = translate("2x pow 2 EQUALS ROOT(9)", "pseudo", "latex", custom)
     assert back == r"2x^{2} = \sqrt{9}"
+
+
+@pytest.mark.parametrize("latex,value", [
+    # a whole number against a fraction of numbers: a mixed number, as on paper
+    (r"2\frac13", "7/3"),
+    (r"2\frac{1}{3}", "7/3"),
+    (r"12\frac{3}{4}", "51/4"),
+    (r"-2\frac13", "-7/3"),          # −(2 + ⅓), not −2 + ⅓
+    (r"5-2\frac13", "8/3"),
+    (r"6\div2\frac13", "18/7"),     # 6 ÷ 7/3
+    (r"2\frac13x", "7*x/3"),
+    (r"\left(2\frac13\right)^2", "49/9"),
+    # everything else still multiplies
+    (r"2\frac{x}{3}", "2*x/3"),
+    (r"2\cdot\frac13", "2/3"),
+    (r"2\left(\frac13\right)", "2/3"),
+    (r"x\frac13", "x/3"),
+    (r"0.5\frac13", "1/6"),
+])
+def test_mixed_numbers_read_like_paper(latex, value):
+    assert sympy.simplify(to_sympy(parse(latex, "latex")) - sympy.sympify(value)) == 0
+
+
+def test_mixed_numbers_write_back():
+    node = parse(r"-2\frac13", "latex")
+    assert write(node, "latex") == r"-2\frac{1}{3}"
+    assert write(node, "python") == "-(2 + 1/3)"
+    assert to_sympy(parse(r"2\frac13", "latex"), evaluate=False) == sympy.Rational(7, 3)  # one number
+    # a product of 2 and ⅓ keeps its dot, so it never reads back as 2⅓
+    assert translate("2*(1/3)", "python", "latex") == r"2\left(\frac{1}{3}\right)"
+    assert write(parse(r"2\cdot\frac13", "latex"), "latex") == r"2 \cdot \frac{1}{3}"

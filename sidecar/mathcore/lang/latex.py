@@ -6,7 +6,7 @@ people type in the LaTeX language. Covers the notation of school algebra:
 import re
 
 from ..parsing import MathInputError
-from .ast import ATOMS, Add, Alts, Const, Div, Func, Group, Mul, Neg, Node, Num, Pow, Rel, Sym, strip_group
+from .ast import ATOMS, Add, Alts, Const, Div, Func, Group, Mixed, Mul, Neg, Node, Num, Pow, Rel, Sym, strip_group
 from .text import Incomplete
 
 _SKIP = {",", ";", "!", " ", ":", "quad", "qquad", "displaystyle", "textstyle", "limits", "nolimits"}
@@ -242,11 +242,27 @@ class LatexReader:
             base = Pow(base, self.script())
         return base
 
+    def mixed(self, whole: str) -> Node | None:
+        """A whole number then a fraction of numbers (2⅓) is a mixed number,
+        as on paper — otherwise None, with nothing read (2·x/3 multiplies)."""
+        if not (whole.isdigit() and self.peek()[0] == "cmd" and self.peek()[1] in ("frac", "dfrac", "tfrac")):
+            return None
+        saved = (self.i, list(self.toks))  # reading \frac14 splits a token: undo that too
+        self.take()
+        try:
+            frac = Div(self.script(), self.script(), "frac")
+        except MathInputError:
+            frac = None
+        if frac and _whole_number(frac.num) and _whole_number(frac.den) and int(frac.den.text) != 0:
+            return Mixed(Num(whole), frac)
+        self.i, self.toks = saved
+        return None
+
     def atom(self) -> Node:
         self.need_more()
         k, t = self.take()
         if k == "num":
-            return Num(t)
+            return self.mixed(t) or Num(t)
         if k == "letter":
             name = t
             if self.at("op", "_"):
@@ -338,6 +354,14 @@ class LatexReader:
 
 # ------------------------------------------------------------------ writing
 
+def _whole_number(node: Node) -> bool:
+    return isinstance(node, Num) and node.text.isdigit()
+
+
+def _number_fraction(node: Node) -> bool:
+    return isinstance(node, Div) and node.style == "frac" and _whole_number(node.num) and _whole_number(node.den)
+
+
 _REL_OUT = {"=": "=", "<": "<", ">": ">", "<=": "\\le", ">=": "\\ge", "!=": "\\ne"}
 _FUNC_OUT = {"sin": "\\sin", "cos": "\\cos", "tan": "\\tan", "asin": "\\arcsin", "acos": "\\arccos", "atan": "\\arctan", "ln": "\\ln", "log": "\\log"}
 
@@ -390,7 +414,8 @@ class LatexWriter:
                     out += " \\cdot " + text
                 elif op == "×":
                     out += " \\times " + text
-                elif _starts_with_digit(text):  # 2·3 must keep its dot
+                elif _starts_with_digit(text) or (out[-1:].isdigit() and _number_fraction(f)):
+                    # 2·3 must keep its dot — and 2·⅓ too, or it reads as 2⅓
                     out += " \\cdot " + text
                 else:  # implicit, or a code language's * — written the way it's read
                     sep = " " if re.search(r"\\[A-Za-z]+$", out) else ""
@@ -400,6 +425,8 @@ class LatexWriter:
             if node.style == "div":
                 return f"{self.paren(node.num, isinstance(node.num, (Add,)))} \\div {self.paren(node.den, not isinstance(node.den, ATOMS + (Pow,)))}"
             return f"\\frac{{{self.w(strip_group(node.num))}}}{{{self.w(strip_group(node.den))}}}"
+        if isinstance(node, Mixed):
+            return f"{node.whole.text}{self.w(node.frac)}"
         if isinstance(node, Pow):
             base = self.paren(node.base, not isinstance(node.base, ATOMS) or isinstance(node.base, Func) and node.base.name not in ("sqrt", "abs", "root"))
             return f"{base}^{{{self.w(strip_group(node.exp))}}}"

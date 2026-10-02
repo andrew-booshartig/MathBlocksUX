@@ -5,7 +5,7 @@ import sympy
 from sympy.core.parameters import evaluate as sympy_evaluate
 
 from ..parsing import MathInputError
-from .ast import Add, Alts, Const, Div, Func, Group, Mul, Neg, Node, Num, Pow, Rel, Sym
+from .ast import Add, Alts, Const, Div, Func, Group, Mixed, Mul, Neg, Node, Num, Pow, Rel, Sym
 
 _FUNCS = {
     "sin": sympy.sin, "cos": sympy.cos, "tan": sympy.tan, "asin": sympy.asin, "acos": sympy.acos, "atan": sympy.atan,
@@ -39,6 +39,9 @@ def _convert(node: Node):
         return sympy.Add(*terms)
     if isinstance(node, Mul):
         return sympy.Mul(*[_convert(f) for f in node.factors])
+    if isinstance(node, Mixed):  # one number, even unevaluated: 2⅓ is 7/3
+        den = int(node.frac.den.text)
+        return sympy.Rational(int(node.whole.text) * den + int(node.frac.num.text), den)
     if isinstance(node, Div):
         return sympy.Mul(_convert(node.num), sympy.Pow(_convert(node.den), -1))
     if isinstance(node, Pow):

@@ -105,6 +105,11 @@ def test_console_fractions():
     for typed, plain in [("y=\\frac73", "\\frac{7}{3}"), ("y=\\frac{10}{3}", "\\frac{10}{3}"), ("y=-\\frac{7}{3}", "-\\frac{7}{3}")]:
         made = console({"latex": typed})
         assert made["kind"] == "assign" and made["latex"] == plain and made["error"] is None
+    # a mixed number is 2 + ⅓, as on paper
+    assert console({"latex": "y=2\\frac13"})["result_latex"] == "\\frac{7}{3}"
+    # the space key types \, — "2 1/3" is 2⅓, and "area = 5" still names a variable
+    assert console({"latex": "y=2\\,\\frac13"})["result_latex"] == "\\frac{7}{3}"
+    assert console({"latex": "area\\,=\\,5"})["name"] == "area"
     items = [{"name": "y", "latex": "\\frac73"}]
     assert console({"latex": "2y", "items": items})["result_latex"] == "\\frac{14}{3}"
 

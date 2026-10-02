@@ -43,6 +43,12 @@ EXPRESSION_ACTIONS = [
 _NEW_NAME = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]{2,}|[A-Za-z][0-9_][A-Za-z0-9_]*)\s*=(?!=)")
 
 
+def _typed(latex: str) -> str:
+    """The line as typed, with the field's spacing commands as plain spaces
+    (a space key types \\, — so 2 1/3 stays the mixed number 2⅓)."""
+    return re.sub(r"\\[,;:! ]", " ", latex).strip()
+
+
 def _mark_names(latex: str, names) -> str:
     """Typed math reads "rate" as r·a·t·e. A multi-letter name that's a
     variable (or being saved as one: "rate = 0.07") is one name — mark it."""
@@ -230,7 +236,7 @@ def _graph_window(text: str, vars_: dict) -> dict | None:
 
 
 def op_smart(req: dict) -> dict:
-    latex = (req.get("latex") or "").strip()
+    latex = _typed(req.get("latex") or "")
     if not latex:
         raise MathInputError("")
     ans = req.get("ans")
@@ -382,7 +388,7 @@ def op_smart_console(req: dict) -> dict:
       f(x) = x² + 1          → a function, usable everywhere as f(3)
       del y · clear          → remove one · remove them all
       anything else          → worked out, like the Calculate line"""
-    latex = (req.get("latex") or "").strip()
+    latex = _typed(req.get("latex") or "")
     if not latex:
         raise MathInputError("")
     command = _command(latex)

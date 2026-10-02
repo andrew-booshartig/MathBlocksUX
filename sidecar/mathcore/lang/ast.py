@@ -52,6 +52,15 @@ class Div(Node):
 
 
 @dataclass
+class Mixed(Node):
+    """A mixed number, read the way paper does: 2⅓ is 2 + ⅓ (= 7/3), and
+    −2⅓ is −(2 + ⅓). Only a whole number against a fraction of numbers —
+    2x, 2(⅓), 2·⅓ and 2·x/3 still multiply."""
+    whole: Num
+    frac: Div
+
+
+@dataclass
 class Pow(Node):
     base: Node
     exp: Node

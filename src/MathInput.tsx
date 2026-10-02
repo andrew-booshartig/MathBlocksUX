@@ -70,6 +70,9 @@ export default function MathInput({
     mf.popoverPolicy = "off";
     mf.menuItems = [];
     mf.smartFence = true;
+    // a space is a (thin) space, so 2 1/3 types as the mixed number 2⅓ —
+    // MathLive drops spaces by default, which made it 21/3
+    mf.mathModeSpace = "\\,";
     mf.value = value;
     mf.addEventListener("input", () => handlers.current.onChange(mf.value));
     mf.addEventListener("focus", () => handlers.current.onFocus?.());

@@ -129,3 +129,9 @@ def test_single_letter_r_is_not_a_conclusion():
 
     assert conclusion("r") is None and conclusion("x = 3") is None
     assert conclusion("x \\in \\mathbb{R}") == "all" and conclusion("∅") == "none"
+
+
+def test_mixed_numbers():
+    s = statuses(r"x-1\frac{1}{2}=2", [r"x=2+1\frac12", r"x=3\frac{1}{2}"])
+    assert [x[0] for x in s] == ["ok", "ok"] and s[-1][1] == "Solved for $x$"
+    assert statuses(r"x-1\frac{1}{2}=2", [r"x=2\frac{1}{2}"])[0][0] == "wrong"

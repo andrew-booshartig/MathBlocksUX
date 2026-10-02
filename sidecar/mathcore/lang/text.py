@@ -4,7 +4,7 @@ from their definitions in specs.py — one reader/writer for all of them."""
 import re
 
 from ..parsing import MathInputError
-from .ast import ATOMS, Add, Alts, Const, Div, Func, Group, Mul, Neg, Node, Num, Pow, Rel, Sym, expand_pm, prec
+from .ast import ATOMS, Add, Alts, Const, Div, Func, Group, Mixed, Mul, Neg, Node, Num, Pow, Rel, Sym, expand_pm, prec
 
 
 class Incomplete(MathInputError):
@@ -291,7 +291,7 @@ class TextWriter:
                 return "inf"
             return s["names"][node.name]
         if isinstance(node, Group):
-            return f"({self.w(node.inner)})"
+            return self.w(node.inner) if isinstance(node.inner, Mixed) else f"({self.w(node.inner)})"
         if isinstance(node, Neg):
             return "-" + self.wrap(node.arg, isinstance(node.arg, (Add, Neg)))
         if isinstance(node, Add):
@@ -311,11 +311,13 @@ class TextWriter:
             return self.op(s["multiply"]).join(parts)
         if isinstance(node, Div):
             num = self.wrap(node.num, prec(node.num) < 3)
-            den = self.wrap(node.den, not isinstance(node.den, ATOMS + (Pow,)))
+            den = self.wrap(node.den, not isinstance(node.den, ATOMS + (Pow, Mixed)))  # (2 + 1/3) is bracketed already
             return f"{num}/{den}"
+        if isinstance(node, Mixed):  # code has no mixed numbers: 2⅓ is (2 + 1/3)
+            return f"({node.whole.text} + {node.frac.num.text}/{node.frac.den.text})"
         if isinstance(node, Pow):
-            base = self.wrap(node.base, not isinstance(node.base, ATOMS))
-            exp = self.wrap(node.exp, not isinstance(node.exp, ATOMS))
+            base = self.wrap(node.base, not isinstance(node.base, ATOMS + (Mixed,)))
+            exp = self.wrap(node.exp, not isinstance(node.exp, ATOMS + (Mixed,)))
             return f"{base}{self.op(s['power'][0])}{exp}"
         if isinstance(node, Func):
             if node.name == "root":  # nth root → x^(1/n)
