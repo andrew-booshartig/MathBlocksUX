@@ -19,7 +19,7 @@ import {
 } from "../store";
 import GraphView, { DEFAULT_WINDOW, THEMES, type MarkerFeature, type PlotDiv } from "../GraphView";
 import GraphDrawLayer, { type GraphTool } from "../GraphDraw";
-import type { GraphResult } from "../mathSidecar";
+import { type GraphResult, mathRequest } from "../mathSidecar";
 import { Plotly } from "../PlotlyChart";
 import { RichText, Tex } from "../ui";
 import Icon from "../Icon";
@@ -85,7 +85,6 @@ export function GraphStudio({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tool, setTool] = useState<GraphTool>("pan");
   const [ink, setInk] = useState({ color: INK_COLORS[0], width: 4 });
-  const [snap, setSnap] = useState(true);
   const [result, setResult] = useState<GraphResult | null>(null);
   const [plot, setPlot] = useState<PlotDiv>(null);
   const [editing, setEditing] = useState<number | null>(null);
@@ -219,6 +218,24 @@ export function GraphStudio({
     if (value.trim() !== "" && Number.isFinite(n)) update({ window: { ...window, [field]: n } });
   };
   const hide = data.hideMarkers ?? [];
+  const snap = data.snap !== false;
+  // the grid size: one step for both axes (separate x / y steps live in ⚙)
+  const gridSize = appearance.xStep && appearance.xStep === appearance.yStep ? String(appearance.xStep) : appearance.xStep || appearance.yStep ? "custom" : "auto";
+
+  // ---- a curve through the plotted points
+  const pointCount = (result?.series ?? []).filter((s) => s.kind === "points" && !styles[s.index]?.hidden).reduce((n, s) => n + (s.x?.length ?? 0), 0);
+  const fitCurve = (kind: "line" | "parabola" | "vertex") =>
+    mathRequest<{ line: string; note: string }>({ op: "fit", exprs: lines.filter((_, i) => !styles[i]?.hidden), vars, kind }).then(
+      (fit) => {
+        const current = (latest.current.expr ?? "").split("\n");
+        if (!current.includes(fit.line)) {
+          const next = current[current.length - 1]?.trim() ? [...current, fit.line] : [...current.slice(0, -1), fit.line];
+          saveLines(next, Array.from({ length: next.length }, (_, k) => styles[k] ?? {}));
+        }
+        setNotice(`Added ${fit.note.charAt(0).toLowerCase()}${fit.note.slice(1)}`);
+      },
+      (err) => setNotice(String(err).replace(/^Error:\s*/, "")),
+    );
   const drawings = data.drawings ?? [];
   const panelHidden = data.panel === "hidden";
 
@@ -347,6 +364,25 @@ export function GraphStudio({
         </button>
       </div>
 
+      {pointCount >= 2 && (
+        <div className="graph-fit">
+          <span className="graph-section-title">Curve through the points</span>
+          <div className="graph-fit-buttons">
+            <button className="chip" title="The line through the points (best fit if they're not all on one)" onClick={() => fitCurve("line")}>
+              Line
+            </button>
+            {pointCount >= 3 && (
+              <button className="chip" title="The parabola through the points (best fit for more than three)" onClick={() => fitCurve("parabola")}>
+                Parabola
+              </button>
+            )}
+            <button className="chip" title="The first point is the vertex; the second sets how wide it opens" onClick={() => fitCurve("vertex")}>
+              Parabola from vertex
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="graph-sliders">
         <div className="graph-sliders-head">
           <span className="graph-section-title">Sliders</span>
@@ -428,8 +464,9 @@ export function GraphStudio({
           </button>
         ))}
       </div>
-      {(tool === "segment" || tool === "arrow" || tool === "pen" || tool === "text") && (
-        <div className="graph-ink">
+      {/* always there (hidden when the tool has no ink) so picking a tool
+          never changes the toolbar's size — and with it the graph's */}
+      <div className={`graph-ink${tool === "segment" || tool === "arrow" || tool === "pen" || tool === "text" ? "" : " is-off"}`}>
           {INK_COLORS.map((c) => (
             <button key={c} className={`graph-ink-color${ink.color === c ? " is-on" : ""}`} style={{ background: c }} title="Ink color" onClick={() => setInk({ ...ink, color: c })} />
           ))}
@@ -438,19 +475,29 @@ export function GraphStudio({
               <span style={{ width: w + 3, height: w + 3, background: ink.color }} />
             </button>
           ))}
-        </div>
-      )}
-      {tool === "eraser" && drawings.length > 0 && (
-        <button className="graph-tool is-text" title="Remove every drawing" onClick={() => update({ drawings: [] })}>
-          <Icon name="trash" size={14} /> Clear drawings
-        </button>
-      )}
+      </div>
       <div className="graph-toolbar-end">
-        {tool !== "pan" && tool !== "eraser" && (
-          <button className={`graph-tool${snap ? " is-on" : ""}`} title="Snap to the grid" onClick={() => setSnap(!snap)}>
-            <Icon name="magnet" size={15} />
-          </button>
-        )}
+        <select
+          className="graph-grid-select"
+          title="Grid size — the distance between grid lines"
+          value={gridSize}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === "custom") return setSettingsOpen(true);
+            setAppearance(v === "auto" ? { xStep: undefined, yStep: undefined } : { xStep: Number(v), yStep: Number(v) });
+          }}
+        >
+          <option value="auto">Grid: auto</option>
+          {["0.1", "0.25", "0.5", "1", "2", "5", "10", "25", "100"].map((v) => (
+            <option key={v} value={v}>
+              Grid: {v}
+            </option>
+          ))}
+          <option value="custom">{gridSize === "custom" ? "Grid: custom" : "Grid: custom…"}</option>
+        </select>
+        <button className={`graph-tool is-text${snap ? " is-on" : ""}`} title="Points and drawings snap to the grid lines" onClick={() => update({ snap: !snap })}>
+          <Icon name="magnet" size={14} /> Snap
+        </button>
         <button className="graph-tool" title="Zoom out" onClick={() => zoomBy(1.5)}>
           <Icon name="zoomOut" size={15} />
         </button>
@@ -636,7 +683,7 @@ export function GraphStudio({
               drawings={drawings}
               onResult={onResult}
               onPlot={setPlot}
-              overlay={(p, size) => (
+              overlay={(p, size, gridLines) => (
                 <GraphDrawLayer
                   plot={p}
                   size={size}
@@ -644,6 +691,8 @@ export function GraphStudio({
                   color={ink.color}
                   width={ink.width}
                   snap={snap}
+                  fine={appearance.grid === "minor"}
+                  grid={gridLines}
                   window={window}
                   drawings={drawings}
                   onDrawings={(next: GraphDrawing[]) => update({ drawings: next })}
@@ -659,7 +708,11 @@ export function GraphStudio({
           </div>
         </div>
         {settings}
-        {notice && <div className="graph-notice">{notice}</div>}
+        {notice && (
+          <div className="graph-notice">
+            <RichText text={notice} />
+          </div>
+        )}
       </div>
     </>,
   );

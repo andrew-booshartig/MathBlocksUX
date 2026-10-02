@@ -64,6 +64,8 @@ export interface GraphBlockData extends BlockBase {
   appearance?: GraphAppearance;
   /** the equation list: shown, or tucked away to give the graph all the room */
   panel?: "shown" | "hidden";
+  /** points and drawings snap to the grid lines (on unless turned off) */
+  snap?: boolean;
 }
 
 export interface GraphLineStyle {

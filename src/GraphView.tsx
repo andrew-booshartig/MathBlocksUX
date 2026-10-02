@@ -8,6 +8,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Plot from "./PlotlyChart";
 import { type GraphMarker, type GraphResult, type GraphSeries, useLiveMath } from "./mathSidecar";
 import type { GraphAppearance, GraphDrawing, GraphLineStyle, GraphTheme, GraphWindow } from "./store";
+import { minorStep, niceStep } from "./GraphDraw";
 import { Tex } from "./ui";
 
 export const SERIES_COLORS = ["#7c9bf7", "#e07ce0", "#55d6be", "#f0a35c", "#8fd694", "#f08787", "#e0b25c", "#c98cf0"];
@@ -240,7 +241,7 @@ export default function GraphView({
   /** the Plotly element, once drawn — for exporting and for drawing tools */
   onPlot?: (plot: PlotDiv) => void;
   /** drawn over the plot, the same size as it */
-  overlay?: (plot: PlotDiv, size: { width: number; height: number }) => ReactNode;
+  overlay?: (plot: PlotDiv, size: { width: number; height: number }, grid: { x?: number; y?: number }) => ReactNode;
 }) {
   const theme = THEMES[appearance.theme ?? "dark"];
 
@@ -349,23 +350,44 @@ export default function GraphView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result, styles, exprs, theme, window.xmin, window.xmax, window.ymin, window.ymax]);
 
+  // the grid: lines every `step` (what points snap to) — but numbers only as
+  // often as they fit, so a fine grid doesn't crowd (or turn) the labels
+  const gridSteps = useMemo(() => {
+    // "auto" is graph paper: about 20 lines across the view (1 per unit at ±10)
+    const pick = (chosen: number | undefined, span: number) => (chosen && chosen > 0 ? chosen : niceStep(span / 20));
+    return { x: pick(appearance.xStep, window.xmax - window.xmin), y: pick(appearance.yStep, window.ymax - window.ymin) };
+  }, [appearance.xStep, appearance.yStep, window.xmin, window.xmax, window.ymin, window.ymax]);
+
   const layout = useMemo(() => {
     const grid = appearance.grid ?? "major";
     const numbers = appearance.numbers !== false;
     const axes = appearance.axes !== false;
-    const axis = (range: [number, number], step: number | undefined, label: string | undefined) => ({
-      range,
-      zeroline: axes,
-      zerolinecolor: theme.axis,
-      zerolinewidth: 1.5,
-      showgrid: grid !== "none",
-      gridcolor: theme.grid,
-      showticklabels: numbers,
-      tickfont: { color: theme.ink, size: 10 },
-      ...(step && step > 0 ? { dtick: step } : {}),
-      ...(grid === "minor" ? { minor: { showgrid: true, gridcolor: theme.minor } } : {}),
-      ...(label ? { title: { text: escapeHtml(label), font: { color: theme.ink, size: 12 } } } : {}),
-    });
+    // screen pixels per unit (equal scale: the same on both axes)
+    const perX = plotWidth / (window.xmax - window.xmin);
+    const perY = plotHeight / (window.ymax - window.ymin);
+    const per = (own: number) => (equalAspect ? Math.min(perX, perY) : own);
+    const axis = (range: [number, number], step: number | undefined, pixelsPerUnit: number, label: string | undefined) => {
+      // a number every k grid lines, k the smallest of 1, 2, 5, 10 … that gives each ~34px
+      const every = step ? ([1, 2, 5, 10, 20, 50, 100, 200, 500].find((k) => step * k * pixelsPerUnit >= 34) ?? 1000) : 1;
+      const lines = grid === "none" ? {} : step && grid === "minor" ? { minor: { showgrid: true, gridcolor: theme.minor, dtick: minorStep(step) } }
+        : step && every > 1 ? { minor: { showgrid: true, gridcolor: theme.grid, dtick: step } }
+        : grid === "minor" ? { minor: { showgrid: true, gridcolor: theme.minor } }
+        : {};
+      return {
+        range,
+        zeroline: axes,
+        zerolinecolor: theme.axis,
+        zerolinewidth: 1.5,
+        showgrid: grid !== "none",
+        gridcolor: theme.grid,
+        showticklabels: numbers,
+        tickangle: 0,
+        tickfont: { color: theme.ink, size: 10 },
+        ...(step ? { dtick: step * every } : {}),
+        ...lines,
+        ...(label ? { title: { text: escapeHtml(label), font: { color: theme.ink, size: 12 } } } : {}),
+      };
+    };
     return {
       paper_bgcolor: theme.bg,
       plot_bgcolor: theme.bg,
@@ -382,13 +404,13 @@ export default function GraphView({
       width: plotWidth,
       height: plotHeight,
       annotations: [...drawn.annotations, ...curveLabels],
-      xaxis: axis([window.xmin, window.xmax], appearance.xStep, appearance.xLabel),
+      xaxis: axis([window.xmin, window.xmax], gridSteps.x, per(perX), appearance.xLabel),
       yaxis: {
-        ...axis([window.ymin, window.ymax], appearance.yStep, appearance.yLabel),
+        ...axis([window.ymin, window.ymax], gridSteps.y, per(perY), appearance.yLabel),
         ...(equalAspect ? { scaleanchor: "x" as const, scaleratio: 1 } : {}),
       },
     };
-  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels]);
+  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels, gridSteps]);
 
   const [plot, setPlot] = useState<PlotDiv>(null);
   const ready = (_figure: unknown, div: PlotDiv) => {
@@ -433,7 +455,7 @@ export default function GraphView({
           }
         }}
       />
-      {plot && overlay?.(plot, { width: plotWidth, height: plotHeight })}
+      {plot && overlay?.(plot, { width: plotWidth, height: plotHeight }, gridSteps)}
       {error && !onResult && <div className="block-error">{error}</div>}
       {legend && result && (
         <div className="graph-legend">

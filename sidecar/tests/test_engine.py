@@ -91,3 +91,13 @@ def test_graph_reports_letters_without_values():
     series = op_graph({"exprs": ["y = m*x + b", "y = e^x"], "vars": {"m": "2"}})["series"]
     assert series[0]["kind"] == "error" and series[0]["missing"] == ["b"]
     assert series[1]["kind"] == "function"  # e is Euler's number
+
+
+def test_fit_curves_through_points():
+    from mathcore.graphing import op_fit
+
+    assert op_fit({"exprs": ["(0, 1)", "(1, 2)", "(2, 5)"], "kind": "parabola"})["line"] == "y = x^2 + 1"
+    assert op_fit({"exprs": ["(2, -3)", "(4, 5)"], "kind": "vertex"})["line"] == "y = 2(x - 2)^2 - 3"
+    assert op_fit({"exprs": ["(1/2, 3)", "(3/2, 4)"], "kind": "line"})["line"] == "y = x + 5/2"
+    best = op_fit({"exprs": ["(1, 1)", "(2, 2.1)", "(3, 2.9)", "(4, 4.2)"], "kind": "line"})
+    assert best["line"] == "y = 1.04*x - 0.05" and not best["exact"] and 0.98 < best["r2"] < 1

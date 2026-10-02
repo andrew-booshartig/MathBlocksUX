@@ -4787,3 +4787,40 @@ body,
   color: #8fd694;
   font-size: 12px;
 }
+
+/* graph: grid size, and curves through points */
+.graph-grid-select {
+  height: 26px;
+  background: #16161d;
+  border: 1px solid #2e2e3a;
+  border-radius: 6px;
+  color: #c8c8d8;
+  font-size: 11.5px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.graph-fit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-top: 1px solid #22222c;
+  padding-top: 7px;
+}
+
+.graph-fit-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.graph-aim text {
+  font: 600 12px ui-monospace, "SF Mono", Menlo, monospace;
+  paint-order: stroke;
+  stroke: rgba(10, 10, 16, 0.85);
+  stroke-width: 3px;
+}
+
+.graph-ink.is-off {
+  visibility: hidden;
+}

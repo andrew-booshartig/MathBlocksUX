@@ -405,3 +405,108 @@ def op_table(req: dict) -> dict:
         "ratios": column(ratios),
         "pattern": pattern,
     }
+
+
+# ------------------------------------------------------------------ fitting
+
+
+def _exact_points(lines, vars_):
+    """Every plotted point in the lines, kept exact: (1/2, 3) stays 1/2."""
+    scope = build_scope(vars_ or {})
+    points = []
+    for line in lines:
+        text = prep(str(line))
+        matches = list(_POINT.finditer(text))
+        if not matches or _POINT.sub("", text).replace(",", "").strip():
+            continue
+        for m in matches:
+            try:
+                px, py = sympy.nsimplify(parse(m.group(1), scope)), sympy.nsimplify(parse(m.group(2), scope))
+            except Exception:  # noqa: BLE001 — a half-typed point: skip it
+                continue
+            if not px.free_symbols and not py.free_symbols:
+                points.append((px, py))
+    return points
+
+
+def _graph_text(expr) -> str:
+    """An expression as a graph line types it (x^2, not x**2)."""
+    return str(expr).replace("**", "^")
+
+
+def _signed(value) -> str:
+    return f"+ {value}" if value >= 0 else f"- {-value}"
+
+
+def op_fit(req: dict) -> dict:
+    """A line or parabola through the plotted points: exact when they fit
+    exactly (three points → the one parabola through them), otherwise the
+    least-squares best fit, with r²."""
+    points = _exact_points(req.get("exprs") or [], req.get("vars"))
+    kind = req.get("kind", "line")
+    xs = {p[0] for p in points}
+    need = {"line": 2, "parabola": 3, "vertex": 2}.get(kind)
+    if need is None:
+        raise MathInputError(f"unknown fit “{kind}”")
+    if len(points) < need:
+        raise MathInputError(f"plot at least {need} points first")
+
+    if kind == "vertex":
+        # the first point is the vertex (h, k); the second sets how wide
+        (h, k), (x2, y2) = points[0], points[1]
+        if x2 == h:
+            raise MathInputError("the second point needs a different x than the vertex")
+        a = sympy.nsimplify((y2 - k) / (x2 - h) ** 2)
+        coef = "" if a == 1 else "-" if a == -1 else (f"({a})" if not a.is_Integer else str(a))
+        inside = "x" if h == 0 else f"(x {_signed(-h)})"
+        text = f"y = {coef}{inside}^2" + (f" {_signed(k)}" if k != 0 else "")
+        expr = a * (X - h) ** 2 + k
+        return {"line": text, "latex": f"y = {ptex(expr)}", "exact": True, "r2": None,
+                "note": f"vertex $({tex(h)}, {tex(k)})$, through $({tex(x2)}, {tex(y2)})$"}
+
+    degree = 1 if kind == "line" else 2
+    if len(xs) < degree + 1:
+        if kind == "line" and len(xs) == 1:
+            x0 = next(iter(xs))
+            return {"line": f"x = {x0}", "latex": f"x = {tex(x0)}", "exact": True, "r2": None, "note": "every point has the same x — a vertical line"}
+        raise MathInputError(f"needs {degree + 1} points with different x values")
+
+    # least squares (exact arithmetic): A c = y, solved through AᵀA c = Aᵀy
+    A = sympy.Matrix([[p[0] ** d for d in range(degree, -1, -1)] for p in points])
+    yv = sympy.Matrix([p[1] for p in points])
+    coeffs = (A.T * A).LUsolve(A.T * yv)
+    residual = A * coeffs - yv
+    exact = all(sympy.simplify(r) == 0 for r in residual)
+    expr = sum(c * X ** (degree - i) for i, c in enumerate(coeffs))
+    r2 = None
+    if not exact:
+        mean = sum(yv) / len(yv)
+        total = sum((y - mean) ** 2 for y in yv)
+        r2 = round(float(1 - sum(r**2 for r in residual) / total), 4) if total else None
+    shape = "line" if degree == 1 else "parabola"
+    note = (f"the {shape} through all {len(points)} points" if exact
+            else f"best-fit {shape} for {len(points)} points (r² = {r2})")
+    if exact:
+        expr = sympy.expand(expr)
+        return {"line": f"y = {_graph_text(expr)}", "latex": f"y = {ptex(expr)}", "exact": True, "r2": None, "note": note}
+    # a best fit: plain decimals, rounded (never "simplified" into other numbers)
+    text = _decimal_polynomial([float(c) for c in coeffs])
+    return {"line": f"y = {text}", "latex": f"y = {text.replace('*', '')}", "exact": False, "r2": r2, "note": note}
+
+
+def _decimal_polynomial(coeffs: list[float]) -> str:
+    """[0.99, 0.05] → '0.99*x + 0.05' (highest power first, 4 decimals)."""
+    degree = len(coeffs) - 1
+    terms = []
+    for i, c in enumerate(coeffs):
+        c = round(c, 4)
+        if c == 0:
+            continue
+        power = degree - i
+        size = f"{abs(c):.4f}".rstrip("0").rstrip(".")
+        body = size if power == 0 else ("" if size == "1" else f"{size}*") + ("x" if power == 1 else f"x^{power}")
+        terms.append(("- " if c < 0 else "+ ") + body)
+    if not terms:
+        return "0"
+    text = " ".join(terms)
+    return text[2:] if text.startswith("+ ") else "-" + text[2:]

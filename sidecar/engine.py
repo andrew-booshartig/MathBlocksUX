@@ -27,7 +27,7 @@ from mathcore.ti85 import op_ti  # noqa: E402
 from mathcore.smartcalc import op_smart, op_smart_vars  # noqa: E402
 from mathcore.lang import op_languages, op_translate  # noqa: E402
 from mathcore.analyze import op_line_public, op_quadratic, op_sequence, op_stats  # noqa: E402
-from mathcore.graphing import op_graph, op_table  # noqa: E402
+from mathcore.graphing import op_fit, op_graph, op_table  # noqa: E402
 from mathcore.parsing import TRANSFORMS, MathInputError  # noqa: E402
 from mathcore.practice import op_check, op_practice, op_topics  # noqa: E402
 from mathcore.solve import op_solve  # noqa: E402
@@ -68,6 +68,7 @@ OPS = {
     "transform": op_transform,
     "solve": op_solve,
     "graph": op_graph,
+    "fit": op_fit,
     "table": op_table,
     "line": op_line_public,
     "quadratic": op_quadratic,

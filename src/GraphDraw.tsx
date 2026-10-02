@@ -21,6 +21,14 @@ export function niceStep(raw: number): number {
 
 const round = (n: number) => Math.round(n * 1e6) / 1e6;
 
+/** the fine grid's spacing: a major step split in 5 (or 4, for steps of 2) */
+export function minorStep(step: number): number {
+  const lead = Math.round(step / 10 ** Math.floor(Math.log10(step)));
+  return step / (lead === 2 ? 4 : 5);
+}
+
+const label = (n: number) => String(Math.round(n * 1000) / 1000);
+
 /** Pixel ↔ graph conversions, read from the plot as it is drawn right now. */
 function geometry(plot: PlotDiv) {
   const layout = plot?._fullLayout;
@@ -28,6 +36,8 @@ function geometry(plot: PlotDiv) {
   const ya = layout?.yaxis;
   if (!xa || !ya) return null;
   return {
+    /** the spacing of the grid lines drawn right now */
+    steps: [Number(xa.dtick), Number(ya.dtick)] as [number, number],
     toGraph: ({ px, py }: Px): [number, number] => [xa.p2l(px - xa._offset), ya.p2l(py - ya._offset)],
     toPx: ([x, y]: [number, number]): Px => ({ px: xa._offset + xa.l2p(x), py: ya._offset + ya.l2p(y) }),
     inside: ({ px, py }: Px) => px >= xa._offset && px <= xa._offset + xa._length && py >= ya._offset && py <= ya._offset + ya._length,
@@ -49,6 +59,8 @@ export default function GraphDrawLayer({
   color,
   width,
   snap,
+  fine,
+  grid: gridLines,
   window,
   drawings,
   onDrawings,
@@ -60,6 +72,10 @@ export default function GraphDrawLayer({
   color: string;
   width: number;
   snap: boolean;
+  /** the fine grid is showing: snap to its lines, not just the main ones */
+  fine: boolean;
+  /** the grid lines' spacing, when it's set (otherwise read from the plot) */
+  grid?: { x?: number; y?: number };
   window: GraphWindow;
   drawings: GraphDrawing[];
   onDrawings: (drawings: GraphDrawing[]) => void;
@@ -69,6 +85,8 @@ export default function GraphDrawLayer({
   const layer = useRef<HTMLDivElement>(null);
   const [stroke, setStroke] = useState<Px[] | null>(null);
   const [typing, setTyping] = useState<{ at: Px; text: string } | null>(null);
+  /** where a click would land — shown before you click */
+  const [hover, setHover] = useState<Px | null>(null);
   const textInput = useRef<HTMLInputElement>(null);
   // focus once the click that placed it has finished (the canvas takes
   // focus on click, which would otherwise close the box straight away)
@@ -82,8 +100,13 @@ export default function GraphDrawLayer({
   const geo = geometry(plot);
   if (!geo) return null;
 
-  const stepX = niceStep((window.xmax - window.xmin) / 25);
-  const stepY = niceStep((window.ymax - window.ymin) / 25);
+  // snap to the grid lines on screen (the fine ones when they're showing)
+  const grid = (step: number, span: number) => {
+    const major = Number.isFinite(step) && step > 0 ? step : niceStep(span / 8);
+    return fine ? minorStep(major) : major;
+  };
+  const stepX = gridLines?.x ? (fine ? minorStep(gridLines.x) : gridLines.x) : grid(geo.steps[0], window.xmax - window.xmin);
+  const stepY = gridLines?.y ? (fine ? minorStep(gridLines.y) : gridLines.y) : grid(geo.steps[1], window.ymax - window.ymin);
   const snapped = (p: Px): [number, number] => {
     const [x, y] = geo.toGraph(p);
     return snap ? [round(Math.round(x / stepX) * stepX), round(Math.round(y / stepY) * stepY)] : [round(x), round(y)];
@@ -135,6 +158,7 @@ export default function GraphDrawLayer({
   const onPointerMove = (e: React.PointerEvent) => {
     if (!stroke) {
       if (tool === "eraser" && e.buttons === 1) erase(local(e));
+      if (tool !== "pen" && tool !== "eraser") setHover(geo.inside(local(e)) ? local(e) : null);
       return;
     }
     const p = local(e);
@@ -163,9 +187,27 @@ export default function GraphDrawLayer({
     setTyping(null);
   };
 
-  const preview = stroke && stroke.length > 1 && (
+  // the exact point under the cursor (snapped), with its coordinates
+  const aim = (() => {
+    if (typing || tool === "pen" || tool === "eraser") return null;
+    const at = stroke && stroke.length > 1 ? stroke[stroke.length - 1] : hover;
+    if (!at) return null;
+    const [x, y] = stroke && stroke.length > 1 ? geo.toGraph(at) : snapped(at);
+    const p = geo.toPx([x, y]);
+    return { ...p, text: `(${label(x)}, ${label(y)})` };
+  })();
+
+  const preview = ((stroke && stroke.length > 1) || aim) && (
     <svg className="graph-draw-preview" width={size.width} height={size.height}>
-      {tool === "pen" ? (
+      {aim && (
+        <g className="graph-aim">
+          <circle cx={aim.px} cy={aim.py} r={tool === "point" ? 6 : 4} fill={tool === "point" ? color : "none"} stroke={color} strokeWidth={2} opacity={0.9} />
+          <text x={aim.px + 10} y={aim.py - 10} fill={color}>
+            {aim.text}
+          </text>
+        </g>
+      )}
+      {!stroke || stroke.length < 2 ? null : tool === "pen" ? (
         <polyline points={stroke.map((p) => `${p.px},${p.py}`).join(" ")} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" />
       ) : (
         <>
@@ -185,6 +227,7 @@ export default function GraphDrawLayer({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={() => setStroke(null)}
+      onPointerLeave={() => setHover(null)}
     >
       {preview}
       {typing && (
