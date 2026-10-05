@@ -3,6 +3,7 @@
  * browser) or a LaTeX file — for handing in a whole assignment. */
 import katex from "katex";
 import { mathRequest } from "./mathSidecar";
+import { PRINT_PALETTE, numberLineSvg, numberLineTikz } from "./numberLine";
 import { type LanguageSpec, type WorkHistoryEntry, newId } from "./store";
 
 type Parts = [string, string, string] | null;
@@ -66,7 +67,13 @@ export function documentHtml(title: string, entries: WorkHistoryEntry[]): string
       (e, i) => `
   <section class="problem">
     <h2><span class="n">${i + 1}.</span> ${math(e.problemLatex)} <span class="status ${e.solved ? "solved" : "open"}">${e.solved ? "✓ solved" : "not finished"}</span></h2>
-    <div class="work">${math(alignedWork(e.kind, e.problemLatex, e.problemParts, e.steps), true)}</div>
+    <div class="work">${math(alignedWork(e.kind, e.problemLatex, e.problemParts, e.steps), true)}</div>${
+      // graphed while it was being worked — so it's part of the answer (not graphed: no graph)
+      e.graph
+        ? `
+    <figure class="graph">${numberLineSvg(e.graph.segments, 420, PRINT_PALETTE)}<figcaption>${math(e.graph.solution)}</figcaption></figure>`
+        : ""
+    }
   </section>`,
     )
     .join("\n");
@@ -89,6 +96,8 @@ export function documentHtml(title: string, entries: WorkHistoryEntry[]): string
   .status.solved { color: #1f7a3d; background: #e6f4ea; }
   .status.open { color: #8a5a00; background: #fdf3dc; }
   .work { overflow-x: auto; font-size: 17px; }
+  .graph { margin: 10px 0 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .graph figcaption { font-size: 14px; color: #374151; }
   math[display="block"] { margin: 6px 0; }
   @media print { body { margin: 0; } .problem { border-color: #ccc; } }
 </style>
@@ -107,10 +116,14 @@ ${items}
 /** The same, as a LaTeX document (for anyone who writes in LaTeX). */
 export function documentLatex(title: string, entries: WorkHistoryEntry[]): string {
   const body = entries
-    .map((e, i) => `\\subsection*{${i + 1}. $${e.problemLatex}$${e.solved ? "" : " \\hfill\\textit{(not finished)}"}}\n\\[\n${alignedWork(e.kind, e.problemLatex, e.problemParts, e.steps)}\n\\]`)
+    .map(
+      (e, i) =>
+        `\\subsection*{${i + 1}. $${e.problemLatex}$${e.solved ? "" : " \\hfill\\textit{(not finished)}"}}\n\\[\n${alignedWork(e.kind, e.problemLatex, e.problemParts, e.steps)}\n\\]` +
+        (e.graph ? `\n\\begin{center}\n${numberLineTikz(e.graph.segments)}\\\\[2pt]\n$${e.graph.solution}$\n\\end{center}` : ""),
+    )
     .join("\n\n");
   return `\\documentclass{article}
-\\usepackage{amsmath,amssymb,xcolor}
+\\usepackage{amsmath,amssymb,xcolor${entries.some((e) => e.graph) ? ",tikz" : ""}}
 \\begin{document}
 \\section*{${title.replace(/[&%$#_{}~^\\]/g, "")}}
 

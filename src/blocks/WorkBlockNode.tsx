@@ -13,7 +13,7 @@ import { type LanguageSpec, type WorkBlockData, type WorkCheck, type WorkHistory
 import { invoke } from "@tauri-apps/api/core";
 import { alignedWork, documentHtml, documentLatex, snapshot } from "../workHistory";
 import { mathRequest, useLiveMath } from "../mathSidecar";
-import { ErrorText, RichText, Segmented, Tex } from "../ui";
+import { ErrorText, NumberLine, RichText, Segmented, Tex } from "../ui";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import MathKeypad from "../MathKeypad";
 import LanguageEditor from "../LanguageEditor";
@@ -116,7 +116,7 @@ export function WorkPad({
   const [typing, setTyping] = useState<number | "problem" | null>(null);
   /** what Clear removed, so it can be undone for a few seconds */
   /** what Clear (or the problem's ×) removed, so it can be undone for a few seconds */
-  const [cleared, setCleared] = useState<{ lines?: string[]; reasons?: string[]; problem?: string; filed?: string } | null>(null);
+  const [cleared, setCleared] = useState<{ lines?: string[]; reasons?: string[]; problem?: string; filed?: string; graph?: WorkBlockData["graph"] } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [openEntry, setOpenEntry] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -214,11 +214,12 @@ export function WorkPad({
   const history = data.history ?? [];
   /** File the work in the history (checked once more, as it stands). The id
    * is picked first so an Undo can take it back out. */
-  const fileWork = (problem: string, workLines: string[], workReasons: string[], id = newId("problem")) =>
+  // a graph drawn for the problem (calculator Graph tab) goes into its history entry
+  const fileWork = (problem: string, workLines: string[], workReasons: string[], id = newId("problem"), graph = latest.current.graph) =>
     snapshot(problem, workLines, workReasons, syntax, customLanguages).then(
       (entry) => {
         if (!entry) return null;
-        update({ history: [...(latest.current.history ?? []), { ...entry, id }] });
+        update({ history: [...(latest.current.history ?? []), { ...entry, id, ...(graph ? { graph } : {}) }] });
         return id;
       },
       () => null,
@@ -235,7 +236,7 @@ export function WorkPad({
     const before = d.workFor ?? "";
     if (hasWork && before.trim() && before.trim() !== problem.trim()) {
       fileWork(before, d.lines, d.reasons).then((id) => id && setFlash(`Last problem filed in History (${(latest.current.history ?? []).length})`));
-      update({ problem, lines: [""], reasons: [""], workFor: undefined });
+      update({ problem, lines: [""], reasons: [""], workFor: undefined, graph: undefined });
       onReset?.();
     } else if (problem !== d.problem) update({ problem });
     setTimeout(() => (visual ? mathInputs.current[0]?.focus() : inputs.current[0]?.focus()), 40);
@@ -250,7 +251,7 @@ export function WorkPad({
     if (d.lines.some((l) => l.trim())) {
       fileWork(d.workFor ?? problem, d.lines, d.reasons).then((id) => id && setFlash(`Filed in History (${(latest.current.history ?? []).length})`));
     }
-    update({ problem: "", lines: [""], reasons: [""], workFor: undefined });
+    update({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined });
     setTyping(null);
     onReset?.();
     setTimeout(() => problemMath.current?.focus(), 30);
@@ -261,7 +262,7 @@ export function WorkPad({
     const rest = (d.history ?? []).filter((h) => h.id !== entry.id);
     // whatever was in the pad goes into the history first
     if (d.lines.some((l) => l.trim())) fileWork(d.workFor ?? d.problem, d.lines, d.reasons);
-    update({ history: rest, problem: entry.problem, lines: entry.lines.length ? entry.lines : [""], reasons: entry.reasons, workFor: entry.problem });
+    update({ history: rest, problem: entry.problem, lines: entry.lines.length ? entry.lines : [""], reasons: entry.reasons, workFor: entry.problem, graph: entry.graph });
     setHistoryOpen(false);
   };
 
@@ -269,7 +270,7 @@ export function WorkPad({
   const allProblems = async (): Promise<WorkHistoryEntry[]> => {
     const d = latest.current;
     const now = d.lines.some((l) => l.trim()) ? await snapshot(d.problem, d.lines, d.reasons, syntax, customLanguages).catch(() => null) : null;
-    return [...(d.history ?? []), ...(now ? [now] : [])];
+    return [...(d.history ?? []), ...(now ? [{ ...now, ...(d.graph ? { graph: d.graph } : {}) }] : [])];
   };
   const documentTitle = () => `Show your work — ${new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
   const saveDocument = async () => {
@@ -466,11 +467,17 @@ export function WorkPad({
                 <button className="work-history-row" onClick={() => setOpenEntry(openEntry === h.id ? null : h.id)}>
                   <span className="work-history-num">{i + 1}</span>
                   <Tex math={h.problemLatex} />
+                  {h.graph && (
+                    <span className="work-history-graph" title="Graphed — its document has the number line">
+                      number line
+                    </span>
+                  )}
                   <span className={`work-history-status${h.solved ? " is-solved" : ""}`}>{h.solved ? "✓ solved" : "unfinished"}</span>
                 </button>
                 {openEntry === h.id && (
                   <div className="work-history-detail">
                     <Tex math={alignedWork(h.kind, h.problemLatex, h.problemParts, h.steps)} block className="tex-block" />
+                    {h.graph && <NumberLine segments={h.graph.segments} width={280} />}
                     <div className="work-history-detail-actions">
                       <button className="chip" title="Bring it back into the pad to keep working on it" onClick={() => restoreEntry(h)}>
                         ↺ Keep working on it
@@ -811,10 +818,10 @@ export function WorkPad({
               // the work goes into the history (Undo takes it back out)
               const filed = lines.some((l) => l.trim()) && (data.workFor ?? data.problem).trim() ? newId("problem") : undefined;
               if (filed) fileWork(data.workFor ?? data.problem, lines, reasons, filed);
-              setCleared({ problem: data.problem, lines, reasons, filed });
+              setCleared({ problem: data.problem, lines, reasons, filed, graph: data.graph });
               clearTimeout(clearTimer.current);
               clearTimer.current = setTimeout(() => setCleared(null), 8000);
-              update({ problem: "", lines: [""], reasons: [""], workFor: undefined });
+              update({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined });
               setTimeout(() => problemMath.current?.focus(), 30);
             }}
           >

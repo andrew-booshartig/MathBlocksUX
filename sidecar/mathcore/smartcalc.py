@@ -23,7 +23,7 @@ import dataclasses
 from .lang.ast import Const, Group, Mul, Num, Sym
 from .calculator import _fmt_decimal, op_calc
 from .parsing import MathInputError, build_scope, parse, tex
-from .solve import op_solve
+from .solve import op_solve, set_relational_tex, set_to_segments
 from .transform import op_transform
 
 # how the engines above read text: 2*x, x^2, one "=" for equals
@@ -445,4 +445,39 @@ def op_smart_console(req: dict) -> dict:
         "input_latex": result["input_latex"],
         "result_latex": result.get("result_latex"),
         "decimal": result.get("decimal"),
+    }
+
+
+# ------------------------------------------------------- the Graph tab
+
+
+def op_numberline(req: dict) -> dict:
+    """The Graph tab's number line for what's typed — x < -2 or x > 5,
+    -2 ≤ x < 3, x > 4 and x < 9, x = 4 — drawn only when Graph is pressed
+    (simplifying is the student's job; whatever's typed, its solutions are
+    what's shaded)."""
+    from .worklines import Line  # here: worklines reads through lang too
+
+    latex = _typed(req.get("latex") or "")
+    if not latex:
+        raise MathInputError("type what to graph — like x < 3")
+    try:
+        line = Line(latex)
+    except lang.Incomplete:
+        raise MathInputError("finish typing it first") from None
+    if line.kind == "expression":
+        raise MathInputError("a number line shows an inequality (or an equation) — like x < 3")
+    letters = line.symbols
+    if len(letters) != 1:
+        raise MathInputError("a number line shows one letter — like x < 3" if letters else "there's no letter to graph — like x < 3")
+    v = letters[0]
+    try:
+        solutions = line.solution_set(v)
+    except Exception:  # noqa: BLE001
+        raise MathInputError("I can't draw that one on a number line") from None
+    return {
+        "variable": str(v),
+        "latex": line.latex(),
+        "solution_latex": set_relational_tex(v, solutions),
+        "segments": set_to_segments(solutions),
     }

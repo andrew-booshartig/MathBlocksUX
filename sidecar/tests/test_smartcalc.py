@@ -162,3 +162,15 @@ def test_inequality_answers_come_with_a_number_line():
     assert line == [{"lo": None, "hi": -2.0, "loClosed": False, "hiClosed": False}, {"lo": 5.0, "hi": None, "loClosed": False, "hiClosed": False}]
     assert run("-3\\le2x+1<7")["numberline"] == [{"lo": -2.0, "hi": 3.0, "loClosed": True, "hiClosed": False}]
     assert run("2x+1=7")["numberline"] is None  # equations: no number line
+
+
+def test_graph_tab_number_line():
+    from engine import handle
+
+    r = handle({"op": "numberline", "latex": "x<-2\\,\\text{ or }\\,x>5"})
+    assert r["variable"] == "x" and len(r["segments"]) == 2
+    assert handle({"op": "numberline", "latex": "x=4"})["segments"] == [{"lo": 4.0, "hi": 4.0, "loClosed": True, "hiClosed": True}]
+    assert handle({"op": "numberline", "latex": "x<1\\text{ and }x>5"})["segments"] == []
+    for bad, message in [("x+y<3", "one letter"), ("2+3", "inequality"), ("", "type what")]:
+        with pytest.raises(MathInputError, match=message):
+            handle({"op": "numberline", "latex": bad})

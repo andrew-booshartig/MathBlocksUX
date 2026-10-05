@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState, type ReactNode } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import type { NumberLineSegment, Step } from "./mathSidecar";
+import { numberLineSvg } from "./numberLine";
 
 export function Tex({ math, block = false, className }: { math: string; block?: boolean; className?: string }) {
   const html = useMemo(
@@ -104,72 +105,14 @@ export function ErrorText({ error }: { error: string | null }) {
   return <div className="block-error">{error}</div>;
 }
 
-const fmt = (n: number) => String(Math.round(n * 100) / 100);
-
 /** An inequality's solution on a number line: open/closed dots and the
  * shaded rays or segments, the way it's drawn in class. */
 export function NumberLine({ segments, width = 300 }: { segments: NumberLineSegment[]; width?: number }) {
-  const ends = segments.flatMap((s) => [s.lo, s.hi]).filter((v): v is number => v !== null);
   if (!segments.length) {
     return <div className="block-placeholder">no solution — nothing to shade</div>;
   }
-  let lo = ends.length ? Math.min(...ends) : -5;
-  let hi = ends.length ? Math.max(...ends) : 5;
-  const span = Math.max(hi - lo, 4);
-  lo = Math.floor(lo - span * 0.35);
-  hi = Math.ceil(hi + span * 0.35);
-  const pad = 16;
-  const sx = (v: number) => pad + ((v - lo) / (hi - lo)) * (width - pad * 2);
-  const y = 26;
-  const tickStep = Math.max(1, Math.ceil((hi - lo) / 12));
-  const ticks: number[] = [];
-  for (let t = Math.ceil(lo / tickStep) * tickStep; t <= hi; t += tickStep) ticks.push(t);
-  const color = "#e07ce0";
-
-  return (
-    <svg className="number-line" width={width} height={48} viewBox={`0 0 ${width} 48`}>
-      <line x1={4} x2={width - 4} y1={y} y2={y} stroke="#55606e" strokeWidth={1.5} />
-      <polygon points={`${width - 2},${y} ${width - 9},${y - 4} ${width - 9},${y + 4}`} fill="#55606e" />
-      <polygon points={`2,${y} 9,${y - 4} 9,${y + 4}`} fill="#55606e" />
-      {ticks.map((t) => (
-        <g key={t}>
-          <line x1={sx(t)} x2={sx(t)} y1={y - 4} y2={y + 4} stroke="#55606e" />
-          <text x={sx(t)} y={y + 16} fontSize={9} fill="#8a8aa0" textAnchor="middle">
-            {t}
-          </text>
-        </g>
-      ))}
-      {segments.map((s, i) => {
-        const x1 = s.lo === null ? 4 : sx(s.lo);
-        const x2 = s.hi === null ? width - 4 : sx(s.hi);
-        return (
-          <g key={i}>
-            <line x1={x1} x2={x2} y1={y} y2={y} stroke={color} strokeWidth={4} strokeLinecap="round" />
-            {s.lo === null && <polygon points={`2,${y} 10,${y - 5} 10,${y + 5}`} fill={color} />}
-            {s.hi === null && <polygon points={`${width - 2},${y} ${width - 10},${y - 5} ${width - 10},${y + 5}`} fill={color} />}
-            {s.lo !== null && s.lo === s.hi ? (
-              <circle cx={x1} cy={y} r={5} fill={color} />
-            ) : (
-              <>
-                {s.lo !== null && <circle cx={x1} cy={y} r={5} fill={s.loClosed ? color : "#14141a"} stroke={color} strokeWidth={2} />}
-                {s.hi !== null && <circle cx={x2} cy={y} r={5} fill={s.hiClosed ? color : "#14141a"} stroke={color} strokeWidth={2} />}
-              </>
-            )}
-            {s.lo !== null && (
-              <text x={x1} y={y - 10} fontSize={10} fill={color} textAnchor="middle">
-                {fmt(s.lo)}
-              </text>
-            )}
-            {s.hi !== null && s.hi !== s.lo && (
-              <text x={x2} y={y - 10} fontSize={10} fill={color} textAnchor="middle">
-                {fmt(s.hi)}
-              </text>
-            )}
-          </g>
-        );
-      })}
-    </svg>
-  );
+  // one drawing for the app and for documents (numberLine.ts)
+  return <span className="number-line-wrap" dangerouslySetInnerHTML={{ __html: numberLineSvg(segments, width) }} />;
 }
 
 /** A labelled select that stops the canvas from treating clicks as drags. */

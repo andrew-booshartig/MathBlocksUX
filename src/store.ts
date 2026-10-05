@@ -238,6 +238,21 @@ export interface WorkBlockData extends BlockBase {
   /** the problem the current lines were written for (a new problem + Enter
    *  files them away in the history) */
   workFor?: string;
+  /** graphed (in the calculator's Graph tab) for the current problem */
+  graph?: NumberLineGraph;
+}
+
+/** An inequality drawn on a number line (the calculator's Graph tab) —
+ * kept with the problem it was drawn for, so that problem's document has
+ * it (a problem nobody graphed gets no graph). */
+export interface NumberLineGraph {
+  kind: "numberline";
+  /** what was typed */
+  latex: string;
+  /** its solutions, the way a textbook writes them */
+  solution: string;
+  variable: string;
+  segments: NumberLineSegment[];
 }
 
 export interface WorkHistoryEntry {
@@ -253,6 +268,8 @@ export interface WorkHistoryEntry {
   problemParts: [string, string, string] | null;
   steps: { latex: string; parts: [string, string, string] | null; status: string }[];
   solved: boolean;
+  /** graphed for this problem — goes into its document */
+  graph?: NumberLineGraph;
 }
 
 /** What the smart calculator did with a line: a value, a simplified or
@@ -333,11 +350,14 @@ export interface CalculatorBlockData extends BlockBase {
   /** the smart calculator's history (pretty math in, answers out) */
   smart?: SmartEntry[];
   /** which of its sections is showing */
-  smartTab?: "calc" | "work";
+  smartTab?: "calc" | "work" | "graph";
   /** its own scratch values ("r = 4" on the line; LaTeX, as typed) — only
    * this calculator sees them, and AC / Next problem wipe them. With
    * `params` it's a function: f(x) = x² + 1 */
   smartVars?: { id: string; name: string; latex: string; params?: string[] }[];
+  /** its Graph tab: which kind of graph, and the last one drawn (only when
+   * Graph is pressed) */
+  smartPlot?: { mode?: "numberline" | "xy" | "xyz"; drawn?: NumberLineGraph };
   /** its Work section: the same data as a Show-your-work block */
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
   ti?: TIState;

@@ -4378,6 +4378,134 @@ math-field {
   background: #17171f;
 }
 
+/* the calculator's Graph tab: a kind of graph, what to graph, Graph */
+.smart-graph {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.smart-graph-modes {
+  display: flex;
+  gap: 4px;
+}
+
+.smart-graph-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid #2e2e3a;
+  border-radius: 999px;
+  padding: 3px 11px;
+  color: #a9a9bd;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.smart-graph-mode.is-on {
+  border-color: #e07ce0;
+  color: #f3c6f3;
+  background: #e07ce014;
+}
+
+.smart-graph-mode:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.smart-graph-soon {
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #7a7a90;
+}
+
+.smart-graph-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #2e2e3a;
+  border-radius: 10px;
+  background: #0e0e12;
+  padding: 2px 4px 2px 6px;
+}
+
+.smart-graph-line:focus-within {
+  border-color: #5cc8f0;
+}
+
+.smart-graph-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.smart-graph-go {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 14px;
+  background: #e07ce0;
+  color: #1a1020;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.smart-graph-go:hover {
+  background: #ea98ea;
+}
+
+.smart-graph-error {
+  font-size: 12.5px;
+  color: #f19a9a;
+  padding: 0 4px;
+}
+
+.smart-graph-hint {
+  font-size: 12.5px;
+  color: #6a6a80;
+  text-align: center;
+  padding: 18px 8px;
+}
+
+.smart-graph-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px 8px;
+  border-radius: 10px;
+  background: #17171f;
+}
+
+.smart-graph-label {
+  color: #ffffff;
+  font-size: 17px;
+}
+
+.smart-graph-foot {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.smart-graph-kept {
+  font-size: 11px;
+  color: #74748a;
+}
+
+.work-history-graph {
+  font-size: 10px;
+  color: #e07ce0;
+  border: 1px solid #e07ce055;
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
 /* a saved variable on the tape: one slim line */
 .smart-entry.is-assign {
   flex-direction: row;

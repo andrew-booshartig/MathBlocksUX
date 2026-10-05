@@ -6,6 +6,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   type CalculatorBlockData,
+  type NumberLineGraph,
   type SmartAction,
   type SmartEntry,
   type SmartResult,
@@ -17,7 +18,7 @@ import {
 import { WorkPad } from "./WorkBlockNode";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
-import { StepList, Tex } from "../ui";
+import { NumberLine, StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
@@ -62,6 +63,18 @@ type Tab = NonNullable<CalculatorBlockData["smartTab"]>;
 const TABS: { value: Tab; label: string }[] = [
   { value: "calc", label: "Calculate" },
   { value: "work", label: "Work" },
+  { value: "graph", label: "Graph" },
+];
+
+/** the same drawing (by what it shows — saved canvases come back as copies) */
+const sameGraph = (a?: NumberLineGraph, b?: NumberLineGraph) =>
+  !!a && !!b && a.latex === b.latex && JSON.stringify(a.segments) === JSON.stringify(b.segments);
+
+/** the Graph tab's kinds of graph — built one at a time */
+const GRAPH_MODES: { value: "numberline" | "xy" | "xyz"; label: string; soon?: boolean }[] = [
+  { value: "numberline", label: "Number line" },
+  { value: "xy", label: "xy graph", soon: true },
+  { value: "xyz", label: "xyz (3D)", soon: true },
 ];
 
 type VarValue = { plain?: string; latex?: string; decimal?: string | null; error?: string; params?: string[] };
@@ -83,6 +96,10 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   }, [note]);
   const [openSteps, setOpenSteps] = useState<string | null>(null);
   const field = useRef<MathInputHandle>(null);
+  // ---- the Graph tab: drawn only when Graph is pressed (simplify first)
+  const graphField = useRef<MathInputHandle>(null);
+  const [graphLine, setGraphLine] = useState("");
+  const [graphError, setGraphError] = useState<string | null>(null);
   const tape = useRef<HTMLDivElement>(null);
   /** the variables list is open (it folds away — type a name to see its value) */
   const [varsOpen, setVarsOpen] = useState(false);
@@ -376,9 +393,98 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     </div>
   );
 
+  // ---- the Graph tab's number line
+  const drawn = data.smartPlot?.drawn;
+  /** the drawn graph belongs to the problem in Work (its document gets it) */
+  const drawnForWork = sameGraph(drawn, data.smartWork?.graph);
+  function drawGraph() {
+    const latex = graphField.current?.getValue() ?? graphLine;
+    if (!latex.trim()) {
+      setGraphError("Type what to graph — like x < 3");
+      return;
+    }
+    mathRequest<{ variable: string; latex: string; solution_latex: string; segments: NumberLineGraph["segments"] }>({ op: "numberline", latex }).then(
+      (r) => {
+        setGraphError(null);
+        const graph: NumberLineGraph = { kind: "numberline", latex: r.latex, solution: r.solution_latex, variable: r.variable, segments: r.segments };
+        const work = current()?.smartWork ?? {};
+        // the problem being worked on keeps it: its document gets the graph
+        const forWork = (work.problem ?? "").trim() ? { smartWork: { ...work, graph } } : {};
+        updateBlock(data.id, { smartPlot: { ...(current()?.smartPlot ?? {}), drawn: graph }, ...forWork });
+      },
+      (err) => setGraphError(String(err).replace(/^Error:\s*/, "") || "I can't graph that"),
+    );
+  }
+  function clearGraph() {
+    const d = current();
+    const work = d?.smartWork ?? {};
+    updateBlock(data.id, {
+      smartPlot: { ...(d?.smartPlot ?? {}), drawn: undefined },
+      ...(sameGraph(work.graph, d?.smartPlot?.drawn) ? { smartWork: { ...work, graph: undefined } } : {}),
+    });
+  }
+
   return (
     <div className="smart-calc nodrag" ref={root}>
       {tabs}
+
+      {tab === "graph" && (
+        <div className="smart-graph">
+          <div className="smart-graph-modes" role="tablist">
+            {GRAPH_MODES.map((m) => (
+              <button
+                key={m.value}
+                className={`smart-graph-mode${(data.smartPlot?.mode ?? "numberline") === m.value ? " is-on" : ""}`}
+                disabled={m.soon}
+                title={m.soon ? "Coming next" : undefined}
+                onClick={() => updateBlock(data.id, { smartPlot: { ...(current()?.smartPlot ?? {}), mode: m.value } })}
+              >
+                {m.label}
+                {m.soon && <span className="smart-graph-soon">soon</span>}
+              </button>
+            ))}
+          </div>
+          <div className="smart-graph-line">
+            <MathInput
+              ref={graphField}
+              className="smart-graph-field"
+              value={graphLine}
+              placeholder="x < −2 or x > 5"
+              onChange={(latex) => {
+                setGraphLine(latex);
+                setGraphError(null);
+              }}
+              onEnter={drawGraph}
+            />
+            <button className="smart-graph-go" onClick={drawGraph}>
+              Graph
+            </button>
+          </div>
+          {graphError && <div className="smart-graph-error">{graphError}</div>}
+          {drawn ? (
+            <div className="smart-graph-result">
+              <div className="smart-graph-label">
+                <Tex math={drawn.solution} />
+              </div>
+              <NumberLine segments={drawn.segments} width={320} />
+              <div className="smart-graph-foot">
+                {drawnForWork ? (
+                  <span className="smart-graph-kept" title="When this work is saved as a document, this problem has its number line">
+                    Kept with your Work problem <Tex math={data.smartWork?.problem ?? ""} />
+                  </span>
+                ) : (
+                  <span className="smart-graph-kept">Not in a document — start a problem in Work to keep it with that problem</span>
+                )}
+                <button className="smart-vars-action" onClick={clearGraph}>
+                  Clear
+                </button>
+              </div>
+            </div>
+          ) : (
+            !graphError && <div className="smart-graph-hint">Simplify it first, type it here, then press Graph.</div>
+          )}
+        </div>
+      )}
 
       {tab === "work" && (
         <WorkPad
