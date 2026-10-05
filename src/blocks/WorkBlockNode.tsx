@@ -97,6 +97,7 @@ export function WorkPad({
   onStatus,
   onReset,
   onGraph,
+  autoFocus,
 }: {
   data: WorkBlockData;
   update: (patch: Partial<WorkBlockData>) => void;
@@ -107,6 +108,8 @@ export function WorkPad({
   onReset?: () => void;
   /** a solved line, sent to be graphed (the calculator's Graph tab) */
   onGraph?: (latex: string) => void;
+  /** opened on purpose (its tab clicked): the cursor goes where you'd type next */
+  autoFocus?: boolean;
 }) {
   const latest = useRef(data);
   latest.current = data;
@@ -134,6 +137,7 @@ export function WorkPad({
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const mathInputs = useRef<(MathInputHandle | null)[]>([]);
   const problemMath = useRef<MathInputHandle | null>(null);
+  const problemText = useRef<HTMLInputElement | null>(null);
   /** the visual field typed in last — where keypad presses go */
   const activeMath = useRef<MathInputHandle | null>(null);
   // anything unrecognised (e.g. saved by an older version) opens as Visual
@@ -146,6 +150,22 @@ export function WorkPad({
   const [editingLanguage, setEditingLanguage] = useState<LanguageSpec | "new" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const visual = language === "visual";
+  // opened on purpose: the problem if there isn't one, else the first empty
+  // step (or the last one)
+  useEffect(() => {
+    if (!autoFocus) return;
+    const timer = setTimeout(() => {
+      const d = latest.current;
+      if (!d.problem.trim()) return void (visual ? problemMath.current?.focus() : problemText.current?.focus());
+      const empty = d.lines.findIndex((l) => !l.trim());
+      const at = empty >= 0 ? empty : d.lines.length - 1;
+      if (visual) mathInputs.current[at]?.focus();
+      else inputs.current[at]?.focus();
+    }, 40);
+    return () => clearTimeout(timer);
+    // only when it opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const syntax = visual ? "latex" : language;
   const pendingFocus = useRef<{ index: number; caret?: number } | null>(null);
 
@@ -591,6 +611,7 @@ export function WorkPad({
           />
         ) : (
           <input
+            ref={problemText}
             className="nodrag block-input"
             value={data.problem}
             placeholder={language === "latex" ? LATEX_PLACEHOLDER : info?.placeholder ?? ""}

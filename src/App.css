@@ -4628,25 +4628,25 @@ math-field {
 .smart-keys {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 5px;
+  gap: 4px;
 }
 
 .smart-key {
-  height: 36px;
+  height: 28px;
   display: grid;
   place-items: center;
   border: none;
   border-radius: 8px;
   background: #23232d;
   color: #e8e8f0;
-  font-size: 15px;
+  font-size: 13.5px;
   cursor: pointer;
-  box-shadow: 0 2px 0 #101014, inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1.5px 0 #101014, inset 0 1px 0 rgba(255, 255, 255, 0.06);
   transition: transform 0.05s;
 }
 
 .smart-key .katex {
-  font-size: 0.95em;
+  font-size: 0.9em;
 }
 
 .smart-key:hover {
@@ -4669,7 +4669,7 @@ math-field {
 .smart-key.is-enter {
   background: linear-gradient(180deg, #ffc46e, #f0a33c);
   color: #2a1a05;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
 }
 

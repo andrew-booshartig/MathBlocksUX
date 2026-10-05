@@ -113,7 +113,13 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
 
   /** the latest copy of this block — callbacks fire after renders */
   const current = () => useStore.getState().blocks[data.id] as CalculatorBlockData | undefined;
-  const setTab = (smartTab: Tab) => updateBlock(data.id, { smartTab });
+  /** a tab opened on purpose (clicked, or a hand-off): put the cursor there —
+   * never on load, so a canvas full of calculators doesn't fight for it */
+  const focusOn = useRef<Tab | null>(null);
+  const setTab = (smartTab: Tab) => {
+    focusOn.current = smartTab;
+    updateBlock(data.id, { smartTab });
+  };
 
   // ---- variables: this calculator's own scratch ones ("r = 4" on the
   // line — nobody else sees them, AC and Next problem wipe them), plus
@@ -216,6 +222,16 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   useEffect(() => {
     tape.current?.scrollTo({ top: tape.current.scrollHeight });
   }, [entries.length, tab]);
+  useEffect(() => {
+    const wanted = focusOn.current;
+    focusOn.current = null;
+    if (wanted !== tab || tab === "work") return; // (Work focuses itself when it opens — autoFocus)
+    // a beat later: the tab's field is brand new, and MathLive ignores focus
+    // until it has finished setting up
+    const timer = setTimeout(() => (tab === "calc" ? field.current : graphField.current)?.focus(), 40);
+    return () => clearTimeout(timer);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // the history's room changes with the box — keep the newest answer in view
   useEffect(() => {
     const el = tape.current;
@@ -352,11 +368,13 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     lines.push(""); // and a fresh line under it, ready for the next step
     const reasons = Array.from({ length: lines.length }, (_, i) => work.reasons?.[i] ?? "");
     const starting = !(work.lines ?? []).some((l) => l.trim());
+    focusOn.current = "work";
     updateBlock(data.id, { smartWork: { ...work, lines, reasons, ...(starting ? { workFor: work.problem ?? "" } : {}) }, smartTab: "work" });
   };
 
   // ---- hand-offs to the other tabs
   const showWork = (latex: string) => {
+    focusOn.current = "work";
     updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), problem: latex, lines: [""], reasons: [""] }, smartTab: "work" });
   };
 
@@ -505,6 +523,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           data={workData}
           update={(patch) => updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), ...patch } })}
           frame={tabFrame("smart-tab-work")}
+          autoFocus={focusOn.current === "work"}
           onReset={clearOwnVariables}
           onGraph={(latex) => {
             // into the Graph tab's line — drawn when Graph is pressed
