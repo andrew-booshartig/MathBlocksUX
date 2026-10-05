@@ -17,7 +17,7 @@ import {
 import { WorkPad } from "./WorkBlockNode";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
-import { NumberLine, StepList, Tex } from "../ui";
+import { StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
@@ -512,11 +512,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                         <Tex math={r.result_latex ?? ""} />
                         {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
-                      {!!r.numberline?.length && (
-                        <div className="smart-numberline">
-                          <NumberLine segments={r.numberline} width={300} />
-                        </div>
-                      )}
                       {r.kind !== "truth" && (
                         <div className="smart-more">
                           {(r.others ?? []).map((o) => (
