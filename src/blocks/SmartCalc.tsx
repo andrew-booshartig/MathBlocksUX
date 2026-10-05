@@ -216,6 +216,14 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   useEffect(() => {
     tape.current?.scrollTo({ top: tape.current.scrollHeight });
   }, [entries.length, tab]);
+  // the history's room changes with the box — keep the newest answer in view
+  useEffect(() => {
+    const el = tape.current;
+    if (!el) return;
+    const keep = new ResizeObserver(() => el.scrollTo({ top: el.scrollHeight }));
+    keep.observe(el);
+    return () => keep.disconnect();
+  }, [tab]);
 
   // a click anywhere on the block puts the cursor in the line
   useEffect(() => {
@@ -426,7 +434,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   }
 
   return (
-    <div className="smart-calc nodrag" ref={root}>
+    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : ""}`} ref={root}>
       {tabs}
 
       {tab === "graph" && (

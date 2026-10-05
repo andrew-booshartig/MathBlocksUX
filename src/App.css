@@ -4334,8 +4334,22 @@ math-field {
   gap: 8px;
 }
 
+/* Calculate: the controls are always there — in a box shorter than
+   everything, the history gives up its room first (it's the only part that
+   flexes: 240px when the box isn't sized, all the room there is when it's
+   bigger, down to nothing when it's small) */
+.smart-calc.is-calc {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.smart-calc.is-calc > :not(.smart-tape) {
+  flex-shrink: 0;
+}
+
 .smart-tape {
-  height: 240px;
+  flex: 1 1 240px;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
