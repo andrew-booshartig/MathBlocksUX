@@ -79,7 +79,7 @@ def _fill_in(node, values: dict):
     return dataclasses.replace(node, **changes)
 
 
-_WORDS = {"pi", "E", "e", "oo", "sqrt", "abs", "sin", "cos", "tan", "asin", "acos", "atan", "ln", "log", "exp", "root"}
+_WORDS = {"pi", "E", "e", "oo", "sqrt", "abs", "sin", "cos", "tan", "asin", "acos", "atan", "ln", "log", "exp", "root", "or", "and"}
 
 
 def _calls(text: str, functions) -> str:
@@ -118,7 +118,8 @@ def _letters(text: str, vars_: dict | None = None, names: list | None = None) ->
     `names`, nothing is filled in: every name used, multi-letter ones whole."""
     scope = {**build_scope({}), **{n: sympy.Symbol(n) for n in names}} if names is not None else build_scope(vars_ or {})
     names: set[str] = set()
-    for side in _RELATION.split(text):
+    # x < -2 or x > 5: the words split the parts too
+    for side in re.split(r"<=|>=|<|>|=|\bor\b|\band\b", text):
         if side.strip():
             names |= {str(s) for s in parse(side, scope).free_symbols}
     return sorted(names, key=lambda n: (n not in ("x", "y"), n != "x", n))
@@ -258,14 +259,16 @@ def op_smart(req: dict) -> dict:
             "ans": None,
         }
     text = _calls(lang.write(node, "plain", PLAIN), functions)
-    relation = isinstance(node, lang.Rel)
+    # an equation or inequality — or several joined by or / and
+    # (2x - 3 < -7 or 2x - 3 > 7, x + 1 < 3 and 2x > -8), solved together
+    relation = isinstance(node, (lang.Rel, lang.Alts))
     names = _names(text)  # every name used (for live updates)
     letters = _letters(text, vars_)  # the ones that are still unknown
     base = {"input_latex": input_latex, "names": names}
 
     # name = value: save a variable (r = 4, d = 2r) — when the right side
     # has nothing unknown
-    if relation and node.ops == ["="] and isinstance(node.parts[0], Sym):
+    if isinstance(node, lang.Rel) and node.ops == ["="] and isinstance(node.parts[0], Sym):
         name = node.parts[0].name
         right = lang.write(node.parts[1], "plain", PLAIN)
         if name not in _letters(right) and not _letters(right, vars_):
@@ -282,6 +285,10 @@ def op_smart(req: dict) -> dict:
 
     # just numbers (or every letter has a value): work it out
     if not letters:
+        if isinstance(node, lang.Alts):
+            parts = [op_smart({**req, "latex": lang.latex(item), "action": None})["result_latex"] == "\\text{true}" for item in node.items]
+            truth = all(parts) if node.word == "and" else any(parts)
+            return {**base, "kind": "truth", "result_latex": "\\text{true}" if truth else "\\text{false}"}
         if relation:
             scope = build_scope(vars_)
             sides = [parse(part, scope) for part in _RELATION.split(text)]

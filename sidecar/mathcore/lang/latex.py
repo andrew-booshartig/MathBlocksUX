@@ -82,8 +82,12 @@ class LatexReader:
         return None
 
     def is_or(self) -> bool:
+        """Between two answers: or / and (as letters or \\text{}) or a comma.
+        Which one it was is left in self.joiner."""
         k, t = self.peek()
+        self.joiner = "or"
         if word := self.at_word():
+            self.joiner = word
             self.i += len(word)
             return True
         if k == "cmd" and t in ("text", "mathrm", "textrm"):
@@ -91,6 +95,7 @@ class LatexReader:
             self.take()
             content = self.braced_text()
             if content.strip().lower() in ("or", "and"):
+                self.joiner = content.strip().lower()
                 return True
             self.i = save
         return self.at("op", ",")
@@ -122,13 +127,15 @@ class LatexReader:
         return node
 
     def alts(self) -> Node:
-        items = [self.relation()]
+        items, words = [self.relation()], []
         while self.is_or():
+            words.append(self.joiner)
             if self.at("op", ","):
                 self.take()
             self.need_more()
             items.append(self.relation())
-        return items[0] if len(items) == 1 else Alts(items)
+        # all "and": every part at once; anything else is a list of answers
+        return items[0] if len(items) == 1 else Alts(items, "and" if all(w == "and" for w in words) else "or")
 
     def rel_op(self) -> str | None:
         k, t = self.peek()
@@ -447,5 +454,5 @@ class LatexWriter:
                 out += f" {_REL_OUT[op]} {self.w(part)}"
             return out
         if isinstance(node, Alts):
-            return " \\text{ or } ".join(self.w(i) for i in node.items)
+            return f" \\text{{ {node.word} }} ".join(self.w(i) for i in node.items)
         raise MathInputError(f"can't write {type(node).__name__} as LaTeX")

@@ -21,6 +21,28 @@ type Atom = { type: string; parent?: Atom; parentBranch?: unknown; leftSibling?:
 type Model = { at(offset: number): Atom | undefined; offsetOf(atom: Atom): number; lastOffset: number };
 const modelOf = (mf: MathfieldElement) => (mf as unknown as { _mathfield?: { model?: Model } })._mathfield?.model;
 
+/** Typing the last letter of "or" / "and" between two answers makes it the
+ * word (x < 2 or x > 5) — after a number, space, symbol or the start, but
+ * never right after a letter, so score and for stay letters. The caret stays
+ * in math (MathLive's own shortcuts left it in text mode, where the next
+ * answer joined the word). */
+function typeWord(mf: MathfieldElement, word: "or" | "and"): boolean {
+  const model = modelOf(mf);
+  if (!model || !mf.selectionIsCollapsed) return false;
+  const typed = word.slice(0, -1); // the letters already in the line
+  const pos = mf.position;
+  const start = pos - typed.length;
+  if (start < 0) return false;
+  const letters = Array.from({ length: typed.length }, (_, i) => model.at(start + 1 + i) as Atom & { value?: string });
+  if (letters.some((a, i) => a?.type !== "mord" || a.value !== typed[i] || a.parent !== letters[0].parent)) return false;
+  const before = model.at(start) as (Atom & { value?: string }) | undefined;
+  if (before && before.type === "mord" && /^[A-Za-z]$/.test(before.value ?? "")) return false;
+  mf.selection = { ranges: [[start, pos]] };
+  mf.insert(`\\text{ ${word} }`, { format: "latex", selectionMode: "after" });
+  if (mf.mode !== "math") mf.mode = "math";
+  return true;
+}
+
 /** [start, end] grown so neither end is inside a structure the other isn't */
 function wholePieces(model: Model, start: number, end: number): [number, number] {
   const chain = (offset: number) => {
@@ -129,6 +151,10 @@ export default function MathInput({
     mf.popoverPolicy = "off";
     mf.menuItems = [];
     mf.smartFence = true;
+    // MathLive turns or / and / not into logic symbols (∨ ∧ ¬), even inside
+    // words — score became sc∨e. Here or and and are words (typeWord).
+    const { or: _or, and: _and, not: _not, ...shortcuts } = mf.inlineShortcuts;
+    mf.inlineShortcuts = shortcuts;
     // copied into another app, math reads as math: (3x)/4+5, not $$\frac{3x}{4}+5$$
     // (pasting back in here uses MathLive's own copy, so nothing is lost)
     mf.onExport = (_from, latex, range) => {
@@ -180,6 +206,10 @@ export default function MathInput({
         } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && handlers.current.onArrow?.(event.key === "ArrowUp" ? "up" : "down")) {
           event.preventDefault();
           event.stopPropagation();
+        } else if ((event.key === "r" || event.key === "d") && !event.metaKey && !event.ctrlKey && !event.altKey && typeWord(mf, event.key === "r" ? "or" : "and")) {
+          event.preventDefault();
+          event.stopPropagation();
+          handlers.current.onChange(mf.value);
         } else if (event.key === "|" && !event.metaKey && !event.ctrlKey) {
           // | shares the backslash key, which MathLive takes as "type a raw
           // LaTeX command" — so a bar for |x| would strand you in that mode.
@@ -271,6 +301,9 @@ export default function MathInput({
       // key, and 3x+1 is the top
       const wraps = !mf.selectionIsCollapsed && latex.includes("#?") && !latex.includes("#@");
       mf.insert(wraps ? latex.replace("#?", "#@") : latex, { selectionMode: "placeholder", format: "latex" });
+      // a word (or, no solution…) leaves the caret in text mode — where
+      // everything typed next would join the word; back to math
+      if (mf.mode === "text") mf.mode = "math";
       handlers.current.onChange(mf.value);
     },
     getValue: () => field.current?.value ?? "",
@@ -285,6 +318,7 @@ export default function MathInput({
       const mf = field.current;
       if (!mf) return;
       mf.value = latex;
+      if (mf.mode !== "math") mf.mode = "math";
       handlers.current.onChange(latex);
     },
     command: (name: string) => {

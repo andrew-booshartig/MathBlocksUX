@@ -86,6 +86,8 @@ class Rel(Node):
 @dataclass
 class Alts(Node):
     items: list  # "x = 2 or x = 3"
+    # "or": any of them (x < -2 or x > 5); "and": all at once (x > -4 and x < 2)
+    word: str = "or"
 
 
 PRECEDENCE = {Alts: 0, Rel: 1, Add: 2, Mul: 3, Div: 3, Neg: 4, Pow: 5}
@@ -114,7 +116,7 @@ def _pm_variants(node: Node) -> list:
         for item in node.items:
             v = expand_pm(item)
             out += v.items if isinstance(v, Alts) else [v]
-        return [Alts(out)]
+        return [Alts(out, node.word)]
     if isinstance(node, Add):
         combos = [[]]
         for sign, term in node.terms:

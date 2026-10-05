@@ -148,3 +148,10 @@ def test_plain_bars_are_absolute_value():
     # typed | is a plain bar in the field (not MathLive's LaTeX mode)
     assert run("|-3|")["result_latex"] == "3"
     assert run("2|x-1|=4")["result_latex"] == "x = -1 \\quad\\text{or}\\quad x = 3"
+
+
+def test_compound_inequalities_on_the_line():
+    assert run("2x-3<-7\\,\\text{ or }\\,2x-3>7")["result_latex"] == "x < -2 \\quad\\text{or}\\quad x > 5"
+    assert run("x+1<3\\text{ and }2x>-8")["result_latex"] == "-4 < x < 2"
+    assert run("x<1\\text{ and }x>5")["result_latex"] == "\\text{no solution}"
+    assert run("3<5\\text{ and }2>4")["result_latex"] == "\\text{false}"

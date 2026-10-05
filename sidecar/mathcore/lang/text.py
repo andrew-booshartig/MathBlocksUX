@@ -27,6 +27,9 @@ def _tokens(text: str, spec: dict) -> list[tuple[str, str]]:
         word_ops.update(t for t in spec[key] if _IDENT.fullmatch(t))
     if _IDENT.fullmatch(spec["multiply"]):
         word_ops.add(spec["multiply"])
+    # "and" between two answers: every part at once (x > -4 and x < 2)
+    word_ops.add("and")
+    ops.add("&&")
     ops = sorted(ops, key=len, reverse=True)
     out, i = [], 0
     while i < len(text):
@@ -113,11 +116,12 @@ class TextReader:
         return node
 
     def alts(self) -> Node:
-        items = [self.relation()]
-        while any(self.word(t) for t in self.spec["or"]) or self.is_op(","):
+        items, words = [self.relation()], []
+        while any(self.word(t) for t in self.spec["or"]) or self.is_op(",") or self.word("and") or self.word("&&"):
+            words.append("and" if self.word("and") or self.word("&&") else "or")
             self.take()
             items.append(self.relation())
-        return items[0] if len(items) == 1 else Alts(items)
+        return items[0] if len(items) == 1 else Alts(items, "and" if all(w == "and" for w in words) else "or")
 
     def rel_op(self) -> str | None:
         kind, text = self.peek()
@@ -335,5 +339,6 @@ class TextWriter:
                 out += f" {spell.get(op, op)} {self.w(part)}"
             return out
         if isinstance(node, Alts):
-            return f" {s['or'][0]} ".join(self.w(i) for i in node.items)
+            joiner = s["or"][0] if node.word == "or" else ("&&" if s["or"][0] == "||" else "and")
+            return f" {joiner} ".join(self.w(i) for i in node.items)
         raise MathInputError(f"can't write {type(node).__name__} in {s['name']}")

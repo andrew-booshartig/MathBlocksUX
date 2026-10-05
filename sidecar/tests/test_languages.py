@@ -24,6 +24,8 @@ SAMPLES = [
     ("latex", r"-3\le2x+1<7"),
     ("latex", r"x+2\frac13=-1\frac{1}{2}"),
     ("latex", r"6\div2\frac{1}{3}x"),
+    ("latex", r"x>-4\text{ and }x<2"),
+    ("python", "x > -4 and x < 2"),
     ("python", "6*s - 4 == 8*(2 + 1/4*s)"),
     ("python", "x**2 - 5*x + 6 == 0"),
     ("python", "sqrt(x + 1) == 3"),

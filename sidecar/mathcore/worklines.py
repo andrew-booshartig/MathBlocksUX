@@ -63,9 +63,15 @@ class Line:
         self.node = _node if _node is not None else lang.parse(self.raw, language, custom)
         expanded = lang.expand_pm(self.node)  # x = ±4 is two answers
         self.alts: list[Line] = []
+        # "or": any of the parts (a union); "and": all at once (the overlap)
+        self.joiner = "or"
+        # -3 < 2x + 1 < 7 is two inequalities that both hold: an "and"
+        if isinstance(expanded, lang.Rel) and len(expanded.ops) > 1 and all(op in _RELOPS and op != "=" for op in expanded.ops):
+            expanded = lang.Alts([lang.Rel(expanded.parts[i : i + 2], [op]) for i, op in enumerate(expanded.ops)], "and")
         if isinstance(expanded, lang.Alts):
-            # "x = 2 or x = 3", "x < -1 or x > 4": a list of answers
+            # "x = 2 or x = 3", "x < -1 or x > 4", "x > -4 and x < 2"
             self.alts = [Line(language=language, custom=custom, _node=item) for item in expanded.items]
+            self.joiner = expanded.word
             rels = {a.rel for a in self.alts}
             self.rel = rels.pop() if len(rels) == 1 else "mixed"
             self.sides = self.raw_sides = []
@@ -88,7 +94,8 @@ class Line:
     def solution_set(self, sym):
         """Everything on the number line that makes this line true."""
         if self.alts:
-            return sympy.Union(*[a.solution_set(sym) for a in self.alts])
+            parts = [a.solution_set(sym) for a in self.alts]
+            return sympy.Intersection(*parts) if self.joiner == "and" else sympy.Union(*parts)
         if self.rel == "=":
             sols = _solutions(self.diff, sym)
             if sols is None:
@@ -128,7 +135,7 @@ class Line:
 
     def with_sides(self, sides) -> "Line":
         clone = object.__new__(Line)
-        clone.rel, clone.sides, clone.raw_sides, clone.alts = self.rel, sides, sides, []
+        clone.rel, clone.sides, clone.raw_sides, clone.alts, clone.joiner = self.rel, sides, sides, [], "or"
         clone.language, clone.raw = self.language, ""
         return clone
 

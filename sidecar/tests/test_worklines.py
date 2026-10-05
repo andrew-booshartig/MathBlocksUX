@@ -135,3 +135,17 @@ def test_mixed_numbers():
     s = statuses(r"x-1\frac{1}{2}=2", [r"x=2+1\frac12", r"x=3\frac{1}{2}"])
     assert [x[0] for x in s] == ["ok", "ok"] and s[-1][1] == "Solved for $x$"
     assert statuses(r"x-1\frac{1}{2}=2", [r"x=2\frac{1}{2}"])[0][0] == "wrong"
+
+
+def test_compound_inequalities():
+    # a chain is an "and": both inequalities at once
+    s = statuses(r"-3<2x+1<7", [r"-4<2x<6", r"-2<x<3"])
+    assert [x[0] for x in s] == ["ok", "ok"] and s[-1][1] == "Solved"
+    assert statuses(r"-3<2x+1<7", [r"-4<2x<6", r"-2<x<6"])[1][0] == "wrong"
+    # "and" is the overlap, "or" the union — mixing them up is caught
+    assert statuses(r"-3<2x+1<7", [r"x>-2\text{ and }x<3"])[0][:2] == ("ok", "Solved")
+    assert statuses(r"-3<2x+1<7", [r"x>-2\text{ or }x<3"])[0][0] == "wrong"
+    assert statuses(r"x+1<3\text{ and }2x>-8", [r"x<2"])[0][0] == "wrong"
+    s = statuses(r"2x-3<-7\text{ or }2x-3>7", [r"2x<-4\text{ or }2x>10", r"x<-2\,\text{ or }\,x>5"])
+    assert [x[0] for x in s] == ["ok", "ok"] and s[-1][1] == "Solved"
+    assert statuses(r"x<1\text{ and }x>5", [r"\text{no solution}"])[0][0] == "ok"

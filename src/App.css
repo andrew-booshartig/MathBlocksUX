@@ -3571,6 +3571,9 @@ math-field {
   --selection-background-color: #5cc8f033;
   --selection-color: #ffffff;
   --contains-highlight-background-color: #5cc8f014;
+  /* words in a line (or, no solution) aren't boxed while editing */
+  --text-highlight-background-color: transparent; /* (dark mode) */
+  --highlight-text: transparent; /* (light mode) */
   --placeholder-color: #55606e;
   --placeholder-opacity: 1;
   --smart-fence-color: #6a7584;
