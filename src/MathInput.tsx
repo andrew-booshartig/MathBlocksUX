@@ -172,6 +172,7 @@ export default function MathInput({
     mf.addEventListener("focus", () => handlers.current.onFocus?.());
     // a mouse drag (or ⇧⌥ / ⇧⌘ arrows) never ends halfway into a fraction
     mf.addEventListener("selection-change", () => {
+      if (mf.selectionIsCollapsed && mf.mode === "text") mf.mode = "math";
       const model = modelOf(mf);
       if (!model || mf.selectionIsCollapsed) return;
       const { anchor, focus } = currentRange(mf);
@@ -195,6 +196,11 @@ export default function MathInput({
     mf.addEventListener(
       "keydown",
       (event) => {
+        // words in a line (or, and, no solution) are text; a caret next to
+        // one picks up text mode, and what's typed would join the word —
+        // nothing here is typed as text, so it's always math (\ still
+        // starts a LaTeX command: that's MathLive's "latex" mode, untouched)
+        if (mf.mode === "text" && event.key.length === 1 && !event.metaKey && !event.ctrlKey) mf.mode = "math";
         if (event.key === "Enter") {
           event.preventDefault();
           event.stopPropagation();
