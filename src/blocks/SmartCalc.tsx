@@ -20,6 +20,7 @@ import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { NumberLine, StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
+import { sameWritten } from "../numberLine";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
@@ -464,9 +465,14 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           {drawn ? (
             <div className="smart-graph-result">
               <div className="smart-graph-label">
-                <Tex math={drawn.solution} />
+                <Tex math={drawn.latex} />
               </div>
               <NumberLine segments={drawn.segments} width={320} />
+              {!sameWritten(drawn.latex, drawn.solution) && (
+                <div className="smart-graph-together">
+                  together: <Tex math={drawn.solution} />
+                </div>
+              )}
               <div className="smart-graph-foot">
                 {drawnForWork ? (
                   <span className="smart-graph-kept" title="When this work is saved as a document, this problem has its number line">
@@ -492,6 +498,13 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           update={(patch) => updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), ...patch } })}
           frame={tabFrame("smart-tab-work")}
           onReset={clearOwnVariables}
+          onGraph={(latex) => {
+            // into the Graph tab's line — drawn when Graph is pressed
+            setGraphLine(latex);
+            setGraphError(null);
+            setTab("graph");
+            setTimeout(() => graphField.current?.focus(), 60);
+          }}
         />
       )}
 

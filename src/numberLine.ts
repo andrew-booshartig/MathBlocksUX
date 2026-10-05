@@ -16,6 +16,14 @@ export const PRINT_PALETTE: NumberLinePalette = { axis: "#6b7280", label: "#3741
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100);
 
+/** Is the combined answer just what was typed, written another way? (Then
+ * there's nothing to add under the graph; z < 4 or z ≥ -6 → "together: all
+ * real numbers" is worth saying.) */
+export function sameWritten(a: string, b: string): boolean {
+  const plain = (s: string) => s.replace(/\\text\{([^}]*)\}/g, "$1").replace(/\\(quad|qquad|,|;|:|!| )|\s/g, "");
+  return plain(a) === plain(b);
+}
+
 /** the stretch of the line to show, and its tick marks */
 function layout(segments: NumberLineSegment[]) {
   const ends = segments.flatMap((s) => [s.lo, s.hi]).filter((v): v is number => v !== null);
@@ -46,21 +54,25 @@ export function numberLineSvg(segments: NumberLineSegment[], width = 300, palett
     parts.push(`<line x1="${sx(t)}" x2="${sx(t)}" y1="${y - 4}" y2="${y + 4}" stroke="${axis}"/>`);
     parts.push(`<text x="${sx(t)}" y="${y + 16}" font-size="9" fill="${label}" text-anchor="middle" font-family="-apple-system, Helvetica, sans-serif">${t}</text>`);
   }
+  const xs = (s: NumberLineSegment) => [s.lo === null ? 4 : sx(s.lo), s.hi === null ? width - 4 : sx(s.hi)] as const;
+  // the shading first, for every part — then the dots on top, so a part
+  // that overlaps another never paints over its open circle
   for (const s of segments) {
-    const x1 = s.lo === null ? 4 : sx(s.lo);
-    const x2 = s.hi === null ? width - 4 : sx(s.hi);
+    const [x1, x2] = xs(s);
     parts.push(`<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="${shade}" stroke-width="4" stroke-linecap="round"/>`);
     if (s.lo === null) parts.push(`<polygon points="2,${y} 10,${y - 5} 10,${y + 5}" fill="${shade}"/>`);
     if (s.hi === null) parts.push(`<polygon points="${width - 2},${y} ${width - 10},${y - 5} ${width - 10},${y + 5}" fill="${shade}"/>`);
-    const dot = (x: number, closed: boolean) =>
-      `<circle cx="${x}" cy="${y}" r="5" fill="${closed ? shade : hole}" stroke="${shade}" stroke-width="2"/>`;
+  }
+  const dot = (x: number, closed: boolean) => `<circle cx="${x}" cy="${y}" r="5" fill="${closed ? shade : hole}" stroke="${shade}" stroke-width="2"/>`;
+  const tag = (x: number, v: number) =>
+    `<text x="${x}" y="${y - 10}" font-size="10" fill="${shade}" text-anchor="middle" font-family="-apple-system, Helvetica, sans-serif">${fmt(v)}</text>`;
+  for (const s of segments) {
+    const [x1, x2] = xs(s);
     if (s.lo !== null && s.lo === s.hi) parts.push(dot(x1, true));
     else {
       if (s.lo !== null) parts.push(dot(x1, s.loClosed));
       if (s.hi !== null) parts.push(dot(x2, s.hiClosed));
     }
-    const tag = (x: number, v: number) =>
-      `<text x="${x}" y="${y - 10}" font-size="10" fill="${shade}" text-anchor="middle" font-family="-apple-system, Helvetica, sans-serif">${fmt(v)}</text>`;
     if (s.lo !== null) parts.push(tag(x1, s.lo));
     if (s.hi !== null && s.hi !== s.lo) parts.push(tag(x2, s.hi));
   }
@@ -78,6 +90,9 @@ export function numberLineTikz(segments: NumberLineSegment[]): string {
     const b = s.hi ?? hi + 0.4;
     const arrows = s.lo === null && s.hi === null ? "<->" : s.lo === null ? "<-" : s.hi === null ? "->" : "-";
     if (a !== b) out.push(`\\draw[very thick, magenta, ${arrows}] (${a},0) -- (${b},0);`);
+  }
+  // dots after all the shading (an open circle stays open)
+  for (const s of segments) {
     const dot = (x: number, closed: boolean) => out.push(closed ? `\\fill[magenta] (${x},0) circle (3pt);` : `\\draw[thick, magenta, fill=white] (${x},0) circle (3pt);`);
     if (s.lo !== null && s.lo === s.hi) dot(s.lo, true);
     else {

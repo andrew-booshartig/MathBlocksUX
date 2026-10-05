@@ -475,9 +475,16 @@ def op_numberline(req: dict) -> dict:
         solutions = line.solution_set(v)
     except Exception:  # noqa: BLE001
         raise MathInputError("I can't draw that one on a number line") from None
+    # drawn the way it's written: each part of an "or" with its own open or
+    # closed dots (z < 4 or z ≥ -6 is two overlapping rays — that's why
+    # it's every number), an "and" (or a chain) as the overlap
+    if line.alts and line.joiner == "or":
+        segments = [seg for part in line.alts for seg in set_to_segments(part.solution_set(v))]
+    else:
+        segments = set_to_segments(solutions)
     return {
         "variable": str(v),
         "latex": line.latex(),
         "solution_latex": set_relational_tex(v, solutions),
-        "segments": set_to_segments(solutions),
+        "segments": segments,
     }

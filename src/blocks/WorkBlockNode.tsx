@@ -96,6 +96,7 @@ export function WorkPad({
   frame,
   onStatus,
   onReset,
+  onGraph,
 }: {
   data: WorkBlockData;
   update: (patch: Partial<WorkBlockData>) => void;
@@ -104,6 +105,8 @@ export function WorkPad({
   onStatus?: (solved: boolean) => void;
   /** moving on — Next problem, or a new problem entered over old work */
   onReset?: () => void;
+  /** a solved line, sent to be graphed (the calculator's Graph tab) */
+  onGraph?: (latex: string) => void;
 }) {
   const latest = useRef(data);
   latest.current = data;
@@ -762,7 +765,16 @@ export function WorkPad({
                         <RichText text={c.message} />
                       </div>
                     )}
-                    {shown && c?.done && c.status === "ok" && <div className="work-done">✓ {<RichText text={c.done} />}</div>}
+                    {shown && c?.done && c.status === "ok" && (
+                      <div className="work-done">
+                        ✓ {<RichText text={c.done} />}
+                        {onGraph && result?.kind !== "expression" && !/\\text\{\s*(no|all)/i.test(lines[i]) && (
+                          <button className="chip is-handoff work-graph-btn" title="Send this line to the Graph tab — press Graph there to draw it" onClick={() => onGraph(lines[i])}>
+                            → Graph
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {shown && c?.note && c.status === "ok" && !lines.slice(i + 1).some((l) => l.trim()) && (
                       <div className="work-note">
                         <RichText text={c.note} />

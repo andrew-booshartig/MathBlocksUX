@@ -4484,6 +4484,15 @@ math-field {
   font-size: 17px;
 }
 
+.smart-graph-together {
+  font-size: 12.5px;
+  color: #a9a9bd;
+}
+
+.work-graph-btn {
+  margin-left: 8px;
+}
+
 .smart-graph-foot {
   align-self: stretch;
   display: flex;

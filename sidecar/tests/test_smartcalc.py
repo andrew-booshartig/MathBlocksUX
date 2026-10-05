@@ -169,6 +169,10 @@ def test_graph_tab_number_line():
 
     r = handle({"op": "numberline", "latex": "x<-2\\,\\text{ or }\\,x>5"})
     assert r["variable"] == "x" and len(r["segments"]) == 2
+    # an "or" is drawn as written: each part with its own dots (they may overlap)
+    both = handle({"op": "numberline", "latex": "z<4\\,\\text{ or }\\,z\\ge-6"})
+    assert both["solution_latex"] == "\\text{all real numbers}"
+    assert both["segments"] == [{"lo": None, "hi": 4.0, "loClosed": False, "hiClosed": False}, {"lo": -6.0, "hi": None, "loClosed": True, "hiClosed": False}]
     assert handle({"op": "numberline", "latex": "x=4"})["segments"] == [{"lo": 4.0, "hi": 4.0, "loClosed": True, "hiClosed": True}]
     assert handle({"op": "numberline", "latex": "x<1\\text{ and }x>5"})["segments"] == []
     for bad, message in [("x+y<3", "one letter"), ("2+3", "inequality"), ("", "type what")]:
