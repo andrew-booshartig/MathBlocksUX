@@ -13,7 +13,8 @@ import { type LanguageSpec, type WorkBlockData, type WorkCheck, type WorkHistory
 import { invoke } from "@tauri-apps/api/core";
 import { alignedWork, documentHtml, documentLatex, snapshot } from "../workHistory";
 import { mathRequest, useLiveMath } from "../mathSidecar";
-import { ErrorText, RichText, Segmented, Tex } from "../ui";
+import { ErrorText, NumberLine, RichText, Segmented, Tex } from "../ui";
+import type { NumberLineSegment } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import MathKeypad from "../MathKeypad";
 import LanguageEditor from "../LanguageEditor";
@@ -25,6 +26,8 @@ interface CheckedLine {
   parts?: [string, string, string] | null;
   message?: string;
   done?: string;
+  /** a solved inequality, for drawing on a number line */
+  numberline?: NumberLineSegment[];
   /** a nudge on a correct line (e.g. the variable cancelled out — now what?) */
   note?: string;
 }
@@ -756,6 +759,11 @@ export function WorkPad({
                       </div>
                     )}
                     {shown && c?.done && c.status === "ok" && <div className="work-done">✓ {<RichText text={c.done} />}</div>}
+                    {shown && c?.done && c.status === "ok" && !!c.numberline?.length && (
+                      <div className="work-numberline">
+                        <NumberLine segments={c.numberline} width={300} />
+                      </div>
+                    )}
                     {shown && c?.note && c.status === "ok" && !lines.slice(i + 1).some((l) => l.trim()) && (
                       <div className="work-note">
                         <RichText text={c.note} />

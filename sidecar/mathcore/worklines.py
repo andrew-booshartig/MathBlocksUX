@@ -26,6 +26,7 @@ from sympy import S, Symbol
 from . import lang
 from .lang import Incomplete
 from .parsing import MathInputError, num, tex
+from .solve import set_to_segments
 
 REL_TEX = {"=": "=", "<": "<", ">": ">", "<=": "\\le", ">=": "\\ge"}
 _RELOPS = {"<": sympy.Lt, ">": sympy.Gt, "<=": sympy.Le, ">=": sympy.Ge}
@@ -323,6 +324,8 @@ def _check_conclusion(claim: str, prev: Line, given: Line, carried: bool) -> dic
     if carried and verdict(given) != claim:
         return {**entry, "status": "carried", "message": "This follows from the line above, but an earlier mistake is carried through."}
     done = "No solution — no value makes it true" if claim == "none" else "Infinitely many solutions — every value makes it true"
+    if claim == "all" and given.kind == "inequality":
+        entry["numberline"] = set_to_segments(S.Reals)  # the whole line, shaded
     return {**entry, "status": "ok", "done": done}
 
 
@@ -410,6 +413,12 @@ def op_worklines(req: dict) -> dict:
             done = _is_done(line, given)
             if done:
                 entry["done"] = done
+                # a solved inequality, drawn on a number line (as homework asks)
+                if line.kind == "inequality" and len(line.symbols) == 1:
+                    try:
+                        entry["numberline"] = set_to_segments(line.solution_set(line.symbols[0]))
+                    except Exception:  # noqa: BLE001 — just no picture
+                        pass
             note = _variable_gone(line, given)
             if note:
                 entry["note"] = note

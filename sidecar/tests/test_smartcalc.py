@@ -155,3 +155,10 @@ def test_compound_inequalities_on_the_line():
     assert run("x+1<3\\text{ and }2x>-8")["result_latex"] == "-4 < x < 2"
     assert run("x<1\\text{ and }x>5")["result_latex"] == "\\text{no solution}"
     assert run("3<5\\text{ and }2>4")["result_latex"] == "\\text{false}"
+
+
+def test_inequality_answers_come_with_a_number_line():
+    line = run("2x-3<-7\\text{ or }2x-3>7")["numberline"]
+    assert line == [{"lo": None, "hi": -2.0, "loClosed": False, "hiClosed": False}, {"lo": 5.0, "hi": None, "loClosed": False, "hiClosed": False}]
+    assert run("-3\\le2x+1<7")["numberline"] == [{"lo": -2.0, "hi": 3.0, "loClosed": True, "hiClosed": False}]
+    assert run("2x+1=7")["numberline"] is None  # equations: no number line

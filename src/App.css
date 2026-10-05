@@ -4378,6 +4378,14 @@ math-field {
   background: #17171f;
 }
 
+/* an inequality's answer on a number line */
+.smart-numberline,
+.work-numberline {
+  display: flex;
+  justify-content: center;
+  margin: 2px 0;
+}
+
 /* a saved variable on the tape: one slim line */
 .smart-entry.is-assign {
   flex-direction: row;

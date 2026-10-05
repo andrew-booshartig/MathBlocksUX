@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
+import type { NumberLineSegment } from "./mathSidecar";
 
 export interface VariableRow {
   id: string;
@@ -266,6 +267,8 @@ export interface SmartResult {
   kind: "value" | "result" | "truth" | "choose" | "assign";
   input_latex: string;
   result_latex?: string;
+  /** an inequality's answer, to draw on a number line */
+  numberline?: NumberLineSegment[] | null;
   decimal?: string | null;
   steps?: { note: string; latex: string }[];
   action?: SmartAction;

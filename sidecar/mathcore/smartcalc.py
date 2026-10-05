@@ -326,9 +326,13 @@ def op_smart(req: dict) -> dict:
             return {**base, **handoff, "kind": "choose", "letters": letters, "choices": actions}
         action = actions[0]
 
+    numberline = None
     if action["kind"] == "solve":
         out = op_solve({"expr": text, "for": action["var"], "vars": vars_})
         result, steps = out.get("solution_latex", ""), out.get("steps", [])
+        # an inequality's answer, drawn on a number line
+        if out.get("kind") == "inequality" and out.get("numberline"):
+            numberline = out["numberline"]
     elif action["kind"] in ("simplify", "expand", "factor"):
         if relation:
             raise MathInputError("that's an equation — solve it instead")
@@ -343,6 +347,7 @@ def op_smart(req: dict) -> dict:
         "kind": "result",
         "result_latex": result,
         "steps": steps,
+        "numberline": numberline,
         "action": action,
         # a simplified expression can be used again as Ans; a solution can't
         "ans": result if action["kind"] != "solve" else None,
