@@ -4418,9 +4418,9 @@ math-field {
 }
 
 .smart-graph-mode.is-on {
-  border-color: #e07ce0;
-  color: #f3c6f3;
-  background: #e07ce014;
+  border-color: #c99bbf;
+  color: #e6cfe0;
+  background: #c99bbf14;
 }
 
 .smart-graph-mode:disabled {
@@ -4459,15 +4459,15 @@ math-field {
   border: none;
   border-radius: 8px;
   padding: 7px 14px;
-  background: #e07ce0;
-  color: #1a1020;
+  background: #c99bbf;
+  color: #1d1520;
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
 }
 
 .smart-graph-go:hover {
-  background: #ea98ea;
+  background: #d6aecb;
 }
 
 .smart-graph-error {
@@ -4523,8 +4523,8 @@ math-field {
 
 .work-history-graph {
   font-size: 10px;
-  color: #e07ce0;
-  border: 1px solid #e07ce055;
+  color: #c99bbf;
+  border: 1px solid #c99bbf55;
   border-radius: 999px;
   padding: 0 6px;
 }
