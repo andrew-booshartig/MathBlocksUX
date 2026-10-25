@@ -253,6 +253,8 @@ export interface NumberLineGraph {
   solution: string;
   variable: string;
   segments: NumberLineSegment[];
+  /** an "and": each part on its own line above the answer's (as on paper) */
+  parts?: { label: string; latex?: string; segments: NumberLineSegment[] }[];
 }
 
 export interface WorkHistoryEntry {

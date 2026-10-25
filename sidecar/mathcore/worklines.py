@@ -66,9 +66,12 @@ class Line:
         self.alts: list[Line] = []
         # "or": any of the parts (a union); "and": all at once (the overlap)
         self.joiner = "or"
+        # -3 < 2x + 1 < 7 written as one chain (rather than with the word "and")
+        self.chained = False
         # -3 < 2x + 1 < 7 is two inequalities that both hold: an "and"
         if isinstance(expanded, lang.Rel) and len(expanded.ops) > 1 and all(op in _RELOPS and op != "=" for op in expanded.ops):
             expanded = lang.Alts([lang.Rel(expanded.parts[i : i + 2], [op]) for i, op in enumerate(expanded.ops)], "and")
+            self.chained = True
         if isinstance(expanded, lang.Alts):
             # "x = 2 or x = 3", "x < -1 or x > 4", "x > -4 and x < 2"
             self.alts = [Line(language=language, custom=custom, _node=item) for item in expanded.items]
@@ -136,7 +139,7 @@ class Line:
 
     def with_sides(self, sides) -> "Line":
         clone = object.__new__(Line)
-        clone.rel, clone.sides, clone.raw_sides, clone.alts, clone.joiner = self.rel, sides, sides, [], "or"
+        clone.rel, clone.sides, clone.raw_sides, clone.alts, clone.joiner, clone.chained = self.rel, sides, sides, [], "or", False
         clone.language, clone.raw = self.language, ""
         return clone
 

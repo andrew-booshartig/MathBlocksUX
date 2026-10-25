@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState, type ReactNode } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import type { NumberLineSegment, Step } from "./mathSidecar";
-import { numberLineSvg } from "./numberLine";
+import { type NumberLinePart, numberLineSvg } from "./numberLine";
 
 export function Tex({ math, block = false, className }: { math: string; block?: boolean; className?: string }) {
   const html = useMemo(
@@ -107,12 +107,10 @@ export function ErrorText({ error }: { error: string | null }) {
 
 /** An inequality's solution on a number line: open/closed dots and the
  * shaded rays or segments, the way it's drawn in class. */
-export function NumberLine({ segments, width = 300 }: { segments: NumberLineSegment[]; width?: number }) {
-  if (!segments.length) {
-    return <div className="block-placeholder">no solution — nothing to shade</div>;
-  }
-  // one drawing for the app and for documents (numberLine.ts)
-  return <span className="number-line-wrap" dangerouslySetInnerHTML={{ __html: numberLineSvg(segments, width) }} />;
+export function NumberLine({ segments, width = 300, parts, answer }: { segments: NumberLineSegment[]; width?: number; parts?: NumberLinePart[]; answer?: string }) {
+  // one drawing for the app and for documents (numberLine.ts) — no solution
+  // is an empty line, and an "and" shows its parts above the answer
+  return <span className="number-line-wrap" dangerouslySetInnerHTML={{ __html: numberLineSvg(segments, width, undefined, { parts, answer }) }} />;
 }
 
 /** A labelled select that stops the canvas from treating clicks as drags. */

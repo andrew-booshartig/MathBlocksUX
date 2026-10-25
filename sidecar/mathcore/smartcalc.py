@@ -482,9 +482,27 @@ def op_numberline(req: dict) -> dict:
         segments = [seg for part in line.alts for seg in set_to_segments(part.solution_set(v))]
     else:
         segments = set_to_segments(solutions)
-    return {
+    out = {
         "variable": str(v),
         "latex": line.latex(),
         "solution_latex": set_relational_tex(v, solutions),
         "segments": segments,
     }
+    # an "and" the way it's done on paper: each part on its own line, then
+    # the overlap — the answer — below (an empty line when they don't meet).
+    # A chain is already one piece (-2 ≤ x < 3) unless it's impossible.
+    if line.alts and line.joiner == "and" and (not line.chained or not segments):
+        out["parts"] = [
+            {"label": _readable(part.node), "latex": lang.latex(part.node), "segments": set_to_segments(part.solution_set(v))} for part in line.alts
+        ]
+    return out
+
+
+def _readable(node) -> str:
+    """A part as a person would write it, for a label on a picture:
+    3y + 7 < 2y, x ≥ −6 (no LaTeX, no * between a number and a letter)."""
+    text = lang.write(node, "plain", PLAIN)
+    text = re.sub(r"(?<=[\d)])\*(?=[A-Za-z(])", "", text).replace("*", "·").replace("**", "^")
+    for ascii_, sign in (("<=", "≤"), (">=", "≥"), ("!=", "≠"), ("-", "−")):
+        text = text.replace(ascii_, sign)
+    return text

@@ -20,7 +20,7 @@ import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { NumberLine, StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
-import { sameWritten } from "../numberLine";
+import { plainMath, sameWritten } from "../numberLine";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
@@ -432,10 +432,17 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       setGraphError("Type what to graph — like x < 3");
       return;
     }
-    mathRequest<{ variable: string; latex: string; solution_latex: string; segments: NumberLineGraph["segments"] }>({ op: "numberline", latex }).then(
+    mathRequest<{ variable: string; latex: string; solution_latex: string; segments: NumberLineGraph["segments"]; parts?: NumberLineGraph["parts"] }>({ op: "numberline", latex }).then(
       (r) => {
         setGraphError(null);
-        const graph: NumberLineGraph = { kind: "numberline", latex: r.latex, solution: r.solution_latex, variable: r.variable, segments: r.segments };
+        const graph: NumberLineGraph = {
+          kind: "numberline",
+          latex: r.latex,
+          solution: r.solution_latex,
+          variable: r.variable,
+          segments: r.segments,
+          ...(r.parts?.length ? { parts: r.parts } : {}),
+        };
         const work = current()?.smartWork ?? {};
         // the problem being worked on keeps it: its document gets the graph
         const forWork = (work.problem ?? "").trim() ? { smartWork: { ...work, graph } } : {};
@@ -495,8 +502,9 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
               <div className="smart-graph-label">
                 <Tex math={drawn.latex} />
               </div>
-              <NumberLine segments={drawn.segments} width={320} />
-              {!sameWritten(drawn.latex, drawn.solution) && (
+              <NumberLine segments={drawn.segments} width={320} parts={drawn.parts} answer={plainMath(drawn.solution)} />
+              {/* the picture already says it for an "and" (its answer line) and for no solution */}
+              {!drawn.parts?.length && drawn.segments.length > 0 && !sameWritten(drawn.latex, drawn.solution) && (
                 <div className="smart-graph-together">
                   together: <Tex math={drawn.solution} />
                 </div>

@@ -3,7 +3,7 @@
  * browser) or a LaTeX file — for handing in a whole assignment. */
 import katex from "katex";
 import { mathRequest } from "./mathSidecar";
-import { PRINT_PALETTE, numberLineSvg, numberLineTikz, sameWritten } from "./numberLine";
+import { PRINT_PALETTE, numberLineSvg, numberLineTikz, plainMath, sameWritten } from "./numberLine";
 import { type LanguageSpec, type WorkHistoryEntry, newId } from "./store";
 
 type Parts = [string, string, string] | null;
@@ -71,8 +71,8 @@ export function documentHtml(title: string, entries: WorkHistoryEntry[]): string
       // graphed while it was being worked — so it's part of the answer (not graphed: no graph)
       e.graph
         ? `
-    <figure class="graph">${numberLineSvg(e.graph.segments, 420, PRINT_PALETTE)}<figcaption>${math(e.graph.latex)}${
-          sameWritten(e.graph.latex, e.graph.solution) ? "" : ` <span class="together">— together: ${math(e.graph.solution)}</span>`
+    <figure class="graph">${numberLineSvg(e.graph.segments, 420, PRINT_PALETTE, { parts: e.graph.parts, answer: plainMath(e.graph.solution) })}<figcaption>${math(e.graph.latex)}${
+          e.graph.parts?.length || !e.graph.segments.length || sameWritten(e.graph.latex, e.graph.solution) ? "" : ` <span class="together">— together: ${math(e.graph.solution)}</span>`
         }</figcaption></figure>`
         : ""
     }
@@ -122,7 +122,7 @@ export function documentLatex(title: string, entries: WorkHistoryEntry[]): strin
     .map(
       (e, i) =>
         `\\subsection*{${i + 1}. $${e.problemLatex}$${e.solved ? "" : " \\hfill\\textit{(not finished)}"}}\n\\[\n${alignedWork(e.kind, e.problemLatex, e.problemParts, e.steps)}\n\\]` +
-        (e.graph ? `\n\\begin{center}\n${numberLineTikz(e.graph.segments)}\\\\[2pt]\n$${e.graph.latex}$${sameWritten(e.graph.latex, e.graph.solution) ? "" : `\\quad\\textit{together:} $${e.graph.solution}$`}\n\\end{center}` : ""),
+        (e.graph ? `\n\\begin{center}\n${numberLineTikz(e.graph.segments, { parts: e.graph.parts })}\\\\[2pt]\n$${e.graph.latex}$${sameWritten(e.graph.latex, e.graph.solution) ? "" : `\\quad\\textit{together:} $${e.graph.solution}$`}\n\\end{center}` : ""),
     )
     .join("\n\n");
   return `\\documentclass{article}
