@@ -180,7 +180,7 @@ def test_graph_tab_number_line():
             handle({"op": "numberline", "latex": bad})
 
 
-def test_and_graphs_like_paper_parts_then_the_overlap():
+def test_an_and_with_no_solution_draws_its_parts():
     from engine import handle
 
     # parts don't meet: each part, then an empty answer line
@@ -188,9 +188,9 @@ def test_and_graphs_like_paper_parts_then_the_overlap():
     assert r["segments"] == [] and [p["label"] for p in r["parts"]] == ["x < 1", "x > 5"]
     # an impossible chain is the same thing
     assert [p["label"] for p in handle({"op": "numberline", "latex": "5<x<1"})["parts"]] == ["5 < x", "x < 1"]
-    # parts that meet: the answer line is the overlap
+    # parts that meet: just the overlap — the answer — on the line
     r = handle({"op": "numberline", "latex": "3y+7<2y\\text{ and }4y+8>-48"})
-    assert [p["label"] for p in r["parts"]] == ["3y + 7 < 2y", "4y + 8 > −48"]
+    assert "parts" not in r
     assert r["segments"] == [{"lo": -14.0, "hi": -7.0, "loClosed": False, "hiClosed": False}]
     # a chain that works is already one piece; an "or" keeps its own look
     assert "parts" not in handle({"op": "numberline", "latex": "-2\\le x<3"})

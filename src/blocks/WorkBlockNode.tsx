@@ -151,6 +151,15 @@ export function WorkPad({
   const [editingLanguage, setEditingLanguage] = useState<LanguageSpec | "new" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const visual = language === "visual";
+  /** What → Graph sends for line i: the line itself — or, for a conclusion
+   * ("no solution", "all real numbers"), the inequalities it was drawn
+   * from (x < 3 and x > 6: graphed, they show why there's no solution) */
+  const graphable = (i: number) => {
+    const words = /^\s*\\text\{\s*(no|all)/i;
+    if (!words.test(lines[i])) return lines[i];
+    for (let k = i - 1; k >= 0; k--) if (lines[k].trim() && !words.test(lines[k])) return lines[k];
+    return data.problem;
+  };
   // opened on purpose: the problem if there isn't one, else the first empty
   // step (or the last one)
   useEffect(() => {
@@ -790,8 +799,12 @@ export function WorkPad({
                     {shown && c?.done && c.status === "ok" && (
                       <div className="work-done">
                         ✓ {<RichText text={c.done} />}
-                        {onGraph && result?.kind !== "expression" && !/\\text\{\s*(no|all)/i.test(lines[i]) && (
-                          <button className="chip is-handoff work-graph-btn" title="Send this line to the Graph tab — press Graph there to draw it" onClick={() => onGraph(lines[i])}>
+                        {onGraph && result?.kind !== "expression" && (
+                          <button
+                            className="chip is-handoff work-graph-btn"
+                            title="Send this to the Graph tab — press Graph there to draw it"
+                            onClick={() => onGraph(graphable(i))}
+                          >
                             → Graph
                           </button>
                         )}

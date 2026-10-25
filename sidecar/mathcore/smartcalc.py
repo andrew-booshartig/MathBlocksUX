@@ -461,6 +461,17 @@ def op_numberline(req: dict) -> dict:
     latex = _typed(req.get("latex") or "")
     if not latex:
         raise MathInputError("type what to graph — like x < 3")
+    from .worklines import conclusion
+
+    claim = conclusion(latex)
+    if claim:  # an empty line, or the whole line shaded
+        everything = claim == "all"
+        return {
+            "variable": "x",
+            "latex": latex,
+            "solution_latex": "\\text{all real numbers}" if everything else "\\text{no solution}",
+            "segments": [{"lo": None, "hi": None, "loClosed": False, "hiClosed": False}] if everything else [],
+        }
     try:
         line = Line(latex)
     except lang.Incomplete:
@@ -488,10 +499,10 @@ def op_numberline(req: dict) -> dict:
         "solution_latex": set_relational_tex(v, solutions),
         "segments": segments,
     }
-    # an "and" the way it's done on paper: each part on its own line, then
-    # the overlap — the answer — below (an empty line when they don't meet).
-    # A chain is already one piece (-2 ≤ x < 3) unless it's impossible.
-    if line.alts and line.joiner == "and" and (not line.chained or not segments):
+    # an "and" whose parts never meet (x < 3 and x > 6; 5 < x < 1): there's
+    # no answer to shade, so the parts themselves are drawn — both on the
+    # one line, the way it's done in class — with "no solution" beside them
+    if line.alts and line.joiner == "and" and not segments:
         out["parts"] = [
             {"label": _readable(part.node), "latex": lang.latex(part.node), "segments": set_to_segments(part.solution_set(v))} for part in line.alts
         ]
