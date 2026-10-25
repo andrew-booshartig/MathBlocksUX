@@ -20,13 +20,15 @@ export interface NumberLinePalette {
   hole: string;
 }
 
+/** the app's: a theme sets these (the calculator app's themes), and the
+ * canvas app falls back to the muted defaults */
 export const APP_PALETTE: NumberLinePalette = {
-  axis: "#4b5260",
-  label: "#8b90a0",
-  tag: "#c3c7d2",
-  shades: ["#c99bbf", "#94a8d8"], // dusty rose, soft periwinkle
-  both: "#8fc4ae", // soft sage
-  hole: "#17171f",
+  axis: "var(--nl-axis, #4b5260)",
+  label: "var(--nl-label, #8b90a0)",
+  tag: "var(--nl-tag, #c3c7d2)",
+  shades: ["var(--nl-a, #c99bbf)", "var(--nl-b, #94a8d8)"], // dusty rose, soft periwinkle
+  both: "var(--nl-both, #8fc4ae)", // soft sage
+  hole: "var(--nl-hole, #17171f)",
 };
 export const PRINT_PALETTE: NumberLinePalette = {
   axis: "#6b7280",
@@ -126,29 +128,29 @@ function drawLine(
   const part = o.part ?? ((i: number) => i);
   const shade = (p: number) => palette.shades[p % palette.shades.length];
   const group: string[] = [
-    `<line x1="4" x2="${width - 4}" y1="${y}" y2="${y}" stroke="${axis}" stroke-width="1.5"/>`,
-    `<polygon points="${width - 2},${y} ${width - 9},${y - 4} ${width - 9},${y + 4}" fill="${axis}"/>`,
-    `<polygon points="2,${y} 9,${y - 4} 9,${y + 4}" fill="${axis}"/>`,
+    `<line x1="4" x2="${width - 4}" y1="${y}" y2="${y}" style="stroke:${axis}" stroke-width="1.5"/>`,
+    `<polygon points="${width - 2},${y} ${width - 9},${y - 4} ${width - 9},${y + 4}" style="fill:${axis}"/>`,
+    `<polygon points="2,${y} 9,${y - 4} 9,${y + 4}" style="fill:${axis}"/>`,
   ];
   for (const t of ticks) {
-    group.push(`<line x1="${sx(t)}" x2="${sx(t)}" y1="${y - 5}" y2="${y + 5}" stroke="${axis}"/>`);
-    if (o.numbers !== undefined) group.push(`<text x="${sx(t)}" y="${o.numbers}" font-size="9" fill="${label}" text-anchor="middle" ${FONT}>${t}</text>`);
+    group.push(`<line x1="${sx(t)}" x2="${sx(t)}" y1="${y - 5}" y2="${y + 5}" style="stroke:${axis}"/>`);
+    if (o.numbers !== undefined) group.push(`<text x="${sx(t)}" y="${o.numbers}" font-size="9" style="fill:${label}" text-anchor="middle" ${FONT}>${t}</text>`);
   }
   // the shading: each stretch one flat color — a part's, or the overlap's
   for (const { a, b, parts } of stretches(segments, part)) {
     const c = parts.size > 1 ? palette.both : shade([...parts][0]);
     const x1 = a === -Infinity ? 6 : sx(a);
     const x2 = b === Infinity ? width - 6 : sx(b);
-    group.push(`<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="${c}" stroke-width="5"/>`);
-    if (a === -Infinity) group.push(`<polygon points="1,${y} 11,${y - 6} 11,${y + 6}" fill="${c}"/>`);
-    if (b === Infinity) group.push(`<polygon points="${width - 1},${y} ${width - 11},${y - 6} ${width - 11},${y + 6}" fill="${c}"/>`);
+    group.push(`<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" style="stroke:${c}" stroke-width="5"/>`);
+    if (a === -Infinity) group.push(`<polygon points="1,${y} 11,${y - 6} 11,${y + 6}" style="fill:${c}"/>`);
+    if (b === Infinity) group.push(`<polygon points="${width - 1},${y} ${width - 11},${y - 6} ${width - 11},${y + 6}" style="fill:${c}"/>`);
   }
   // then the dots, solid, on top — each in its part's color
   const tags = new Set<number>();
   segments.forEach((s, i) => {
     const c = shade(part(i));
     const dot = (v: number, closed: boolean) => {
-      group.push(`<circle cx="${sx(v)}" cy="${y}" r="5" fill="${closed ? c : hole}" stroke="${c}" stroke-width="2"/>`);
+      group.push(`<circle cx="${sx(v)}" cy="${y}" r="5" style="fill:${closed ? c : hole};stroke:${c}" stroke-width="2"/>`);
       tags.add(v);
     };
     if (s.lo !== null && s.lo === s.hi) dot(s.lo, true);
@@ -157,7 +159,7 @@ function drawLine(
       if (s.hi !== null) dot(s.hi, s.hiClosed);
     }
   });
-  for (const v of tags) group.push(`<text x="${sx(v)}" y="${o.tagsAt ?? y - 10}" font-size="10" fill="${palette.tag}" text-anchor="middle" ${FONT}>${fmt(v)}</text>`);
+  for (const v of tags) group.push(`<text x="${sx(v)}" y="${o.tagsAt ?? y - 10}" font-size="10" style="fill:${palette.tag}" text-anchor="middle" ${FONT}>${fmt(v)}</text>`);
   out.push(group.join(""));
 }
 
@@ -180,7 +182,7 @@ export function numberLineSvg(segments: NumberLineSegment[], width = 300, palett
     const drawn = parts.flatMap((p) => p.segments);
     const owner = parts.flatMap((p, i) => p.segments.map(() => i));
     const y = 40;
-    out.push(`<text x="${width / 2}" y="13" font-size="11" fill="${palette.label}" text-anchor="middle" ${FONT}>${none}</text>`);
+    out.push(`<text x="${width / 2}" y="13" font-size="11" style="fill:${palette.label}" text-anchor="middle" ${FONT}>${none}</text>`);
     drawLine(out, drawn, { y, width, sx, ticks, palette, numbers: y + 16, tagsAt: y - 10, part: (i) => owner[i] });
     return svg(width, y + 22, out);
   }
@@ -188,7 +190,7 @@ export function numberLineSvg(segments: NumberLineSegment[], width = 300, palett
   if (!segments.length) {
     // no solution: the line, with nothing on it
     drawLine(out, [], { y: 30, width, sx, ticks, palette, numbers: 46 });
-    out.push(`<text x="${width / 2}" y="14" font-size="11" fill="${palette.label}" text-anchor="middle" ${FONT}>${none}</text>`);
+    out.push(`<text x="${width / 2}" y="14" font-size="11" style="fill:${palette.label}" text-anchor="middle" ${FONT}>${none}</text>`);
     return svg(width, 54, out);
   }
 

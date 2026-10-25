@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MatrixLab Calculator",
+  "identifier": "com.andrewboos.matrixlab.calculator",
+  "build": {
+    "beforeDevCommand": "npm run dev -- --port 1430 --strictPort",
+    "devUrl": "http://localhost:1430"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "MatrixLab Calculator",
+        "url": "calculator.html",
+        "width": 430,
+        "height": 780,
+        "minWidth": 340,
+        "minHeight": 520,
+        "acceptFirstMouse": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+name = "Solarized Dark"
+author = "Ethan Schoonover"
+appearance = "dark"
+
+[ui]
+shadow     = "#001a21"
+background = "#00212b"
+surface    = "#002b36"
+overlay    = "#073642"
+raised     = "#0a404e"
+border     = "#174f5c"
+faint      = "#586e75"
+muted      = "#657b83"
+subtle     = "#839496"
+text       = "#93a1a1"
+
+[colors]
+red    = "#dc322f"
+orange = "#cb4b16"
+yellow = "#b58900"
+green  = "#859900"
+teal   = "#2aa198"
+blue   = "#268bd2"
+purple = "#6c71c4"
+pink   = "#d33682"
+
+[numberline]
+first   = "#6c71c4"
+second  = "#268bd2"
+overlap = "#859900"

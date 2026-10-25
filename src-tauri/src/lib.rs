@@ -17,6 +17,9 @@ pub fn run() {
             workspace::export_workspace,
             workspace::save_image,
             workspace::save_document,
+            workspace::theme_folder,
+            workspace::list_themes,
+            workspace::save_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -39,3 +39,26 @@ The build freezes the math engine with PyInstaller (`npm run build:engine`)
 and puts it inside the app, so the `.dmg` runs on any Apple Silicon Mac with
 nothing installed. It's signed locally (not by Apple), so the first time,
 macOS asks: **System Settings → Privacy & Security → Open Anyway**.
+
+## MatrixLab Calculator (its own app)
+
+The smart calculator — Calculate · Work (show your work) · Graph — as a
+standalone app, from the same code and engine as the canvas.
+
+```
+npm run calculator      # dev: its own window (Vite on :1430), alongside the canvas app
+```
+
+Its calculator, settings and themes live in its own data folder
+(`~/Library/Application Support/com.andrewboos.matrixlab.calculator/`).
+
+**Themes** are TOML. Twelve come built in (`src/calculator/themes/*.toml`;
+One Dark is the default and the documented template). Make your own from
+the theme menu (New theme… — live preview, errors by line) or drop `.toml`
+files into the themes folder (Open themes folder) and press Reload. A theme
+can `extends = "Tokyo Night"` and change just a few colors.
+
+How it works: `scripts/tokenize-colors.py` gave every color in `App.css` a
+role with the original as fallback (`var(--t-bg2, #17171f)`), so the canvas
+app looks exactly as before and a theme just sets the roles. Run it again
+after adding colors to App.css.

@@ -1,0 +1,30 @@
+name = "Tokyo Night"
+author = "enkia / folke"
+appearance = "dark"
+
+[ui]
+shadow     = "#13131a"
+background = "#16161e"
+surface    = "#1a1b26"
+overlay    = "#1f2335"
+raised     = "#292e42"
+border     = "#3b4261"
+faint      = "#414868"
+muted      = "#565f89"
+subtle     = "#a9b1d6"
+text       = "#c0caf5"
+
+[colors]
+red    = "#f7768e"
+orange = "#ff9e64"
+yellow = "#e0af68"
+green  = "#9ece6a"
+teal   = "#73daca"
+blue   = "#7aa2f7"
+purple = "#9d7cd8"
+pink   = "#bb9af7"
+
+[numberline]
+first   = "#bb9af7"
+second  = "#7aa2f7"
+overlap = "#9ece6a"

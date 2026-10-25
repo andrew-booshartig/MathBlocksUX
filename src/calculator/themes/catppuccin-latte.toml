@@ -1,0 +1,30 @@
+name = "Catppuccin Latte"
+author = "Catppuccin"
+appearance = "light"
+
+[ui]
+shadow     = "#ffffff"
+background = "#e6e9ef"
+surface    = "#eff1f5"
+overlay    = "#dce0e8"
+raised     = "#ccd0da"
+border     = "#bcc0cc"
+faint      = "#9ca0b0"
+muted      = "#8c8fa1"
+subtle     = "#6c6f85"
+text       = "#4c4f69"
+
+[colors]
+red    = "#d20f39"
+orange = "#fe640b"
+yellow = "#df8e1d"
+green  = "#40a02b"
+teal   = "#179299"
+blue   = "#1e66f5"
+purple = "#8839ef"
+pink   = "#ea76cb"
+
+[numberline]
+first   = "#8839ef"
+second  = "#1e66f5"
+overlap = "#40a02b"

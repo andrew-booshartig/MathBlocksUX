@@ -8,6 +8,13 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react()],
 
+  // two apps from one codebase: the canvas (MatrixLab) and the calculator
+  build: {
+    rollupOptions: {
+      input: { main: "index.html", calculator: "calculator.html" },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

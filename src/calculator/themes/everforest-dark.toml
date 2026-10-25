@@ -1,0 +1,30 @@
+name = "Everforest Dark"
+author = "sainnhe"
+appearance = "dark"
+
+[ui]
+shadow     = "#1e2326"
+background = "#232a2e"
+surface    = "#2d353b"
+overlay    = "#343f44"
+raised     = "#3d484d"
+border     = "#475258"
+faint      = "#56635f"
+muted      = "#7a8478"
+subtle     = "#9da9a0"
+text       = "#d3c6aa"
+
+[colors]
+red    = "#e67e80"
+orange = "#e69875"
+yellow = "#dbbc7f"
+green  = "#a7c080"
+teal   = "#83c092"
+blue   = "#7fbbb3"
+purple = "#d699b6"
+pink   = "#d699b6"
+
+[numberline]
+first   = "#d699b6"
+second  = "#7fbbb3"
+overlap = "#a7c080"

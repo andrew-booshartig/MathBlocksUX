@@ -148,6 +148,50 @@ fn decode_base64(text: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+// ---- themes: .toml files in the app's own themes folder, made in the app
+// or edited in any editor (the calculator app reads them all)
+
+fn themes_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("themes");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// The themes folder (made if it isn't there yet), for showing in Finder.
+#[tauri::command]
+pub fn theme_folder(app: AppHandle) -> Result<String, String> {
+    Ok(themes_dir(&app)?.to_string_lossy().into_owned())
+}
+
+/// Every theme file in the folder: (file name, its TOML).
+#[tauri::command]
+pub fn list_themes(app: AppHandle) -> Result<Vec<(String, String)>, String> {
+    let mut out = Vec::new();
+    for entry in fs::read_dir(themes_dir(&app)?).map_err(|e| e.to_string())?.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+            continue;
+        }
+        if let Ok(text) = fs::read_to_string(&path) {
+            out.push((path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), text));
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// Writes a theme to the folder as <file>.toml (a new one, or over the same
+/// file when it's being edited); returns the file name.
+#[tauri::command]
+pub fn save_theme(app: AppHandle, file: String, text: String) -> Result<String, String> {
+    let stem = file.trim_end_matches(".toml");
+    let clean: String = stem.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '-' }).collect();
+    let name = safe_filename(clean.trim())?;
+    let file_name = format!("{name}.toml");
+    fs::write(themes_dir(&app)?.join(&file_name), text).map_err(|e| e.to_string())?;
+    Ok(file_name)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

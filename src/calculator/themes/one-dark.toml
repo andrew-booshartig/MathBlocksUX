@@ -1,0 +1,47 @@
+# MatrixLab Calculator theme
+#
+# Colors are "#rrggbb" (or "#rgb", "#rrggbbaa"), or a name from [palette].
+# Every key is optional: anything left out comes from the theme you extend
+# (One Dark if you don't say), so a theme can be just the few colors you
+# want to change. Save it as a .toml file in the themes folder.
+
+name = "One Dark"
+author = "Atom"
+appearance = "dark"        # "dark" or "light" (scrollbars and menus follow)
+# extends = "One Dark"     # start from another theme
+
+[palette]                  # optional: name colors once, use the names below
+red    = "#e06c75"
+orange = "#d19a66"
+yellow = "#e5c07b"
+green  = "#98c379"
+cyan   = "#56b6c2"
+blue   = "#61afef"
+purple = "#c678dd"
+
+[ui]
+shadow     = "#181a1f"     # the deepest shade
+background = "#21252b"     # the window, and the line you type in
+surface    = "#282c34"     # answer cards, panels
+overlay    = "#2c313a"     # chips, menus
+raised     = "#333842"     # keys, the selected tab
+border     = "#3e4451"
+faint      = "#4b5263"     # placeholders, tick marks
+muted      = "#5c6370"     # hints
+subtle     = "#828997"     # secondary text
+text       = "#abb2bf"
+
+[colors]                   # accents — buttons, marks and answers use them by hue
+red    = "red"
+orange = "orange"
+yellow = "yellow"
+green  = "green"
+teal   = "cyan"
+blue   = "blue"
+purple = "purple"
+pink   = "purple"
+
+[numberline]               # the Graph tab's number line
+first   = "purple"         # the first part of an "and" / "or"
+second  = "blue"           # the second part
+overlap = "green"          # where they overlap

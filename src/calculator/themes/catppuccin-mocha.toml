@@ -1,0 +1,30 @@
+name = "Catppuccin Mocha"
+author = "Catppuccin"
+appearance = "dark"
+
+[ui]
+shadow     = "#11111b"
+background = "#181825"
+surface    = "#1e1e2e"
+overlay    = "#313244"
+raised     = "#45475a"
+border     = "#585b70"
+faint      = "#6c7086"
+muted      = "#7f849c"
+subtle     = "#a6adc8"
+text       = "#cdd6f4"
+
+[colors]
+red    = "#f38ba8"
+orange = "#fab387"
+yellow = "#f9e2af"
+green  = "#a6e3a1"
+teal   = "#94e2d5"
+blue   = "#89b4fa"
+purple = "#cba6f7"
+pink   = "#f5c2e7"
+
+[numberline]
+first   = "#cba6f7"
+second  = "#89b4fa"
+overlap = "#a6e3a1"

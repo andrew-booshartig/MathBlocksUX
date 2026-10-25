@@ -1,0 +1,30 @@
+name = "Kanagawa"
+author = "rebelot"
+appearance = "dark"
+
+[ui]
+shadow     = "#16161d"
+background = "#1a1a22"
+surface    = "#1f1f28"
+overlay    = "#2a2a37"
+raised     = "#363646"
+border     = "#43435a"
+faint      = "#54546d"
+muted      = "#727169"
+subtle     = "#c8c093"
+text       = "#dcd7ba"
+
+[colors]
+red    = "#e46876"
+orange = "#ffa066"
+yellow = "#e6c384"
+green  = "#98bb6c"
+teal   = "#7aa89f"
+blue   = "#7e9cd8"
+purple = "#957fb8"
+pink   = "#d27e99"
+
+[numberline]
+first   = "#957fb8"
+second  = "#7e9cd8"
+overlap = "#98bb6c"

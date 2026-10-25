@@ -1,0 +1,30 @@
+name = "Dracula"
+author = "Zeno Rocha"
+appearance = "dark"
+
+[ui]
+shadow     = "#191a21"
+background = "#21222c"
+surface    = "#282a36"
+overlay    = "#343746"
+raised     = "#3a3c4e"
+border     = "#44475a"
+faint      = "#565b75"
+muted      = "#6272a4"
+subtle     = "#bdc0d2"
+text       = "#f8f8f2"
+
+[colors]
+red    = "#ff5555"
+orange = "#ffb86c"
+yellow = "#f1fa8c"
+green  = "#50fa7b"
+teal   = "#8be9fd"
+blue   = "#8be9fd"
+purple = "#bd93f9"
+pink   = "#ff79c6"
+
+[numberline]
+first   = "#bd93f9"
+second  = "#8be9fd"
+overlap = "#50fa7b"
