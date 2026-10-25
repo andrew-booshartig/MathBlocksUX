@@ -4,6 +4,7 @@
  * number line's three colors; the app turns them into the CSS variables
  * App.css's colors fall back from (scripts/tokenize-colors.py). */
 import { parse, TomlError } from "smol-toml";
+import { mixColors } from "../numberLine";
 
 const BUILT_IN_FILES = import.meta.glob("./themes/*.toml", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
@@ -34,6 +35,8 @@ export interface Theme {
   ui: Record<(typeof UI_KEYS)[number], string>;
   colors: Record<(typeof HUES)[number], string>;
   numberline: Record<(typeof LINE_KEYS)[number], string>;
+  /** its overlap color is first and second mixed (not one it named) */
+  overlapIsMix?: boolean;
   /** where it came from: built in, or the file in your themes folder */
   source: "built-in" | string;
   /** the TOML it was read from */
@@ -92,10 +95,23 @@ export function readTheme(text: string, source: string, known: Theme[] = []): Th
 
   const ui = section("ui", UI_KEYS, base?.ui);
   const colors = section("colors", HUES, base?.colors);
-  // the number line defaults to the theme's own purple, blue and green
-  const numberline = section("numberline", LINE_KEYS, base?.numberline ?? { first: colors.purple, second: colors.blue, overlap: colors.green });
+  // the number line: the theme's red and blue unless it says — and where
+  // they overlap, the two mixed (unless the theme names a color)
+  const lineTable = table(data.numberline, "numberline") ?? {};
+  const saysMix = lineTable.overlap === "mix";
+  if (saysMix) delete lineTable.overlap; // a word, not a color: handled here
+  const leftOut = !saysMix && lineTable.overlap === undefined;
+  // left out: the theme it extends decides — a color it named, or the mix
+  const namedByBase = leftOut && base && !base.overlapIsMix ? base.numberline.overlap : undefined;
+  const numberline = section("numberline", LINE_KEYS, {
+    first: base?.numberline.first ?? colors.red,
+    second: base?.numberline.second ?? colors.blue,
+    overlap: namedByBase ?? "#000000", // (replaced below when it's the mix)
+  });
+  const overlapIsMix = saysMix || (leftOut && !namedByBase);
+  if (overlapIsMix) numberline.overlap = mixColors(numberline.first, numberline.second);
   const appearance = data.appearance === "light" || data.appearance === "dark" ? data.appearance : (base?.appearance ?? "dark");
-  return { name, author: typeof data.author === "string" ? data.author : undefined, appearance, ui, colors, numberline, source, text };
+  return { name, author: typeof data.author === "string" ? data.author : undefined, appearance, ui, colors, numberline, overlapIsMix, source, text };
 }
 
 function table(value: unknown, key: string): Table | undefined {
@@ -150,7 +166,7 @@ export function newThemeText(from: Theme, name: string): string {
     ...HUES.map((k) => `${k.padEnd(6)} = "${from.colors[k]}"`),
     ``,
     `[numberline]`,
-    ...LINE_KEYS.map((k) => `${k.padEnd(7)} = "${from.numberline[k]}"`),
+    ...LINE_KEYS.map((k) => (k === "overlap" && from.overlapIsMix ? `overlap = "mix"   # the two above, mixed — or a color` : `${k.padEnd(7)} = "${from.numberline[k]}"`)),
     ``,
   ];
   return lines.join("\n");

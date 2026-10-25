@@ -25,6 +25,5 @@ purple = "#957fb8"
 pink   = "#d27e99"
 
 [numberline]
-first   = "#957fb8"
+first   = "#e46876"
 second  = "#7e9cd8"
-overlap = "#98bb6c"
