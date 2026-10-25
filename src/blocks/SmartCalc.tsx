@@ -476,7 +476,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                 onClick={() => updateBlock(data.id, { smartPlot: { ...(current()?.smartPlot ?? {}), mode: m.value } })}
               >
                 {m.label}
-                {m.soon && <span className="smart-graph-soon">soon</span>}
               </button>
             ))}
           </div>

@@ -4399,28 +4399,30 @@ math-field {
   gap: 10px;
 }
 
+/* the kinds of graph: plain tabs — no outlines; the one in use gets a
+   quiet background, ones still to come are just dimmed */
 .smart-graph-modes {
   display: flex;
-  gap: 4px;
+  gap: 2px;
 }
 
 .smart-graph-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
   background: none;
-  border: 1px solid var(--t-line, #2e2e3a);
-  border-radius: 999px;
-  padding: 3px 11px;
-  color: var(--t-subtle, #a9a9bd);
+  border: none;
+  border-radius: 7px;
+  padding: 4px 10px;
+  color: var(--t-muted, #7a7a90);
   font-size: 12px;
   cursor: pointer;
 }
 
+.smart-graph-mode:hover:not(:disabled) {
+  color: var(--t-text, #e8e8f0);
+}
+
 .smart-graph-mode.is-on {
-  border-color: var(--t-pink, #c99bbf);
-  color: var(--t-pink, #e6cfe0);
-  background: color-mix(in srgb, var(--t-pink, #c99bbf) 8%, transparent);
+  background: var(--t-bg4, #23232d);
+  color: var(--t-text, #e8e8f0);
 }
 
 .smart-graph-mode:disabled {
@@ -4428,25 +4430,21 @@ math-field {
   opacity: 0.45;
 }
 
-.smart-graph-soon {
-  font-size: 9.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--t-muted, #7a7a90);
-}
-
+/* one box, like a search bar: the line and its Graph button inside it —
+   the field inside has no outline of its own */
 .smart-graph-line {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid var(--t-line, #2e2e3a);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--t-bg1, #0e0e12);
-  padding: 2px 4px 2px 6px;
+  padding: 3px 4px;
+  transition: border-color 0.15s;
 }
 
 .smart-graph-line:focus-within {
-  border-color: var(--t-teal, #5cc8f0);
+  border-color: var(--t-faint, #55606e);
 }
 
 .smart-graph-field {
@@ -4454,20 +4452,27 @@ math-field {
   min-width: 0;
 }
 
+.smart-graph-field math-field,
+.smart-graph-field math-field:focus-within {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
 .smart-graph-go {
   flex: 0 0 auto;
   border: none;
-  border-radius: 8px;
-  padding: 7px 14px;
+  border-radius: 9px;
+  padding: 6px 14px;
   background: var(--t-pink, #c99bbf);
-  color: var(--t-bg2, #1d1520);
+  color: var(--t-bg1, #1d1520);
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
 }
 
 .smart-graph-go:hover {
-  background: var(--t-pink, #d6aecb);
+  filter: brightness(1.08);
 }
 
 .smart-graph-error {
