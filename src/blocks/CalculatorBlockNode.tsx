@@ -269,6 +269,9 @@ export default function CalculatorBlockNode({ id }: NodeProps) {
         id={data.id}
         title="Calculator"
         wide
+        // sides zoom (bigger everything), top/bottom give more room — the
+        // history takes it (the TI-85's fixed layout keeps its shape instead)
+        resize="zoom"
         help="Type math the way it looks and press Enter: numbers are worked out, one letter is simplified or solved, and with several letters it asks what to do. Tap an answer to use it again."
         headerExtra={settingsButton}
       >

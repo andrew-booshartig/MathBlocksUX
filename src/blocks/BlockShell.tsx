@@ -71,6 +71,7 @@ export default function BlockShell({
   wide = false,
   headerExtra,
   help,
+  resize,
 }: {
   id: string;
   title: string;
@@ -81,13 +82,16 @@ export default function BlockShell({
   headerExtra?: ReactNode;
   /** What this block does, shown on hovering the title. */
   help?: string;
+  /** How resizing works here, when it differs from the block type's (the
+   * smart calculator zooms and gains room; the TI-85 layout keeps its shape) */
+  resize?: "zoom" | "scale" | "fill";
 }) {
   const removeBlock = useStore((state) => state.removeBlock);
   const locked = useStore((state) => !!state.blocks[id]?.groupId);
   const type = useStore((state) => state.blocks[id]?.type);
   const meta = type ? metaFor(type) : undefined;
   const accent = meta?.accent ?? "#55d6be";
-  const mode = meta?.resize ?? "zoom";
+  const mode = resize ?? meta?.resize ?? "zoom";
   const size = useStore((state) => state.blocks[id]?.size);
   const updateBlock = useStore((state) => state.updateBlock);
   const shellRef = useRef<HTMLDivElement>(null);
