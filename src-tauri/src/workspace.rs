@@ -115,6 +115,16 @@ pub fn save_document(app: AppHandle, name: String, html: String) -> Result<Strin
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Saves a document like `save_document`, then opens it in the default
+/// browser — for printing, or ⌘P → Save as PDF (an assignment to hand in).
+#[tauri::command]
+pub fn print_document(app: AppHandle, name: String, html: String) -> Result<String, String> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = save_document(app.clone(), name, html)?;
+    app.opener().open_path(&path, None::<&str>).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
 /// Standard base64 (no crate needed for one PNG now and then).
 fn decode_base64(text: &str) -> Result<Vec<u8>, String> {
     fn value(c: u8) -> Option<u32> {

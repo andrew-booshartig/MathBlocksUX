@@ -240,6 +240,26 @@ export interface WorkBlockData extends BlockBase {
   workFor?: string;
   /** graphed (in the calculator's Graph tab) for the current problem */
   graph?: NumberLineGraph;
+  /** the history as an assignment to hand in: its header, and how it prints */
+  assignment?: AssignmentInfo;
+}
+
+/** An assignment's header and print choices (the calculator's Assignment tab). */
+export interface AssignmentInfo {
+  title?: string;
+  course?: string;
+  name?: string;
+  instructor?: string;
+  /** as it should print ("Oct 26, 2026"); today when left empty */
+  date?: string;
+  /** box each finished problem's final answer (on unless turned off) */
+  box?: boolean;
+  /** the app's ✓ / ✗ beside each step (off unless turned on) */
+  marks?: boolean;
+  /** number lines drawn for a problem (on unless turned off) */
+  graphs?: boolean;
+  /** the reasons written beside steps, when there are any (on unless turned off) */
+  reasons?: boolean;
 }
 
 /** An inequality drawn on a number line (the calculator's Graph tab) —
@@ -272,6 +292,10 @@ export interface WorkHistoryEntry {
   solved: boolean;
   /** graphed for this problem — goes into its document */
   graph?: NumberLineGraph;
+  /** its number in the book (#14) — counted 1, 2, 3… when left empty */
+  number?: string;
+  /** what the problem asks ("Solve for y.") — worked out when left empty */
+  instructions?: string;
 }
 
 /** What the smart calculator did with a line: a value, a simplified or
@@ -352,7 +376,7 @@ export interface CalculatorBlockData extends BlockBase {
   /** the smart calculator's history (pretty math in, answers out) */
   smart?: SmartEntry[];
   /** which of its sections is showing */
-  smartTab?: "calc" | "work" | "graph";
+  smartTab?: "calc" | "work" | "graph" | "assignment";
   /** its own scratch values ("r = 4" on the line; LaTeX, as typed) — only
    * this calculator sees them, and AC / Next problem wipe them. With
    * `params` it's a function: f(x) = x² + 1 */

@@ -4848,6 +4848,296 @@ math-field {
   gap: 8px;
 }
 
+/* the calculator's Assignment tab: the finished problems, ready to hand in.
+   Like Calculate, the controls stay put and the list takes the room */
+.smart-calc.is-assignment {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.assign {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.assign > :not(.assign-list) {
+  flex-shrink: 0;
+}
+
+.assign-card {
+  border-radius: 10px;
+  background: var(--t-bg2, #17171f);
+}
+
+.assign-details-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 8px 10px;
+  color: var(--t-subtle, #a0a0b4);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.assign-details-head b {
+  color: var(--t-text, #e8e8f0);
+  font-weight: 600;
+}
+
+.assign-chevron {
+  color: var(--t-muted, #74748a);
+  font-size: 11px;
+}
+
+.assign-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 6px 8px;
+  padding: 0 10px 10px;
+}
+
+.assign-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.assign-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.assign-field span {
+  font-size: 10.5px;
+  color: var(--t-muted, #74748a);
+}
+
+.assign-field input,
+.assign-number,
+.assign-instructions {
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--t-bg1, #0e0e12);
+  color: var(--t-text, #e8e8f0);
+  padding: 5px 7px;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.assign-field input:focus,
+.assign-number:focus,
+.assign-instructions:focus {
+  border-color: var(--t-faint, #55606e);
+}
+
+.assign-field input::placeholder,
+.assign-number::placeholder,
+.assign-instructions::placeholder {
+  color: var(--t-faint, #55606e);
+}
+
+.assign-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.assign-list {
+  flex: 1 1 220px;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 2px;
+}
+
+.assign-list > * {
+  flex-shrink: 0;
+}
+
+.assign-empty {
+  margin: auto 0;
+  padding: 8px 24px;
+  text-align: center;
+  color: var(--t-muted, #74748a);
+  font-size: 12.5px;
+}
+
+.assign-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  background: var(--t-bg2, #17171f);
+}
+
+.assign-item-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.assign-hash {
+  color: var(--t-muted, #74748a);
+  font-size: 12.5px;
+}
+
+.assign-number {
+  width: 46px;
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.assign-instructions {
+  flex: 1;
+}
+
+.assign-order,
+.assign-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.assign-order button,
+.assign-actions button {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 7px;
+  color: var(--t-muted, #74748a);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.assign-order button:hover:not(:disabled),
+.assign-actions button:hover:not(:disabled) {
+  background: var(--t-bg4, #23232d);
+  color: var(--t-text, #e8e8f0);
+}
+
+.assign-order button:disabled,
+.assign-actions button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.assign-item-math {
+  padding: 2px 4px;
+  color: var(--t-text, #e8e8f0);
+  overflow-x: auto;
+}
+
+.assign-item-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.assign-status {
+  font-size: 11px;
+  color: var(--t-orange, #f0a35c);
+}
+
+.assign-status.is-solved {
+  color: var(--t-green, #8fc28f);
+}
+
+.assign-actions {
+  margin-left: auto;
+}
+
+.assign-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 0 2px;
+}
+
+.assign-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--t-subtle, #a0a0b4);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.assign-toggle input {
+  accent-color: var(--t-orange, #f0a35c);
+  margin: 0;
+}
+
+.assign-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.assign-flash {
+  font-size: 12px;
+  color: var(--t-muted, #74748a);
+}
+
+/* the preview: the page itself, white like paper */
+.assign-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.assign-preview {
+  width: min(820px, 100%);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 12px;
+  background: var(--t-bg2, #17171f);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.assign-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--t-line, #2e2e3a);
+  color: var(--t-text, #e8e8f0);
+  font-size: 13px;
+}
+
+.assign-preview-buttons {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.assign-preview-page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: none;
+  background: #fff;
+}
+
 /* Show your work: history of finished problems */
 .work-history-btn {
   position: relative;

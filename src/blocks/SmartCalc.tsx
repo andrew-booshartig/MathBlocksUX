@@ -16,6 +16,7 @@ import {
   useVariables,
 } from "../store";
 import { WorkPad } from "./WorkBlockNode";
+import AssignmentTab from "./AssignmentTab";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { NumberLine, StepList, Tex } from "../ui";
@@ -67,6 +68,7 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "calc", label: "Calculate" },
   { value: "work", label: "Work" },
   { value: "graph", label: "Graph" },
+  { value: "assignment", label: "Assignment" },
 ];
 
 /** the same drawing (by what it shows — saved canvases come back as copies) */
@@ -461,7 +463,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   }
 
   return (
-    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : ""}`} ref={root}>
+    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" ? " is-assignment" : ""}`} ref={root}>
       {tabs}
 
       {tab === "graph" && (
@@ -541,6 +543,14 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
             setTab("graph");
             setTimeout(() => graphField.current?.focus(), 60);
           }}
+        />
+      )}
+
+      {tab === "assignment" && (
+        <AssignmentTab
+          work={data.smartWork ?? {}}
+          update={(patch) => updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), ...patch } })}
+          onReopen={() => setTab("work")}
         />
       )}
 
