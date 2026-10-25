@@ -31,3 +31,6 @@ dist-ssr
 # the frozen engine (npm run build:engine)
 sidecar/dist
 sidecar/build
+
+# headless UI checks (Playwright + the real engine) — local tooling
+.uitest/

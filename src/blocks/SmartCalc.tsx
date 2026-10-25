@@ -38,10 +38,12 @@ const KEYS: Key[] = [
   { label: "x^{2}", tex: true, title: "Squared", insert: "#@^{2}" },
   { label: "\\sqrt{\\square}", tex: true, title: "Square root — → to step out (or type sqrt)", insert: "\\sqrt{#?}" },
   { label: "|\\square|", tex: true, title: "Absolute value (or type |)", insert: "\\left|#?\\right|" },
-
   { label: "\\pi", tex: true, title: "Pi (or type pi)", insert: "\\pi" },
+
   { label: "\\le", tex: true, title: "Less than or equal to (or type <=)", insert: "\\le" },
   { label: "\\ge", tex: true, title: "Greater than or equal to (or type >=)", insert: "\\ge" },
+  { label: "or", title: "Either one: x < −2 or x > 5 (or type or)", insert: "\\text{ or }" },
+  { label: "and", title: "Both at once: x > −4 and x < 2 (or type and)", insert: "\\text{ and }" },
   { label: "Ans", title: "The last answer", insert: "\\mathrm{Ans}" },
   { label: "⏎", title: "Work it out (or press Enter)", run: "enter", wide: true },
 ];

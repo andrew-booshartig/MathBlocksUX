@@ -60,6 +60,7 @@ const LATEX_PALETTE: Snippet[] = [
   { label: "≥", insert: "\\ge " },
   { label: "π", insert: "\\pi " },
   { label: "or", insert: "\\text{ or }" },
+  { label: "and", insert: "\\text{ and }" },
 ];
 
 /** Visual and LaTeX are built in here; every text language (Python, Lua,
