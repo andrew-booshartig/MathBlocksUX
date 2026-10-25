@@ -58,6 +58,7 @@ const LATEX_PALETTE: Snippet[] = [
   { label: "±", insert: "\\pm " },
   { label: "≤", insert: "\\le " },
   { label: "≥", insert: "\\ge " },
+  { label: "≠", insert: "\\ne " },
   { label: "π", insert: "\\pi " },
   { label: "or", insert: "\\text{ or }" },
   { label: "and", insert: "\\text{ and }" },

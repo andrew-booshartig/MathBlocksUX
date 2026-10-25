@@ -43,10 +43,11 @@ const KEYS: Key[] = [
 
   { label: "\\le", tex: true, title: "Less than or equal to (or type <=)", insert: "\\le" },
   { label: "\\ge", tex: true, title: "Greater than or equal to (or type >=)", insert: "\\ge" },
+  { label: "\\ne", tex: true, title: "Not equal to (or type !=)", insert: "\\ne" },
   { label: "or", title: "Either one: x < −2 or x > 5 (or type or)", insert: "\\text{ or }" },
   { label: "and", title: "Both at once: x > −4 and x < 2 (or type and)", insert: "\\text{ and }" },
   { label: "Ans", title: "The last answer", insert: "\\mathrm{Ans}" },
-  { label: "⏎", title: "Work it out (or press Enter)", run: "enter", wide: true },
+  { label: "⏎", title: "Work it out (or press Enter)", run: "enter" },
 ];
 
 /** More than one term at the top level? (A + inside a fraction or a root
@@ -55,7 +56,7 @@ function severalTerms(latex: string): boolean {
   let flat = latex;
   for (let i = 0; i < 20 && /\{[^{}]*\}/.test(flat); i++) flat = flat.replace(/\{[^{}]*\}/g, "{}");
   flat = flat.replace(/\\left\(.*?\\right\)/g, "()");
-  return /[+\-=<>]|\\(le|ge|pm)\b/.test(flat.replace(/^\s*-/, ""));
+  return /[+\-=<>]|\\(le|ge|ne|pm)\b/.test(flat.replace(/^\s*-/, ""));
 }
 const MAX_ENTRIES = 60;
 

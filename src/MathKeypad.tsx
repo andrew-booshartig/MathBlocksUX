@@ -23,6 +23,7 @@ const SYMBOLS: Key[] = [
   { label: "\\pi", tex: true, title: "Pi", insert: "\\pi", kind: "symbol" },
   { label: "\\le", tex: true, title: "Less than or equal", insert: "\\le", kind: "symbol" },
   { label: "\\ge", tex: true, title: "Greater than or equal", insert: "\\ge", kind: "symbol" },
+  { label: "\\ne", tex: true, title: "Not equal (or type !=)", insert: "\\ne", kind: "symbol" },
   { label: "or", title: "Either one: x < −2 or x > 5 (or two answers: x = 2 or x = 3) — typing or works too", insert: "\\text{ or }", kind: "symbol" },
   { label: "and", title: "Both at once: x > −4 and x < 2 — typing and works too", insert: "\\text{ and }", kind: "symbol" },
   { label: "no solution", title: "No value makes it true (like 5 = 2)", insert: "\\text{no solution}", kind: "symbol" },
