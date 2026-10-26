@@ -71,6 +71,7 @@ export default function AssignmentTab({
       workFor: undefined,
       graph: undefined,
       carriedNotes: undefined,
+      guide: undefined,
     });
     setFlash("Added — Work is ready for the next problem");
   };
@@ -85,6 +86,7 @@ export default function AssignmentTab({
       workFor: entry.problem,
       graph: entry.graph,
       carriedNotes: carryNotes(entry), // put back when it's filed again
+      guide: undefined,
     });
     onReopen();
   };

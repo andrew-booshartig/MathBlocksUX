@@ -411,9 +411,13 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   };
 
   // ---- hand-offs to the other tabs
-  const showWork = (latex: string) => {
+  /** the problem into Work — with how it's solved as a guide above your
+   * lines (a step at a time; you write them), never part of your work */
+  const showWork = (latex: string, steps?: SmartResult["steps"]) => {
     focusOn.current = "work";
-    updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), problem: latex, lines: [""], reasons: [""] }, smartTab: "work" });
+    const solving = (steps ?? []).filter((s, i) => !(i === 0 && /^start/i.test(s.note)));
+    const guide = solving.length ? { problem: latex, steps: solving, shown: 1 } : undefined;
+    updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), problem: latex, lines: [""], reasons: [""], guide }, smartTab: "work" });
   };
 
   /** An operator first, on an empty line, carries on from the last answer —
@@ -703,7 +707,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
               const handoffs = (
                 <>
                   {r.work && (
-                    <button className="chip is-handoff" onClick={() => showWork(r.work_latex ?? entry.latex)}>
+                    <button className="chip is-handoff" title="Into the Work tab, with how it's solved beside your lines" onClick={() => showWork(r.work_latex ?? entry.latex, r.steps)}>
                       ✎ Show work
                     </button>
                   )}

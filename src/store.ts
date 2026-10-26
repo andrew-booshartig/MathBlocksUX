@@ -244,6 +244,17 @@ export interface WorkBlockData extends BlockBase {
   assignment?: AssignmentInfo;
   /** notes of the filed problem being fixed here (Reopen) */
   carriedNotes?: CarriedNotes;
+  /** how the problem is solved (the calculator's Show work): a guide
+   *  shown above the lines, a step at a time — never part of the work */
+  guide?: WorkGuide;
+}
+
+export interface WorkGuide {
+  /** the problem it's for (it goes when the problem changes) */
+  problem: string;
+  steps: { note: string; latex: string }[];
+  /** how many are showing */
+  shown: number;
 }
 
 /** An assignment's header and print choices (the calculator's Assignment tab). */

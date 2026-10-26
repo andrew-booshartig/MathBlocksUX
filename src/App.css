@@ -2958,6 +2958,69 @@ math-field {
   color: var(--t-subtle, #b8b8cc);
 }
 
+/* how it's solved (Show work): a guide above your lines — not your work */
+.work-guide {
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--t-blue, #61afef);
+  border-radius: 8px;
+  background: var(--t-bg2, #17171f);
+}
+
+.work-guide-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.work-guide-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--t-blue, #61afef);
+}
+
+.work-guide-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.work-guide-close {
+  border: none;
+  background: none;
+  color: var(--t-muted, #74748a);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.work-guide-close:hover {
+  color: var(--t-text, #e8e8f0);
+}
+
+.work-guide-steps {
+  margin: 8px 0 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--t-subtle, #a9a9bd);
+  font-size: 13px;
+}
+
+.work-guide-steps li::marker {
+  color: var(--t-muted, #74748a);
+}
+
+.work-guide-math {
+  margin-top: 2px;
+  color: var(--t-text, #e8e8f0);
+  font-size: 1.15em;
+}
+
 /* a step onto the calculator's Calculate line: quiet until the line is hovered */
 .work-to-calc {
   flex: 0 0 auto;

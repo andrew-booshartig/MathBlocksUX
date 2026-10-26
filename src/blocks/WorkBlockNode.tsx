@@ -9,7 +9,7 @@
  * (tests), and can lock the problem so it can't be edited. */
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NodeProps } from "@xyflow/react";
-import { type LanguageSpec, type WorkBlockData, type WorkCheck, type WorkHistoryEntry, newId, useStore } from "../store";
+import { type LanguageSpec, type WorkBlockData, type WorkCheck, type WorkGuide, type WorkHistoryEntry, newId, useStore } from "../store";
 import { invoke } from "@tauri-apps/api/core";
 import { alignedWork, carryNotes, documentHtml, documentLatex, snapshot, withCarriedNotes } from "../workHistory";
 import { mathRequest, useLiveMath } from "../mathSidecar";
@@ -127,7 +127,7 @@ export function WorkPad({
   const [typing, setTyping] = useState<number | "problem" | null>(null);
   /** what Clear removed, so it can be undone for a few seconds */
   /** what Clear (or the problem's ×) removed, so it can be undone for a few seconds */
-  const [cleared, setCleared] = useState<{ lines?: string[]; reasons?: string[]; problem?: string; filed?: string; graph?: WorkBlockData["graph"]; carriedNotes?: WorkBlockData["carriedNotes"] } | null>(null);
+  const [cleared, setCleared] = useState<{ lines?: string[]; reasons?: string[]; problem?: string; filed?: string; graph?: WorkBlockData["graph"]; carriedNotes?: WorkBlockData["carriedNotes"]; guide?: WorkBlockData["guide"] } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [openEntry, setOpenEntry] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -181,6 +181,9 @@ export function WorkPad({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const syntax = visual ? "latex" : language;
+  // how it's solved (Show work): only while it's still this problem
+  const plain = (t: string) => t.replace(/\\[,;:! ]|\s/g, "");
+  const guide = data.guide && plain(data.guide.problem) === plain(data.problem) ? data.guide : null;
   const pendingFocus = useRef<{ index: number; caret?: number } | null>(null);
 
   const lines = data?.lines ?? [""];
@@ -273,7 +276,7 @@ export function WorkPad({
     const before = d.workFor ?? "";
     if (hasWork && before.trim() && before.trim() !== problem.trim()) {
       fileWork(before, d.lines, d.reasons).then((id) => id && setFlash(`Last problem filed in History (${(latest.current.history ?? []).length})`));
-      update({ problem, lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined });
+      update({ problem, lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined, guide: undefined });
       onReset?.();
     } else if (problem !== d.problem) update({ problem });
     setTimeout(() => (visual ? mathInputs.current[0]?.focus() : inputs.current[0]?.focus()), 40);
@@ -288,7 +291,7 @@ export function WorkPad({
     if (d.lines.some((l) => l.trim())) {
       fileWork(d.workFor ?? problem, d.lines, d.reasons).then((id) => id && setFlash(`Filed in History (${(latest.current.history ?? []).length})`));
     }
-    update({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined });
+    update({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined, guide: undefined });
     setTyping(null);
     onReset?.();
     setTimeout(() => problemMath.current?.focus(), 30);
@@ -299,7 +302,7 @@ export function WorkPad({
     const rest = (d.history ?? []).filter((h) => h.id !== entry.id);
     // whatever was in the pad goes into the history first
     if (d.lines.some((l) => l.trim())) fileWork(d.workFor ?? d.problem, d.lines, d.reasons);
-    update({ history: rest, problem: entry.problem, lines: entry.lines.length ? entry.lines : [""], reasons: entry.reasons, workFor: entry.problem, graph: entry.graph, carriedNotes: carryNotes(entry) });
+    update({ history: rest, problem: entry.problem, lines: entry.lines.length ? entry.lines : [""], reasons: entry.reasons, workFor: entry.problem, graph: entry.graph, carriedNotes: carryNotes(entry), guide: undefined });
     setHistoryOpen(false);
   };
 
@@ -711,6 +714,7 @@ export function WorkPad({
           <div className="work-hint">
             <RichText text={visual ? VISUAL_HINT : language === "latex" ? LATEX_HINT : info?.hint ?? ""} />
           </div>
+          {guide && <WorkGuidePanel guide={guide} update={(next) => update({ guide: next })} />}
           <ol className="work-lines nodrag">
             {lines.map((text, i) => {
               const c = checked[i];
@@ -879,10 +883,10 @@ export function WorkPad({
               // the work goes into the history (Undo takes it back out)
               const filed = lines.some((l) => l.trim()) && (data.workFor ?? data.problem).trim() ? newId("problem") : undefined;
               if (filed) fileWork(data.workFor ?? data.problem, lines, reasons, filed);
-              setCleared({ problem: data.problem, lines, reasons, filed, graph: data.graph, carriedNotes: data.carriedNotes });
+              setCleared({ problem: data.problem, lines, reasons, filed, graph: data.graph, carriedNotes: data.carriedNotes, guide: data.guide });
               clearTimeout(clearTimer.current);
               clearTimer.current = setTimeout(() => setCleared(null), 8000);
-              update({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined });
+              update({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined, guide: undefined });
               setTimeout(() => problemMath.current?.focus(), 30);
             }}
           >
@@ -936,5 +940,53 @@ export default function WorkBlockNode({ id }: NodeProps) {
         </BlockShell>
       )}
     />
+  );
+}
+
+/** How the problem is solved (from the calculator's Show work): a step at a
+ * time — Next step, or Show all — above the lines you write. A guide, not
+ * your work: it isn't checked, filed or printed. */
+function WorkGuidePanel({ guide, update }: { guide: WorkGuide; update: (guide: WorkGuide | undefined) => void }) {
+  const shown = Math.min(guide.shown, guide.steps.length);
+  return (
+    <div className="work-guide">
+      <div className="work-guide-head">
+        <span className="work-guide-title">
+          How it's solved · {shown} of {guide.steps.length}
+        </span>
+        <span className="work-guide-buttons">
+          {shown < guide.steps.length && (
+            <>
+              <button className="chip" onClick={() => update({ ...guide, shown: shown + 1 })}>
+                Next step ▸
+              </button>
+              <button className="chip" onClick={() => update({ ...guide, shown: guide.steps.length })}>
+                Show all
+              </button>
+            </>
+          )}
+          {shown > 0 && (
+            <button className="chip" title="Hide the steps (Next step shows them again)" onClick={() => update({ ...guide, shown: 0 })}>
+              Hide
+            </button>
+          )}
+          <button className="work-guide-close" title="Close the guide" onClick={() => update(undefined)}>
+            ×
+          </button>
+        </span>
+      </div>
+      {shown > 0 && (
+        <ol className="work-guide-steps">
+          {guide.steps.slice(0, shown).map((step, i) => (
+            <li key={i}>
+              <RichText text={step.note} />
+              <div className="work-guide-math">
+                <Tex math={step.latex} />
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
