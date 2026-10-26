@@ -369,6 +369,8 @@ export interface SmartEntry {
   /** what was typed (LaTeX) */
   latex: string;
   result: SmartResult;
+  /** a name for it, written on the tape ("rent", "tip") */
+  label?: string;
 }
 
 export interface CalcHistoryEntry {

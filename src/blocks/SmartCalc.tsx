@@ -21,7 +21,7 @@ import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { NumberLine, StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
-import { sameWritten } from "../numberLine";
+import { plainMath, sameWritten } from "../numberLine";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
@@ -63,6 +63,14 @@ const MAX_ENTRIES = 60;
 /** the line is the word "clear" (typed as letters, or clear()) */
 const isClearCommand = (latex: string) =>
   /^clear(\(\))?$/i.test(latex.replace(/\\(?:mathrm|operatorname|text)\{([^{}]*)\}/g, "$1").replace(/\\left|\\right|\\[,;:! ]|\s/g, ""));
+
+/** what an answer on the tape can be added to the line with */
+const TAPE_OPS = [
+  { label: "+", tex: "+", title: "add" },
+  { label: "−", tex: "-", title: "subtract" },
+  { label: "×", tex: "\\times ", title: "multiply by" },
+  { label: "÷", tex: "\\div ", title: "divide by" },
+] as const;
 
 type Tab = NonNullable<CalculatorBlockData["smartTab"]>;
 const TABS: { value: Tab; label: string }[] = [
@@ -306,6 +314,28 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   /** a line or answer from the history, into what's being typed: the whole
    * line when it's empty, otherwise at the cursor (in brackets if it's more
    * than one term, so 2 × (x + 3) means what it says) */
+  /** An answer onto the line with + − × ÷, as on an adding machine's tape:
+   * an empty line starts with it (− makes it negative), then each click puts
+   * the sign and it on the end — + on a 5 four times is 5 + 5 + 5 + 5, there
+   * to count before Enter. A line ending in a sign (+ typed: Ans +) just
+   * gets the number — the sign clicked replaces the one there. */
+  const combine = (op: (typeof TAPE_OPS)[number], value: string) => {
+    const mf = field.current;
+    if (!mf) return;
+    const line = mf.getValue().trim();
+    const v = /^-/.test(value) ? `\\left(${value}\\right)` : value;
+    const trailing = /(?:\+|-|\\times|\\div|\\cdot)\s*$/;
+    const next = !line ? (op.tex === "-" ? `-${v}` : value) : trailing.test(line) ? `${line.replace(trailing, op.tex)}${v}` : `${line}${op.tex}${v}`;
+    mf.setValue(next);
+    mf.focus();
+    mf.command("moveToMathfieldEnd");
+  };
+  const [labeling, setLabeling] = useState<string | null>(null);
+  /** Escape in a label: leave it as it was */
+  const keepLabel = useRef(false);
+  const setLabel = (id: string, label: string) =>
+    save((current()?.smart ?? []).map((e) => (e.id === id ? { ...e, label: label.trim() || undefined } : e)));
+
   const reuse = (latex: string) => {
     const line = field.current?.getValue() ?? "";
     if (!line.trim()) field.current?.setValue(latex);
@@ -693,8 +723,54 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                   </div>
                 );
               }
+              // on hover: name it, or put its answer on the line with + − × ÷
+              const tools = (
+                <span className="smart-tape-tools">
+                  <button className="smart-tape-tool" title={entry.label ? "Rename it" : "Name it — rent, tip…"} onClick={() => setLabeling(entry.id)}>
+                    🏷
+                  </button>
+                  {r.ans &&
+                    TAPE_OPS.map((op) => (
+                      <button
+                        key={op.label}
+                        className="smart-tape-tool is-op"
+                        title={`${op.title} ${plainMath(r.ans!)} — onto the end of the line`}
+                        onPointerDown={(e) => e.preventDefault() /* keep the cursor in the line */}
+                        onClick={() => combine(op, r.ans!)}
+                      >
+                        {op.label}
+                      </button>
+                    ))}
+                </span>
+              );
+              const label =
+                labeling === entry.id ? (
+                  <input
+                    className="smart-label-edit nodrag"
+                    autoFocus
+                    defaultValue={entry.label ?? ""}
+                    placeholder="name it"
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") keepLabel.current = true;
+                      if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+                    }}
+                    onBlur={(e) => {
+                      if (!keepLabel.current) setLabel(entry.id, e.currentTarget.value);
+                      keepLabel.current = false;
+                      setLabeling(null);
+                    }}
+                  />
+                ) : (
+                  entry.label && (
+                    <button className="smart-label" title="Rename it" onClick={() => setLabeling(entry.id)}>
+                      {entry.label}
+                    </button>
+                  )
+                );
               return (
                 <div key={entry.id} className="smart-entry">
+                  {tools}
+                  {label}
                   <button
                     className="smart-in"
                     title="Put this in the line (at the cursor)"
