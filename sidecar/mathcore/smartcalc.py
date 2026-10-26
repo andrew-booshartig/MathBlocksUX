@@ -95,6 +95,35 @@ def _names(text: str) -> list[str]:
     return sorted({n for n in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text) if not n.startswith("unit_")} - _WORDS)
 
 
+def _dims(text: str, vars_: dict) -> dict | None:
+    """How each variable sits in an answer — d/f → {d: 1, f: -1}, 9k →
+    {k: 1}, k + 500 → {k: 1} — so the names on variables (kilometers,
+    liters) can follow the math: the calculator cancels them like units.
+    None: no variables, or a mix that isn't one kind of thing (k + f)."""
+    used = [n for n in _names(text) if n in vars_]
+    if not used:
+        return None
+    try:
+        tags = {sympy.Symbol(n): sympy.Symbol(f"dim_{n}", positive=True) for n in used}
+        values = {s: parse(vars_[s.name], build_scope(vars_)) for s in tags}
+        # each variable whole (trip, not t·r·i·p), to tag with its name
+        scope = {**build_scope(vars_, keep_symbolic=used), **{s.name: s for s in tags}}
+        expr = parse(text, scope).xreplace({s: values[s] * tags[s] for s in tags})
+        found = None
+        for term in sympy.Add.make_args(sympy.expand(sympy.powsimp(expr))):
+            powers = {t: e for t, e in term.as_powers_dict().items() if t in tags.values()}
+            if any(not e.is_Integer for e in powers.values()) or (term.free_symbols & set(tags.values())) - set(powers):
+                return None  # √k, sin(k): no name for that
+            if not powers:
+                continue  # k + 500: the 500 is more of the same
+            if found is not None and powers != found:
+                return None
+            found = powers
+    except Exception:  # noqa: BLE001 — then no names
+        return None
+    return {t.name[4:]: int(e) for t, e in (found or {}).items() if e}
+
+
 def _function_def(node):
     """f(x) = … → (f, x, the body) — or None."""
     if not (isinstance(node, lang.Rel) and node.ops == ["="]):
@@ -282,6 +311,8 @@ def op_smart(req: dict) -> dict:
                 "result_latex": f"{tex(sympy.Symbol(name))} = {value['exact_latex']}",
                 "decimal": value["decimal"] if value["exact_differs"] else None,
                 "ans": value["exact_latex"],
+                # r = d/f: r is kilometers per liter, if d and f are named
+                "dims": _dims(right, vars_),
             }
 
     # just numbers (or every letter has a value): work it out
@@ -305,6 +336,7 @@ def op_smart(req: dict) -> dict:
             "decimal": value["decimal"] if value["exact_differs"] else None,
             # Ans is this answer, exact, as math (2√2, not 2.828…)
             "ans": value["exact_latex"],
+            "dims": _dims(text, vars_),
         }
         # plain arithmetic worked by hand — fractions the way a class does
         # them — when there's more than one move to it: its steps, and Show

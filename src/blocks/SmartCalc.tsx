@@ -23,6 +23,7 @@ import MathInput, { type MathInputHandle } from "../MathInput";
 import { NumberLine, StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
 import { plainMath, sameWritten } from "../numberLine";
+import { nameOf } from "../calcNames";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
@@ -301,11 +302,16 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
         }}
       />
     ) : (
-      entry.label && (
+      entry.label ? (
         <button className="smart-label" title="Rename it" onClick={() => setLabeling(entry.id)}>
           {entry.label}
         </button>
-      )
+      ) : entry.result.kind === "assign" && entry.result.name && variableNames.has(entry.result.name) ? (
+        // r = d/f: named from what it's made of (kilometers per liter)
+        <button className="smart-label is-worked" title="Worked out from what it's made of — click to name it yourself" onClick={() => setLabeling(entry.id)}>
+          {variableNames.get(entry.result.name)}
+        </button>
+      ) : null
     );
 
   /** a line on Ans (Ans ÷ 60): the named answer it went on from — so a
@@ -319,13 +325,18 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     }
   }
 
-  /** k = 1000 named "meters": answers that use k are in meters (9k → 9000
-   * meters) — when every named variable they use says the same thing */
-  const namedVariables = new Map(entries.filter((e) => e.result.kind === "assign" && e.result.name && e.label).map((e) => [e.result.name!, e.label!]));
-  const unitWord = (names?: string[]) => {
-    const words = new Set((names ?? []).filter((n) => namedVariables.has(n)).map((n) => namedVariables.get(n)!));
-    return words.size === 1 ? [...words][0] : null;
-  };
+  /** each variable's name: yours (🏷 on its line), or worked out from what
+   * it's made of (r = d/f → kilometers per liter) */
+  const variableNames = new Map<string, string>();
+  for (const e of entries) {
+    if (e.result.kind !== "assign" || !e.result.name) continue;
+    const name = e.label || nameOf(e.result.dims, variableNames);
+    if (name) variableNames.set(e.result.name, name);
+    else variableNames.delete(e.result.name);
+  }
+  /** an answer's name, following the math: d/f → kilometers per liter,
+   * trip/r → liters, 9k → meters */
+  const answerName = (r?: SmartResult | null) => (r ? nameOf(r.dims, variableNames) : null);
 
   /** 🔒 / 🔓 on a history line: locked lines stay through Clear all */
   const lockButton = (entry: SmartEntry) => {
@@ -889,7 +900,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                         onClick={() => r.result_latex && reuse(r.action?.kind === "solve" ? r.result_latex.replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)}
                       >
                         <Tex math={r.result_latex ?? ""} />
-                        {unitWord(r.names) && <span className="smart-unit-word">{unitWord(r.names)}</span>}
+                        {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
                         {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
                       {r.kind !== "truth" && (
@@ -938,7 +949,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
               {error ? error : note ? <span className="smart-note">{note}</span> : previewText ? (
                 <>
                   <Tex math={previewText} />
-                  {preview?.kind !== "assign" && unitWord(preview?.names) && <span className="smart-unit-word">{unitWord(preview?.names)}</span>}
+                  {preview?.kind !== "assign" && answerName(preview) && <span className="smart-unit-word">{answerName(preview)}</span>}
                 </>
               ) : null}
             </div>

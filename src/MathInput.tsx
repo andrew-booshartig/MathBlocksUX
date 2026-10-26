@@ -9,6 +9,15 @@ import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { MathfieldElement } from "mathlive";
 import { cleanPastedLatex } from "./cleanLatex";
 
+/** a whole new line in the field. MathLive remembers the last keys typed,
+ * for its shortcuts (s + in → sin) — and a shortcut undoes back to before
+ * its first key, which brought the old line back (r = d/f, then typing
+ * "in" made it r = d/\sin). Moving the cursor forgets those keys. */
+function replace(mf: MathfieldElement, latex: string) {
+  mf.value = latex;
+  mf.executeCommand("moveToMathfieldEnd");
+}
+
 // Fonts ship with the app (public/mathlive/fonts) so it works offline;
 // no keypress sounds.
 MathfieldElement.fontsDirectory = "/mathlive/fonts";
@@ -154,8 +163,11 @@ export default function MathInput({
     mf.smartFence = true;
     // MathLive turns or / and / not into logic symbols (∨ ∧ ¬), even inside
     // words — score became sc∨e. Here or and and are words (typeWord).
+    // So do its unit shortcuts (km → one unit): here letters are letters —
+    // k and m are variables of yours.
+    const units = new Set(["mm", "cm", "km", "kg", "ft", "inch", "mi"]);
     const { or: _or, and: _and, not: _not, ...shortcuts } = mf.inlineShortcuts;
-    mf.inlineShortcuts = shortcuts;
+    mf.inlineShortcuts = Object.fromEntries(Object.entries(shortcuts).filter(([key]) => !units.has(key)));
     // copied into another app, math reads as math: (3x)/4+5, not $$\frac{3x}{4}+5$$
     // (pasting back in here uses MathLive's own copy, so nothing is lost)
     mf.onExport = (_from, latex, range) => {
@@ -304,7 +316,7 @@ export default function MathInput({
 
   useEffect(() => {
     const mf = field.current;
-    if (mf && mf.value !== value) mf.value = value;
+    if (mf && mf.value !== value) replace(mf, value);
   }, [value]);
 
   useImperativeHandle(ref, () => ({
@@ -344,7 +356,7 @@ export default function MathInput({
     setValue: (latex: string) => {
       const mf = field.current;
       if (!mf) return;
-      mf.value = latex;
+      replace(mf, latex);
       if (mf.mode !== "math") mf.mode = "math";
       handlers.current.onChange(latex);
     },

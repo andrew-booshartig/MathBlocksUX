@@ -4993,7 +4993,14 @@ math-field {
   color: var(--t-orange, #ffc46e);
 }
 
-/* k = 1000 named "meters": the word after answers that use k */
+/* a variable's name worked out from what it's made of (r = d/f) */
+.smart-label.is-worked {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--t-line, #2e2e3a);
+  font-style: italic;
+}
+
+/* an answer's name, following the math (d/f → kilometers per liter) */
 .smart-unit-word {
   margin-left: 0.4em;
   font-family: -apple-system, "Inter", Helvetica, sans-serif;

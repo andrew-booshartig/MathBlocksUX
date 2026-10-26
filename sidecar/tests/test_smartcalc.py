@@ -228,3 +228,20 @@ def test_a_compound_whose_answer_hides_its_parts_sends_them():
     assert labels("x>\\frac{4}{3}\\text{ and }x>2") == ["x > 4/3", "x > 2"]
     # the answer shows every part's ends: nothing to add
     assert labels("x<1\\text{ or }x>5") == [] and labels("-2\\le x<3") == [] and labels("x>-4\\text{ and }x<2") == []
+
+
+@pytest.mark.parametrize(
+    "latex,dims",
+    [
+        ("d/f", {"d": 1, "f": -1}),  # kilometers per liter
+        ("9k", {"k": 1}),  # 9 of k: still meters
+        ("k+500", {"k": 1}),  # 500 more of the same
+        ("trip/r", {"trip": 1, "r": -1}),  # trip, not t·r·i·p
+        ("d/d", {}),  # cancels: a plain number
+        ("k+f", None),  # meters + liters: no one name
+        ("5+5", None),
+    ],
+)
+def test_answers_say_how_variables_sit_in_them(latex, dims):
+    out = op_smart({"latex": latex, "vars": {"d": "100", "f": "8", "k": "1000", "trip": "900", "r": "d/f"}})
+    assert out.get("dims") == dims

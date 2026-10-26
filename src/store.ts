@@ -365,6 +365,9 @@ export interface SmartResult {
   ans?: string | null;
   /** every name the line uses (to redo it when a variable changes) */
   names?: string[];
+  /** how its variables sit in it — d/f → {d: 1, f: -1} — for its name
+   *  (kilometers per liter); null: none, or no one name */
+  dims?: Record<string, number> | null;
   /** "r = 4" / "f(x) = …": the variable (or function) it saves */
   name?: string;
   params?: string[];
