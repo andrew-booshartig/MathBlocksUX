@@ -238,8 +238,8 @@ def op_smart(req: dict) -> dict:
     latex = _mark_names(latex, [*(k.split("(")[0] for k in vars_), *([saving.group(1)] if saving else [])])
     try:
         node = lang.parse(latex, "latex")
-    except lang.Incomplete:
-        raise MathInputError("") from None
+    except lang.Incomplete as unfinished:  # said only on Enter (the preview stays quiet)
+        raise MathInputError(str(unfinished)) from None
     input_latex = lang.latex(node)
     # f(x) = …: a new function (like r = 4 saves a variable). One that
     # exists already is solved for instead: f(x) = 10 → x = ±3
@@ -398,8 +398,8 @@ def op_smart_console(req: dict) -> dict:
     marked = _mark_names(latex, [*names, *([saving.group(1)] if saving else [])])
     try:
         node = lang.parse(marked, "latex")
-    except lang.Incomplete:
-        raise MathInputError("") from None
+    except lang.Incomplete as unfinished:  # said only on Enter (the preview stays quiet)
+        raise MathInputError(str(unfinished)) from None
 
     def resolved_with(item):
         values = resolve_variables([*[i for i in items if i["name"] != item["name"]], item], context)
@@ -474,8 +474,8 @@ def op_numberline(req: dict) -> dict:
         }
     try:
         line = Line(latex)
-    except lang.Incomplete:
-        raise MathInputError("finish typing it first") from None
+    except lang.Incomplete as unfinished:
+        raise MathInputError(str(unfinished) or "finish typing it first") from None
     if line.kind == "expression":
         raise MathInputError("a number line shows an inequality (or an equation) — like x < 3")
     letters = line.symbols

@@ -4,6 +4,7 @@ from their definitions in specs.py — one reader/writer for all of them."""
 import re
 
 from ..parsing import MathInputError
+from . import hints
 from .ast import ATOMS, Add, Alts, Const, Div, Func, Group, Mixed, Mul, Neg, Node, Num, Pow, Rel, Sym, expand_pm, prec
 
 
@@ -96,7 +97,10 @@ class TextReader:
 
     def fail_if_end(self):
         if self.peek()[0] == "end":
-            raise Incomplete("not finished yet")
+            raise Incomplete(hints.missing(self.before(self.i)))
+
+    def before(self, at: int) -> str | None:
+        return self.toks[at - 1][1] if at > 0 else None
 
     def strip_prefix(self, name: str) -> str:
         for prefix in self.spec["prefixes"]:
@@ -111,8 +115,7 @@ class TextReader:
             raise Incomplete("nothing typed yet")
         node = self.alts()
         if self.peek()[0] != "end":
-            kind, text = self.peek()
-            raise MathInputError(f"didn't expect “{text}” here")
+            raise MathInputError(hints.unexpected(self.before(self.i), self.peek()[1]))
         return node
 
     def alts(self) -> Node:
@@ -234,7 +237,7 @@ class TextReader:
         if text == "(":
             inner = self.alts()
             if not self.is_op(")"):
-                raise Incomplete("a bracket isn't closed yet")
+                raise Incomplete(hints.missing("("))
             self.take()
             return Group(inner)
         if text == "|":
@@ -245,7 +248,7 @@ class TextReader:
                 raise Incomplete("an absolute value bar isn't closed yet")
             self.take()
             return Func("abs", [inner])
-        raise MathInputError(f"didn't expect “{text}” here")
+        raise MathInputError(hints.unexpected(self.before(self.i - 1), text))
 
     def call(self, canon: str, spelled: str) -> Node:
         if self.is_op("("):
@@ -255,7 +258,7 @@ class TextReader:
                 self.take()
                 args.append(self.sum())
             if not self.is_op(")"):
-                raise Incomplete("a bracket isn't closed yet")
+                raise Incomplete(hints.missing("("))
             self.take()
             return Func(canon, args)
         if self.spec["call_style"] == "juxtapose" and self.starts_atom():

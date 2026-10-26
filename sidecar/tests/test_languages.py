@@ -3,7 +3,7 @@
 import pytest
 import sympy
 
-from mathcore.lang import Alts, Rel, expand_pm, parse, to_sympy, translate, write
+from mathcore.lang import Alts, Incomplete, Rel, expand_pm, parse, to_sympy, translate, write
 from mathcore.parsing import MathInputError
 
 LANGS = ["latex", "python", "lua", "haskell"]
@@ -141,3 +141,50 @@ def test_mixed_numbers_write_back():
     # a product of 2 and ⅓ keeps its dot, so it never reads back as 2⅓
     assert translate("2*(1/3)", "python", "latex") == r"2\left(\frac{1}{3}\right)"
     assert write(parse(r"2\cdot\frac13", "latex"), "latex") == r"2 \cdot \frac{1}{3}"
+
+
+@pytest.mark.parametrize(
+    "typed, says",
+    [
+        (r"-8x+\ge60\text{ or }-4x+50<58", "something's missing between “+” and “≥”"),
+        (r"2x+=5", "something's missing between “+” and “=”"),
+        (r"x<\ge3", "two relation signs in a row (“<” then “≥”)"),
+        (r"3+\times4", "two signs in a row (“+” then “×”)"),
+        (r"\ge60", "“≥” needs something on its left"),
+        (r"\times5", "“×” needs something on its left"),
+        (r"\text{ or }x<3", "“or” goes between two parts"),
+        (r"x=\text{ or }x=3", "something's missing between “=” and “or”"),
+        (r"3+4)", "there's a “)” without a “(”"),
+        (r"()", "the brackets are empty"),
+        (r"x^{2+}", "something's missing after “+”"),
+    ],
+)
+def test_mistakes_say_what_is_wrong_as_written(typed, says):
+    """A line that doesn't read says what's wrong with the signs as they
+    look (≥, not "ge")."""
+    with pytest.raises(MathInputError) as err:
+        parse(typed, "latex")
+    assert says in str(err.value)
+
+
+@pytest.mark.parametrize(
+    "typed, says",
+    [
+        (r"3+", "something's missing after “+”"),
+        (r"x\ge", "something's missing after “≥” — what's on the other side?"),
+        (r"x<3\text{ or }", "something's missing after “or”"),
+        (r"(3+4", "a “(” isn't closed — add “)”"),
+        (r"\left(3+4", "a “(” isn't closed — add “)”"),
+    ],
+)
+def test_unfinished_lines_say_what_is_missing(typed, says):
+    with pytest.raises(Incomplete) as err:
+        parse(typed, "latex")
+    assert says in str(err.value)
+
+
+def test_text_languages_get_the_same_messages():
+    for typed, says in [("x == == 3", "two relation signs in a row"), ("3 + 4)", "without a “(”"), ("* 3", "needs something on its left"), ("x <= ", "something's missing after “≤”")]:
+        with pytest.raises(MathInputError) as err:
+            parse(typed, "python")
+        assert says in str(err.value), typed

@@ -6,6 +6,7 @@ people type in the LaTeX language. Covers the notation of school algebra:
 import re
 
 from ..parsing import MathInputError
+from . import hints
 from .ast import ATOMS, Add, Alts, Const, Div, Func, Group, Mixed, Mul, Neg, Node, Num, Pow, Rel, Sym, strip_group
 from .text import Incomplete
 
@@ -71,7 +72,44 @@ class LatexReader:
 
     def need_more(self):
         if self.at("end"):
-            raise Incomplete("not finished yet")
+            raise Incomplete(hints.missing(self.before(self.i)))
+
+    def before(self, at: int) -> str | None:
+        """The token before toks[at], as it's written — the word for a
+        \\text{ or } (or the letters o r) — None at the start."""
+        if at <= 0:
+            return None
+        k, t = self.toks[at - 1]
+        if (k, t) == ("op", "}"):
+            depth, j = 0, at - 1
+            while j >= 0:
+                if self.toks[j] == ("op", "}"):
+                    depth += 1
+                elif self.toks[j] == ("op", "{"):
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j -= 1
+            if j >= 1 and self.toks[j - 1] in (("cmd", "text"), ("cmd", "textrm")):
+                return "".join(tok[1] for tok in self.toks[j + 1 : at - 1]).strip() or t
+            return t
+        if k == "letter":
+            for word in ("or", "and"):
+                run = self.toks[max(0, at - len(word)) : at]
+                if len(run) == len(word) and all(kind == "letter" for kind, _ in run) and "".join(ch for _, ch in run) == word:
+                    return word
+        return t
+
+    def unexpected(self, at: int) -> MathInputError:
+        """toks[at] can't go where it is: say why, as it looks on the page."""
+        k, t = self.toks[at]
+        if k == "cmd" and t in ("text", "textrm"):
+            save, self.i = self.i, at + 1
+            t = self.braced_text().strip() or t
+            self.i = save
+        elif k == "cmd" and t in ("right", "mright"):
+            t = self.toks[at + 1][1] if at + 1 < len(self.toks) and self.toks[at + 1][1] else ")"
+        return MathInputError(hints.unexpected(self.before(at), t))
 
     def at_word(self) -> str | None:
         """The letters "or" / "and" typed between two answers are a word,
@@ -123,7 +161,7 @@ class LatexReader:
             raise Incomplete("nothing typed yet")
         node = self.alts()
         if not self.at("end"):
-            raise MathInputError(f"didn't expect “{self.peek()[1]}” here")
+            raise self.unexpected(self.i)
         return node
 
     def alts(self) -> Node:
@@ -240,7 +278,7 @@ class LatexReader:
             return Sym(t)
         if k == "cmd" and t == "pi":
             return Const("pi")
-        raise MathInputError(f"didn't expect “{t}” here")
+        raise self.unexpected(self.i - 1)
 
     def power(self) -> Node:
         base = self.atom()
@@ -281,7 +319,7 @@ class LatexReader:
             inner = self.alts()
             close = ")" if t == "(" else "]"
             if not self.at("op", close):
-                raise Incomplete("a bracket isn't closed yet")
+                raise Incomplete(hints.missing(t))
             self.take()
             return Group(inner)
         if k == "op" and t == "{":
@@ -313,7 +351,7 @@ class LatexReader:
                     raise MathInputError(f"unsupported bracket “{d}”")
                 inner = self.alts()
                 if not (self.at("cmd", "right") or self.at("cmd", "mright")):
-                    raise Incomplete("a bracket isn't closed yet")
+                    raise Incomplete(hints.missing(d if d in ("(", "[") else "("))
                 self.take()
                 self.take()  # the closing delimiter
                 return Group(inner)
@@ -334,7 +372,7 @@ class LatexReader:
                 if name == "e":
                     return Const("e")
                 return Sym(name)
-        raise MathInputError(f"didn't expect “{t}” here")
+        raise self.unexpected(self.i - 1)
 
     def abs_until(self, close, closing_left=False) -> Node:
         self.abs_depth += 1
