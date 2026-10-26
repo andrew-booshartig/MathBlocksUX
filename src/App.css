@@ -6170,3 +6170,29 @@ math-field {
   line-height: 1.5;
   outline: none;
 }
+
+/* 🔗 c ↔ a: linked variables keep their ratio */
+.smart-link {
+  align-self: center;
+  border: 1px solid var(--t-line, #2e2e3a);
+  background: none;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--t-teal, #55d6be);
+  cursor: pointer;
+}
+
+.smart-link:hover {
+  border-color: var(--t-red, #e06c75);
+  color: var(--t-red, #e06c75);
+}
+
+.smart-link-pick {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--t-muted, #74748a);
+}

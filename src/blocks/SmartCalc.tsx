@@ -74,8 +74,8 @@ function numberIn(latex: string, shown: string) {
   return { name: typed[1], number: typed[2], rest: typed[3], restShown: seen[3] };
 }
 
-/** locked 🔒: Clear all keeps it — variables you set are, unless you unlock them */
-const isLocked = (e: SmartEntry) => e.locked ?? e.result.kind === "assign";
+/** locked 🔒: Clear all keeps it */
+const isLocked = (e: SmartEntry) => !!e.locked;
 
 /** the line is the word "clear" (typed as letters, or clear()) */
 const isClearCommand = (latex: string) =>
@@ -359,10 +359,10 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   /** the number in a variable's line, being typed: it's worked out as you
    * type, and everything using the variable follows */
   const [numbers, setNumbers] = useState<Record<string, string>>({});
-  const retyping = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const retyping = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const retype = (entry: SmartEntry, latex: string) => {
-    clearTimeout(retyping.current);
-    retyping.current = setTimeout(async () => {
+    clearTimeout(retyping.current[entry.id]);
+    retyping.current[entry.id] = setTimeout(async () => {
       try {
         const result = await mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, vars });
         if (result.kind !== "assign" || !result.name) return;
@@ -373,6 +373,41 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       }
     }, 120);
   };
+  /** 🔗 links: every variable joined to this one, near or through others */
+  const links = data.smartLinks ?? [];
+  const linkedTo = (name: string): string[] => {
+    const seen = new Set([name]);
+    const queue = [name];
+    while (queue.length) {
+      const here = queue.shift()!;
+      for (const l of links) {
+        const other = l.a === here ? l.b : l.b === here ? l.a : null;
+        if (other && !seen.has(other)) {
+          seen.add(other);
+          queue.push(other);
+        }
+      }
+    }
+    seen.delete(name);
+    return [...seen];
+  };
+  /** name went from one number to another: its linked variables scale by
+   * the same factor, so their ratio holds (c 50 → 100: a 1 → 2) */
+  const followLinks = (name: string, before: string, after: string) => {
+    const from = Number(before);
+    const to = Number(after);
+    if (!from || !Number.isFinite(to) || from === to) return;
+    for (const other of linkedTo(name)) {
+      const entry = (current()?.smart ?? []).find((e) => e.result.kind === "assign" && e.result.name === other);
+      const parts = entry && numberIn(entry.latex, entry.result.input_latex);
+      if (!entry || !parts) continue;
+      const scaled = Number(((Number(parts.number) * to) / from).toPrecision(12)).toString();
+      retype(entry, `${parts.name}=${scaled}${parts.rest}`);
+    }
+  };
+  const [linking, setLinking] = useState<string | null>(null);
+  const setLinks = (next: { a: string; b: string }[]) => updateBlock(data.id, { smartLinks: next.length ? next : undefined });
+
   const numberField = (entry: SmartEntry, parts: NonNullable<ReturnType<typeof numberIn>>) => {
     const text = numbers[entry.id] ?? parts.number;
     return (
@@ -388,7 +423,10 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           onChange={(e) => {
             const next = e.target.value;
             setNumbers((n) => ({ ...n, [entry.id]: next }));
-            if (/^-?\d+(\.\d+)?$/.test(next)) retype(entry, `${parts.name}=${next}${parts.rest}`);
+            if (/^-?\d+(\.\d+)?$/.test(next)) {
+              retype(entry, `${parts.name}=${next}${parts.rest}`);
+              followLinks(parts.name, parts.number, next);
+            }
           }}
           onBlur={() => setNumbers(({ [entry.id]: _, ...rest }) => rest)}
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
@@ -427,8 +465,13 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
         // y = 4 after y = 7: the old line becomes the new one, where it was —
         // swap a number in and everything under it follows, in place
         const old = result.kind === "assign" && result.name ? list.find((e) => e.result.kind === "assign" && e.result.name === result.name) : undefined;
-        if (old) save(list.map((e) => (e.id === old.id ? { ...e, latex, result } : e)));
-        else save([...list, { id: newId("calc"), latex, result, ...(result.kind === "assign" ? { locked: true } : {}) }]);
+        if (old) {
+          save(list.map((e) => (e.id === old.id ? { ...e, latex, result } : e)));
+          const was = numberIn(old.latex, old.result.input_latex);
+          const now = numberIn(latex, result.input_latex);
+          if (was && now) followLinks(now.name, was.number, now.number);
+        }
+        else save([...list, { id: newId("calc"), latex, result }]);
         // "r = 4": that's a variable now
         if (result.kind === "assign" && result.name && result.value_latex) setVariable(result.name, result.value_latex, result.params);
         // clear the field itself: our copy of the line may never have
@@ -913,7 +956,48 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                       <button className="smart-tape-tool" title={entry.label ? "Rename it" : "Name it — meters, dollars… (answers using it say it too)"} onClick={() => setLabeling(entry.id)}>
                         🏷
                       </button>
+                      {r.name && numberIn(entry.latex, r.input_latex) && (
+                        <button className="smart-tape-tool" title="Link it to another variable — when one changes, the other keeps their ratio" onClick={() => setLinking(linking === r.name ? null : r.name!)}>
+                          🔗
+                        </button>
+                      )}
+                      {lockButton(entry)}
                     </span>
+                    {/* linked: c ↔ a (click to unlink) */}
+                    {r.name &&
+                      links
+                        .filter((l) => l.a === r.name || l.b === r.name)
+                        .map((l) => {
+                          const other = l.a === r.name ? l.b : l.a;
+                          return (
+                            <button key={other} className="smart-link" title={`Linked to ${other} — they keep their ratio. Click to unlink`} onClick={() => setLinks(links.filter((x) => x !== l))}>
+                              🔗 {other}
+                            </button>
+                          );
+                        })}
+                    {linking === r.name && (
+                      <span className="smart-link-pick">
+                        link {r.name} to
+                        {entries
+                          .filter((e) => e.result.kind === "assign" && e.result.name && e.result.name !== r.name && numberIn(e.latex, e.result.input_latex))
+                          .filter((e) => !links.some((l) => (l.a === r.name && l.b === e.result.name) || (l.b === r.name && l.a === e.result.name)))
+                          .map((e) => (
+                            <button
+                              key={e.id}
+                              className="chip"
+                              onClick={() => {
+                                setLinks([...links, { a: r.name!, b: e.result.name! }]);
+                                setLinking(null);
+                              }}
+                            >
+                              {e.result.name}
+                            </button>
+                          ))}
+                        <button className="chip" onClick={() => setLinking(null)}>
+                          cancel
+                        </button>
+                      </span>
+                    )}
                     {labelView(entry)}
                     {/* s = [9] km/h: the number edits right here */}
                     {numberIn(entry.latex, r.input_latex) ? (
@@ -924,7 +1008,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                       </button>
                     )}
                     {worked && <Tex math={`\\Rightarrow ${worked}`} />}
-                    {lockButton(entry)}
+                    {isLocked(entry) && lockButton(entry)}
                     <span className="smart-assign-actions">
                       <button className="chip is-handoff" title="Copy this — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
                         ⧉ Copy
