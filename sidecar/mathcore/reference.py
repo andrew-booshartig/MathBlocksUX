@@ -21,7 +21,7 @@ from .parsing import MathInputError
 
 
 # the calculator's own units — one library for both
-from .units import LIBRARY, UNITS  # noqa: E402
+from .units import LIBRARY, PREFIXES, UNITS  # noqa: E402
 
 # more ways to write a few (and units that are others put together)
 ALIASES = {"sec": "s", "secs": "s", "hr": "h", "hrs": "h", "lbs": "lb", "metre": "m", "metres": "m", "ml": "mL", "l": "L"}
@@ -36,17 +36,56 @@ CHAINS = {
 }
 # where the metric and US chains meet (and the year, which isn't a whole
 # number of weeks)
-BRIDGES = {"length": [("in", "cm"), ("mi", "km")], "time": [("yr", "day")], "mass": [("lb", "kg")], "volume": [("gal", "L")]}
+BRIDGES = {
+    "length": [("in", "cm"), ("mi", "km")],
+    "time": [("yr", "day")],
+    "mass": [("lb", "kg")],
+    "volume": [("gal", "L")],
+    # an amp-hour is an amp for an hour; a watt-hour, a watt for an hour
+    "charge": [("Ah", "C")],
+    "energy": [("Wh", "J")],
+}
 
-POPULAR = [("km/h", "m/s"), ("mph", "km/h"), ("in", "mm"), ("mi", "km"), ("ft", "m"), ("lb", "kg"), ("gal", "L"), ("h", "s"), ("yr", "s")]
+
+def _prefixed() -> dict[str, list[tuple[str, str]]]:
+    """each metric unit and its base, by kind: kA–A, mA–A, µA–A (one fact
+    each: a prefix is a size — kilo is 1000)"""
+    out: dict[str, list] = {}
+    for u in LIBRARY:
+        for p in sorted(PREFIXES, key=len, reverse=True):
+            base = UNITS.get(u.symbol[len(p) :]) if u.symbol.startswith(p) else None
+            if base and base.kind == u.kind and base is not u:
+                out.setdefault(u.kind, []).append((u.symbol, base.symbol))
+                break
+    return out
+
+
+_PREFIX_LINKS = _prefixed()
+KINDS = [*CHAINS, *[k for k in _PREFIX_LINKS if k not in CHAINS]]
+
+POPULAR = [("km/h", "m/s"), ("mph", "km/h"), ("in", "mm"), ("mi", "km"), ("ft", "m"), ("lb", "kg"), ("gal", "L"), ("h", "s"), ("A/dm^2", "A/m^2"), ("mA", "A"), ("kWh", "J")]
+
+# how electrical units are made of each other — the facts behind V = I·R
+# and P = V·I (any of these converts too: V·A → W)
+RELATIONS = [
+    ("1 W = 1 V·A", "V·A", "W", "power = voltage × current"),
+    ("1 V = 1 A·Ω", "A·ohm", "V", "Ohm's law: V = I·R"),
+    ("1 J = 1 W·s", "W·s", "J", "energy = power × time"),
+    ("1 C = 1 A·s", "A·s", "C", "charge = current × time"),
+    ("1 kWh = 3.6 MJ", "kWh", "MJ", "a kilowatt for an hour"),
+    ("1 S = 1/Ω", "1/ohm", "S", "conductance is 1 ÷ resistance"),
+    ("1 Hz = 1/s", "1/s", "Hz", "once per second"),
+    ("1 F = 1 C/V", "C/V", "F", "charge stored per volt"),
+]
 
 
 def _links(kind: str | None = None) -> list[tuple[str, str]]:
     out = []
-    for k in CHAINS if kind is None else [kind]:
-        for chain in CHAINS[k]:
+    for k in KINDS if kind is None else [kind]:
+        for chain in CHAINS.get(k, []):
             out += list(zip(chain, chain[1:]))
         out += BRIDGES.get(k, [])
+        out += [link for link in _PREFIX_LINKS.get(k, []) if link not in out and link[::-1] not in out]
     return out
 
 
@@ -107,8 +146,10 @@ def _number(value) -> dict:
 
 def _lookup(word: str):
     w = word.strip()
-    if w in UNITS:
-        return UNITS[w]
+    from .units import find  # the calculator's own names for every unit (kΩ, amps, µA)
+
+    if find(w):
+        return find(w)
     if w in ALIASES:
         return UNITS[ALIASES[w]]
     low = w.lower().rstrip(".")
@@ -133,8 +174,8 @@ def read_units(text: str) -> list[tuple[str, int]]:
     for k, piece in enumerate(text.split("/")):
         sign = 1 if k == 0 else -1
         for token in re.split(r"[*·×\s]+", piece.strip()):
-            if not token:
-                continue
+            if not token or token == "1":
+                continue  # 1/s: nothing on top
             m = re.fullmatch(r"(.+?)(?:\^(\d)|([²³]))?", token)
             word, power = m.group(1), int(m.group(2) or _SUP.get(m.group(3) or "", 1))
             if word.lower() in COMBINED:
@@ -160,7 +201,7 @@ def describe(us: list[tuple[str, int]], amount=None) -> str:
 
 def _symbols(us: list[tuple[str, int]]) -> str:
     def one(s, p):
-        return s + ("" if abs(p) == 1 else {2: "²", 3: "³"}.get(abs(p), f"^{abs(p)}"))
+        return UNITS[s].display + ("" if abs(p) == 1 else {2: "²", 3: "³"}.get(abs(p), f"^{abs(p)}"))
 
     top = "·".join(one(s, p) for s, p in us if p > 0) or "1"
     bottom = "·".join(one(s, p) for s, p in us if p < 0)
@@ -178,6 +219,51 @@ def _fact(a: str, b: str) -> tuple[str, str]:
 
 
 _SUPS = {2: "²", 3: "³"}
+
+
+def _dims(us: list[tuple[str, int]]) -> tuple:
+    """what a list of units is made of (length, time, mass, current)"""
+    total = [0, 0, 0, 0]
+    for s, p in us:
+        for i, d in enumerate(UNITS[s].dim):
+            total[i] += d * p
+    return tuple(total)
+
+
+def _size(us: list[tuple[str, int]]):
+    out = Rational(1)
+    for s, p in us:
+        out *= UNITS[s].size ** p
+    return out
+
+
+def _direct(amount, start: list, goal: list) -> dict:
+    """units built differently but the same kind of thing (V·A → W, kWh →
+    J): one step, by what each is made of"""
+    by = _size(start) / _size(goal)
+    if by >= 1 and _terminates(by) or not _terminates(1 / by):
+        op, shown = "×", by
+    else:
+        op, shown = "÷", 1 / by
+    value = amount * by
+    relation = next((why for text, a, b, why in RELATIONS if {_symbols(read_units(a)), _symbols(read_units(b))} == {_symbols(start), _symbols(goal)}), None)
+    fact = f"1 {_symbols(start)} = {_number(by)['text']} {_symbols(goal)}" + (f" ({relation})" if relation else "")
+    line = {
+        "latex": f"{_number(amount)['latex']} {_TEX[op]} {_number(shown)['latex']}",
+        "op": op,
+        "by": _number(shown)["text"],
+        "result": _number(value),
+        "label": describe(goal, value),
+        "units": _symbols(goal),
+        "why": f"{fact}: {op} {_number(shown)['text']}" if shown != 1 else fact,
+    }
+    return {
+        "from": {"amount": _number(amount), "label": describe(start, amount), "units": _symbols(start)},
+        "to": {"amount": _number(value), "label": describe(goal, value), "units": _symbols(goal)},
+        "lines": [line],
+        "one_line": f"{_number(amount)['latex']} {_TEX[op]} {_number(shown)['latex']}",
+        "factor": _number(value / amount) if amount else None,
+    }
 _TEX = {"×": "\\times", "÷": "\\div"}
 
 
@@ -198,9 +284,8 @@ def op_refconvert(req: dict) -> dict:
             out.setdefault(UNITS[s].kind, []).append((s, p))
         return out
 
-    have, want = kinds(start), kinds(goal)
-    power = lambda pairs: sum(p for _, p in pairs)  # noqa: E731
-    if {k: power(v) for k, v in have.items() if power(v)} != {k: power(v) for k, v in want.items() if power(v)}:
+    # the same kind of thing? — by what each unit is made of (V·A is W)
+    if _dims(start) != _dims(goal):
         raise MathInputError(f"{_symbols(start)} is {describe(start)}, {_symbols(goal)} is {describe(goal)} — they measure different things")
     # each unit and the one it becomes: same kind, same power — mm³ → cm³
     # and cm² → cm², even with two lengths in one rate
@@ -209,9 +294,11 @@ def op_refconvert(req: dict) -> dict:
     for i, (sym, p) in enumerate(start):
         match = next(((s2, p2) for s2, p2 in left if UNITS[s2].kind == UNITS[sym].kind and p2 == p), None)
         if match is None:
-            raise MathInputError(f"write the new units the same shape as the old — {_symbols(start)} has {UNITS[sym].plural}{_SUPS.get(abs(p), '')} {'on top' if p > 0 else 'below'}")
+            return _direct(amount, start, goal)
         left.remove(match)
         partner[i] = match[0]
+    if left:
+        return _direct(amount, start, goal)
 
     current = [list(sp) for sp in start]
     value = amount
@@ -237,9 +324,10 @@ def op_refconvert(req: dict) -> dict:
             # 1 km = 1000 m: kilometers → meters, × 1000
             # 1 h = 60 min: per hour → per minute, ÷ 60
             big, small = _fact(here, there)
-            fact = f"1 {big} = {_number(_how_many(big, small))['text']} {small}"
+            B, Sm = UNITS[big].display, UNITS[small].display
+            fact = f"1 {B} = {_number(_how_many(big, small))['text']} {Sm}"
             if abs(p) > 1:
-                fact += f", so 1 {big}{_SUPS[abs(p)]} = {_number(_how_many(big, small) ** abs(p))['text']} {small}{_SUPS[abs(p)]}"
+                fact += f", so 1 {B}{_SUPS[abs(p)]} = {_number(_how_many(big, small) ** abs(p))['text']} {Sm}{_SUPS[abs(p)]}"
             change = f"{describe([(here, p)])} → {describe([(there, p)])}" if p > 0 else f"per {describe([(here, -p)], 1)} → per {describe([(there, -p)], 1)}"
             why = f"{fact}: {change}, {op} {_number(shown)['text']}"
             left = _number(amount)["latex"] if not lines else "\\mathrm{Ans}"
@@ -269,17 +357,18 @@ def op_reference(req: dict) -> dict:
     """the sheet: each kind's units and facts, and some conversions people
     look up most"""
     kinds = []
-    for kind in CHAINS:
+    for kind in KINDS:
         facts = []
         for a, b in _links(kind):
             big, small = _fact(a, b)
             n = _number(_how_many(big, small))
-            facts.append({"big": big, "small": small, "n": n, "text": f"1 {big} = {n['text']} {small}", "names": f"{UNITS[big].name} · {UNITS[small].plural}"})
+            facts.append({"big": big, "small": small, "n": n, "text": f"1 {UNITS[big].display} = {n['text']} {UNITS[small].display}", "names": f"{UNITS[big].name} · {UNITS[small].plural}"})
         kinds.append(
             {
                 "kind": kind,
-                "units": [{"symbol": u.symbol, "name": u.name, "plural": u.plural} for u in LIBRARY if u.kind == kind],
+                "units": [{"symbol": u.symbol, "shown": u.display, "name": u.name, "plural": u.plural} for u in LIBRARY if u.kind == kind],
                 "facts": facts,
             }
         )
-    return {"kinds": kinds, "popular": [{"from": a, "to": b} for a, b in POPULAR], "combined": sorted(COMBINED)}
+    relations = [{"text": text, "from": a, "to": b, "why": why} for text, a, b, why in RELATIONS]
+    return {"kinds": kinds, "relations": relations, "popular": [{"from": a, "to": b} for a, b in POPULAR], "combined": sorted(COMBINED)}

@@ -19,8 +19,9 @@ from sympy import Rational, Symbol
 
 from .parsing import MathInputError
 
-# a kind is powers of these: speed is length¹ · time⁻¹
-BASE = ("length", "time", "mass")
+# a kind is powers of these: speed is length¹ · time⁻¹, a volt is
+# kg·m²·s⁻³·A⁻¹ (what a volt is made of, so V·A can be seen to be W)
+BASE = ("length", "time", "mass", "current")
 
 
 @dataclass(frozen=True)
@@ -32,56 +33,142 @@ class Unit:
     dim: tuple
     #: its size in the kind's base unit (km: 1000, in meters)
     size: Rational
+    #: how it's shown, when that isn't how it's typed (ohm → Ω, uA → µA)
+    shown: str = ""
+    tex: str = ""
+
+    @property
+    def display(self) -> str:
+        return self.shown or self.symbol
+
+    @property
+    def latex(self) -> str:
+        return self.tex or f"\\mathrm{{{self.symbol}}}"
 
 
+#        kind                 (length, time, mass, current)   in SI
 _KINDS = {
-    "length": ((1, 0, 0), "m"),
-    "area": ((2, 0, 0), "m²"),
-    "volume": ((3, 0, 0), "m³"),
-    "time": ((0, 1, 0), "s"),
-    "mass": ((0, 0, 1), "kg"),
-    "speed": ((1, -1, 0), "m/s"),
+    "length": ((1, 0, 0, 0), "m"),
+    "area": ((2, 0, 0, 0), "m²"),
+    "volume": ((3, 0, 0, 0), "m³"),
+    "time": ((0, 1, 0, 0), "s"),
+    "mass": ((0, 0, 1, 0), "kg"),
+    "speed": ((1, -1, 0, 0), "m/s"),
+    "acceleration": ((1, -2, 0, 0), "m/s²"),
+    "frequency": ((0, -1, 0, 0), "Hz"),
+    "force": ((1, -2, 1, 0), "N"),
+    "energy": ((2, -2, 1, 0), "J"),
+    "power": ((2, -3, 1, 0), "W"),
+    "current": ((0, 0, 0, 1), "A"),
+    "charge": ((0, 1, 0, 1), "C"),
+    "voltage": ((2, -3, 1, -1), "V"),
+    "resistance": ((2, -3, 1, -2), "Ω"),
+    "conductance": ((-2, 3, -1, 2), "S"),
+    "capacitance": ((-2, 4, -1, 2), "F"),
+    "inductance": ((2, -2, 1, -2), "H"),
+    "magnetic flux": ((2, -2, 1, -1), "Wb"),
+    "magnetic field": ((0, -2, 1, -1), "T"),
+    "current density": ((-2, 0, 0, 1), "A/m²"),
 }
 
 
-def _u(symbol, name, plural, kind, size):
-    return Unit(symbol, name, plural, kind, _KINDS[kind][0], Rational(size))
+def _u(symbol, name, plural, kind, size, shown="", tex=""):
+    return Unit(symbol, name, plural, kind, _KINDS[kind][0], Rational(size), shown, tex)
 
 
+# the metric prefixes: typed (u for micro), shown (µ), LaTeX, name, size
+PREFIXES = {
+    "T": ("T", "\\mathrm{T}", "tera", Rational(10) ** 12),
+    "G": ("G", "\\mathrm{G}", "giga", Rational(10) ** 9),
+    "M": ("M", "\\mathrm{M}", "mega", Rational(10) ** 6),
+    "k": ("k", "\\mathrm{k}", "kilo", Rational(1000)),
+    "h": ("h", "\\mathrm{h}", "hecto", Rational(100)),
+    "da": ("da", "\\mathrm{da}", "deca", Rational(10)),
+    "d": ("d", "\\mathrm{d}", "deci", Rational(1, 10)),
+    "c": ("c", "\\mathrm{c}", "centi", Rational(1, 100)),
+    "m": ("m", "\\mathrm{m}", "milli", Rational(1, 1000)),
+    "u": ("µ", "\\mu", "micro", Rational(1, 10**6)),
+    "n": ("n", "\\mathrm{n}", "nano", Rational(1, 10**9)),
+    "p": ("p", "\\mathrm{p}", "pico", Rational(1, 10**12)),
+}
+
+
+def _family(symbol, name, plural, kind, size, prefixes, shown="", tex=""):
+    """a unit and its metric relatives: V, then kV, mV, µV …"""
+    base = _u(symbol, name, plural, kind, size, shown, tex)
+    out = [base]
+    for p in prefixes:
+        p_shown, p_tex, p_name, factor = PREFIXES[p]
+        out.append(
+            _u(
+                p + symbol,
+                p_name + name,
+                p_name + plural,
+                kind,
+                base.size * factor,
+                p_shown + base.display if (shown or p != p_shown) else "",
+                p_tex + (tex or f"\\mathrm{{{symbol}}}") if (tex or p != p_shown) else "",
+            )
+        )
+    return out
+
+
+_EVERYDAY = ["k", "h", "da", "d", "c", "m", "u"]
 LIBRARY = [
-    _u("mm", "millimeter", "millimeters", "length", "1/1000"),
-    _u("cm", "centimeter", "centimeters", "length", "1/100"),
-    _u("m", "meter", "meters", "length", "1"),
-    _u("km", "kilometer", "kilometers", "length", "1000"),
+    # metric, every prefix a class meets (km … µm, nm)
+    *_family("m", "meter", "meters", "length", "1", [*_EVERYDAY, "n"]),
+    *_family("g", "gram", "grams", "mass", "1/1000", _EVERYDAY),
+    *_family("L", "liter", "liters", "volume", "1/1000", _EVERYDAY),
+    *_family("s", "second", "seconds", "time", "1", ["m", "u", "n", "p"]),
+    # US customary
     _u("in", "inch", "inches", "length", "0.0254"),
     _u("ft", "foot", "feet", "length", "0.3048"),
     _u("yd", "yard", "yards", "length", "0.9144"),
     _u("mi", "mile", "miles", "length", "1609.344"),
-    _u("s", "second", "seconds", "time", "1"),
-    _u("min", "minute", "minutes", "time", "60"),
-    _u("h", "hour", "hours", "time", "3600"),
-    _u("day", "day", "days", "time", "86400"),
-    _u("wk", "week", "weeks", "time", "604800"),
-    # a year is 365 or 366 days; this is the average, 365.25 (science's year)
-    _u("yr", "year", "years", "time", "31557600"),
-    _u("mg", "milligram", "milligrams", "mass", "1/1000000"),
-    _u("g", "gram", "grams", "mass", "1/1000"),
-    _u("kg", "kilogram", "kilograms", "mass", "1"),
     _u("oz", "ounce", "ounces", "mass", "0.028349523125"),
     _u("lb", "pound", "pounds", "mass", "0.45359237"),
-    _u("mL", "milliliter", "milliliters", "volume", "1/1000000"),
-    _u("L", "liter", "liters", "volume", "1/1000"),
     _u("tsp", "teaspoon", "teaspoons", "volume", "0.00000492892159375"),
     _u("tbsp", "tablespoon", "tablespoons", "volume", "0.00001478676478125"),
     _u("cup", "cup", "cups", "volume", "0.0002365882365"),
     _u("pt", "pint", "pints", "volume", "0.000473176473"),
     _u("qt", "quart", "quarts", "volume", "0.000946352946"),
     _u("gal", "gallon", "gallons", "volume", "0.003785411784"),
+    # time beyond seconds
+    _u("min", "minute", "minutes", "time", "60"),
+    _u("h", "hour", "hours", "time", "3600"),
+    _u("day", "day", "days", "time", "86400"),
+    _u("wk", "week", "weeks", "time", "604800"),
+    # a year is 365 or 366 days; this is the average, 365.25 (science's year)
+    _u("yr", "year", "years", "time", "31557600"),
     _u("mph", "mile per hour", "miles per hour", "speed", f"{Rational('1609.344') / 3600}"),
+    # electrical engineering: what flows, what pushes it, what resists it,
+    # what's stored, and how fast it changes
+    *_family("A", "ampere", "amperes", "current", "1", ["k", "m", "u", "n", "p"]),
+    *_family("V", "volt", "volts", "voltage", "1", ["M", "k", "m", "u"]),
+    *_family("ohm", "ohm", "ohms", "resistance", "1", ["G", "M", "k", "m"], shown="Ω", tex="\\Omega"),
+    *_family("S", "siemens", "siemens", "conductance", "1", ["m", "u"]),
+    *_family("W", "watt", "watts", "power", "1", ["G", "M", "k", "m", "u"]),
+    *_family("J", "joule", "joules", "energy", "1", ["G", "M", "k"]),
+    *_family("Wh", "watt-hour", "watt-hours", "energy", "3600", ["k", "M", "G"]),
+    *_family("C", "coulomb", "coulombs", "charge", "1", ["m", "u", "n"]),
+    *_family("Ah", "amp-hour", "amp-hours", "charge", "3600", ["m"]),
+    *_family("F", "farad", "farads", "capacitance", "1", ["m", "u", "n", "p"]),
+    *_family("H", "henry", "henries", "inductance", "1", ["m", "u", "n"]),
+    *_family("Hz", "hertz", "hertz", "frequency", "1", ["k", "M", "G"]),
+    *_family("Wb", "weber", "webers", "magnetic flux", "1", ["m"]),
+    *_family("T", "tesla", "teslas", "magnetic field", "1", ["m", "u"]),
+    *_family("N", "newton", "newtons", "force", "1", ["k"]),
 ]
 UNITS = {u.symbol: u for u in LIBRARY}
-# more ways to write a few
-ALIASES = {"sec": "s", "hr": "h", "hrs": "h", "lbs": "lb", "days": "day", "y": "yr", "ml": "mL", "l": "L"}
+# more ways to write them: words (amps, ohms, kilometers), the shown form
+# (Ω, kΩ, µA), and a few short ones
+ALIASES = {"sec": "s", "hr": "h", "hrs": "h", "lbs": "lb", "days": "day", "y": "yr", "ml": "mL", "l": "L", "amp": "A", "amps": "A", "Ω": "ohm", "µ": "u"}
+for _unit in LIBRARY:
+    for _word in (_unit.name, _unit.plural, _unit.display):
+        if _word not in UNITS and " " not in _word:
+            ALIASES.setdefault(_word, _unit.symbol)
+    if _unit.symbol.endswith("ohm"):  # kohm, kilohm
+        ALIASES.setdefault(_unit.symbol[: -3] + "Ω", _unit.symbol)
 
 _PREFIX = "unit_"
 
@@ -117,8 +204,9 @@ def without_units(symbols) -> set:
 _RUN = r"[A-Za-z]+"
 # after a number (a digit, or the end of a typed fraction), a space, then a
 # unit: m · m^2 · m/s · \frac{m}{s}
+_POW = r"(?:\^\{?\d\}?)?"
 _AFTER_NUMBER = re.compile(
-    rf"(?<=[\d}}])(\s*\\,\s*|\s+)(?:\\frac\{{({_RUN})\}}\{{({_RUN})\}}|({_RUN})(?:\s*/\s*({_RUN}))?)"
+    rf"(?<=[\d}}])(\s*\\,\s*|\s+)(?:\\frac\{{({_RUN}){_POW}\}}\{{({_RUN})({_POW})\}}|({_RUN})(?:\s*/\s*({_RUN}))?)"
 )
 
 
@@ -128,18 +216,34 @@ def mark(latex: str) -> str:
     that aren't a unit in the library are left alone (5\\,x is 5x)."""
 
     def swap(m: re.Match) -> str:
-        top, bottom = (m.group(2), m.group(3)) if m.group(2) else (m.group(4), m.group(5))
+        typed_frac = m.group(2) is not None
+        top, bottom = (m.group(2), m.group(3)) if typed_frac else (m.group(5), m.group(6))
         found = [find(top), find(bottom) if bottom else None]
         if not found[0] or (bottom and not found[1]):
             return m.group(0)
         if bottom:
-            return f"\\,\\frac{{\\mathrm{{{found[0].symbol}}}}}{{\\mathrm{{{found[1].symbol}}}}}"
+            # A over dm²: the powers stay where they were typed
+            top_pow = re.search(r"\^\{?\d\}?", m.group(0)[: m.group(0).index("}{")]) if typed_frac else None
+            bottom_pow = m.group(4) if typed_frac else ""
+            return f"\\,\\frac{{\\mathrm{{{found[0].symbol}}}{top_pow.group(0) if top_pow else ''}}}{{\\mathrm{{{found[1].symbol}}}{bottom_pow}}}"
         return f"\\,\\mathrm{{{found[0].symbol}}}"
 
     # the math field turns the letters min and sec into the functions \min
     # and \sec (minimum, secant) — as units (no brackets after) they're letters
     latex = re.sub(r"\\(min|sec)(?![A-Za-z])(?!\s*(?:\(|\\left))", r"\1", latex)
-    return _AFTER_NUMBER.sub(swap, latex)
+    # 5 kΩ and 3 µA, typed with the symbols: their letters (kohm, uA)
+    latex = re.sub(r"([A-Za-z]?)\s*\\Omega(?![A-Za-z])", r"\1ohm", latex)
+    latex = re.sub(r"\\mu\s*(?=[A-Za-z])", "u", latex)
+    latex = _AFTER_NUMBER.sub(swap, latex)
+
+    # 12 V/4 kΩ, typed: the math field puts just the V over the bar —
+    # 12\\,\\frac{V}{4\\,kohm}. A unit alone on top, right after a number,
+    # is a unit too (the bottom's units were found above)
+    def over(m: re.Match) -> str:
+        unit = find(m.group(2))
+        return f"{m.group(1)}\\frac{{\\mathrm{{{unit.symbol}}}{m.group(3)}}}{{" if unit else m.group(0)
+
+    return re.sub(rf"(?<=[\d}}])(\s*\\,\s*|\s+)\\frac\{{({_RUN})({_POW})\}}\{{", over, latex)
 
 
 # ------------------------------------------------------------- quantities
@@ -246,7 +350,7 @@ def _plural(unit_part) -> str:
 
 def names() -> dict:
     """each unit symbol's LaTeX (upright)"""
-    return {symbol(u): f"\\mathrm{{{u.symbol}}}" for u in LIBRARY}
+    return {symbol(u): u.latex for u in LIBRARY}
 
 
 def latex(expr, number_tex=None, *, amount: bool = False) -> str:
@@ -260,7 +364,7 @@ def latex(expr, number_tex=None, *, amount: bool = False) -> str:
         if units == 1:
             out.append(number_tex(number))
             continue
-        unit_tex = sympy.latex(units, symbol_names=names())
+        unit_tex = sympy.latex(units, symbol_names=names(), mul_symbol="dot")
         coefficient = "" if number == 1 and not amount else "-" if number == -1 and not amount else number_tex(number)
         out.append(f"{coefficient}\\,{unit_tex}" if coefficient not in ("", "-") else f"{coefficient}{unit_tex}")
     return " + ".join(out).replace("+ -", "- ")
@@ -271,7 +375,7 @@ def plain(unit_part) -> str:
     sup = str.maketrans("0123456789-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁻")
 
     def one(base, power):
-        return of(base).symbol + ("" if power == 1 else str(power).translate(sup))
+        return of(base).display + ("" if power == 1 else str(power).translate(sup))
 
     found = [((f.base, f.exp) if f.is_Pow else (f, 1)) for f in sympy.Mul.make_args(unit_part)]
     top = "·".join(one(b, p) for b, p in found if is_unit(b) and p > 0) or "1"
@@ -297,7 +401,7 @@ def _unit_tex(found, crossed=()) -> str:
     """units over units, the ones that cancel crossed out"""
 
     def one(base, power):
-        text = f"\\mathrm{{{of(base).symbol}}}"
+        text = of(base).latex
         text = f"\\cancel{{{text}}}" if base in crossed else text
         return text if power == 1 else f"{text}^{{{power}}}"
 
@@ -354,7 +458,7 @@ def steps(raw, number_tex) -> list[dict] | None:
         power[b] = power.get(b, 0) + p
     crossed = {b for b, _ in found if any(p > 0 for bb, p in found if bb == b) and any(p < 0 for bb, p in found if bb == b)}
     if crossed:
-        names_ = ", ".join(f"$\\mathrm{{{of(b).symbol}}}$" for b in sorted(crossed, key=str))
+        names_ = ", ".join(f"${of(b).latex}$" for b in sorted(crossed, key=str))
         out.append(step(f"The units: {names_} on top and below cancel", f"{number_tex(number)} \\cdot {_unit_tex(found, crossed)}"))
     left = {b: p for b, p in power.items() if p}
     # what's left with two units of one kind (mi/h · min): one written in
@@ -374,11 +478,11 @@ def steps(raw, number_tex) -> list[dict] | None:
             number *= rate ** left[b]
             left[keep] = left.get(keep, 0) + left.pop(b)
             remaining = number * sympy.Mul(*[u ** p for u, p in left.items() if p])
-            out.append(step(f"Write {of(b).plural} in {of(keep).plural} ($1\\,\\mathrm{{{of(b).symbol}}} = {number_tex(rate)}\\,\\mathrm{{{of(keep).symbol}}}$), so they cancel", latex(remaining, number_tex)))
+            out.append(step(f"Write {of(b).plural} in {of(keep).plural} ($1\\,{of(b).latex} = {number_tex(rate)}\\,{of(keep).latex}$), so they cancel", latex(remaining, number_tex)))
     # the same unit more than once on top: m · m is m²
     for b, total in left.items():
         if total > 1 and sum(1 for bb, p in found if bb == b and p > 0) > 1:
-            symbol_ = f"\\mathrm{{{of(b).symbol}}}"
+            symbol_ = of(b).latex
             out.append(step(f"The units: ${' \\cdot '.join([symbol_] * total)} = {symbol_}^{{{total}}}$", latex(number * b**total, number_tex)))
     # the answer itself (worked out on its own, so this always agrees)
     out.append(step("So", latex(normalize(sympy.simplify(raw)), number_tex)))

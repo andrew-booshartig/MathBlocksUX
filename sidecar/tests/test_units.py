@@ -96,3 +96,32 @@ def test_converting_needs_units_of_the_same_kind():
         smart(r"9\to m")
     with pytest.raises(MathInputError, match="different things"):
         smart(r"9\,km\to s")
+
+
+@pytest.mark.parametrize(
+    "latex,result",
+    [
+        # the current density problem: a decimeter is a tenth of a meter
+        (r"1\,\frac{A}{dm^2}\to\frac{A}{m^2}", r"100\,\frac{\mathrm{A}}{\mathrm{m}^{2}}"),
+        # Ohm's law: 12 V across 4 kΩ is 3 mA
+        (r"\frac{12\,V}{4\,kohm}\to mA", r"3\,\mathrm{mA}"),
+        (r"\frac{12\,V}{4\,k\Omega}\to mA", r"3\,\mathrm{mA}"),
+        # power: volts times amps are watts
+        (r"5\,V\cdot2\,A\to W", r"10\,\mathrm{W}"),
+        (r"2\,kWh\to MJ", r"7.2\,\mathrm{MJ}"),
+        (r"1500\,mAh\cdot3.7\,V\to Wh", r"5.55\,\mathrm{Wh}"),
+        (r"3300\,\mu F\to mF", r"3.3\,\mathrm{mF}"),
+    ],
+)
+def test_electrical_units_and_prefixes(latex, result):
+    assert smart(latex)["result_latex"] == result
+
+
+def test_units_show_as_written_in_a_textbook():
+    assert smart(r"3\,uF")["result_latex"] == r"3\,\mu\mathrm{F}"  # typed u, shown µ
+    assert smart(r"5\,V\cdot2\,A")["result_latex"] == r"10\,\mathrm{A} \cdot \mathrm{V}"
+
+
+def test_a_unit_alone_over_the_bar_is_still_a_unit():
+    """typing 12 V/4 kohm puts just the V over the bar"""
+    assert smart(r"12\,\frac{V}{4\,kohm}\to mA")["result_latex"] == r"3\,\mathrm{mA}"

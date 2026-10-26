@@ -59,3 +59,15 @@ def test_the_sheet_lists_each_kinds_facts():
     time = next(k for k in sheet["kinds"] if k["kind"] == "time")
     assert "1 h = 60 min" in [f["text"] for f in time["facts"]]
     assert {"from": "km/h", "to": "m/s"} in sheet["popular"]
+
+
+def test_prefixes_and_relations():
+    _, out = lines("250", "mA", "A")
+    assert out["to"]["amount"]["text"] == "0.25"
+    _, out = lines("5", "V*A", "W")
+    assert out["to"]["amount"]["text"] == "5" and "voltage × current" in out["lines"][0]["why"]
+    with pytest.raises(MathInputError, match="measure different things"):
+        op_refconvert({"amount": "12", "from": "V", "to": "A"})
+    sheet = op_reference({})
+    assert {"current", "voltage", "resistance", "power"} <= {k["kind"] for k in sheet["kinds"]}
+    assert any(r["text"] == "1 V = 1 A·Ω" for r in sheet["relations"])

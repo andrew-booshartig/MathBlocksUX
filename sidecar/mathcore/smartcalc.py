@@ -293,7 +293,7 @@ def _units_latex(us: list[tuple[str, int]]) -> str:
     make it cm)"""
 
     def one(s, p):
-        return f"\\mathrm{{{s}}}" + (f"^{{{abs(p)}}}" if abs(p) != 1 else "")
+        return units.UNITS[s].latex + (f"^{{{abs(p)}}}" if abs(p) != 1 else "")
 
     top = "\\,".join(one(s, p) for s, p in us if p > 0) or "1"
     bottom = "\\,".join(one(s, p) for s, p in us if p < 0)

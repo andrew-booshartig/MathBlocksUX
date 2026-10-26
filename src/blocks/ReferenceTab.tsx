@@ -25,7 +25,8 @@ interface Converted {
   one_line: string;
 }
 interface Sheet {
-  kinds: { kind: string; units: { symbol: string; name: string; plural: string }[]; facts: { big: string; small: string; text: string; names: string }[] }[];
+  kinds: { kind: string; units: { symbol: string; shown: string; name: string; plural: string }[]; facts: { big: string; small: string; text: string; names: string }[] }[];
+  relations: { text: string; from: string; to: string; why: string }[];
   popular: { from: string; to: string }[];
 }
 
@@ -65,7 +66,7 @@ export default function ReferenceTab({ lookup, update, onTry }: { lookup?: Refer
     <div className="ref">
       <datalist id="ref-units">
         {words.map((u) => (
-          <option key={u.symbol} value={u.symbol}>
+          <option key={u.symbol} value={u.shown}>
             {u.plural}
           </option>
         ))}
@@ -128,8 +129,23 @@ export default function ReferenceTab({ lookup, update, onTry }: { lookup?: Refer
       <div className="ref-sheet">
         <div className="ref-sheet-head">
           <span className="ref-heading">The sheet</span>
-          <input className="ref-search nodrag" value={search} spellCheck={false} placeholder="search — mile, hour, cup…" onChange={(e) => setSearch(e.target.value)} />
+          <input className="ref-search nodrag" value={search} spellCheck={false} placeholder="search — mile, hour, volt, ohm…" onChange={(e) => setSearch(e.target.value)} />
         </div>
+        {/* how electrical units are made of each other: V = I·R, P = V·I */}
+        {(sheet?.relations ?? []).some((r) => !search.trim() || `${r.text} ${r.why}`.toLowerCase().includes(search.trim().toLowerCase())) && (
+          <div className="ref-kind">
+            <div className="ref-kind-name">Electrical relationships</div>
+            <div className="ref-facts">
+              {(sheet?.relations ?? [])
+                .filter((r) => !search.trim() || `${r.text} ${r.why}`.toLowerCase().includes(search.trim().toLowerCase()))
+                .map((r) => (
+                  <button key={r.text} className="ref-fact" title={`${r.why} — look it up`} onClick={() => set({ amount: "1", from: r.from, to: r.to })}>
+                    {r.text} <span className="ref-fact-why">{r.why}</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
         {kinds.map((k) => (
           <div key={k.kind} className="ref-kind">
             <div className="ref-kind-name">{k.kind}</div>

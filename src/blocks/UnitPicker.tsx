@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveMath } from "../mathSidecar";
 
 interface Sheet {
-  kinds: { kind: string; units: { symbol: string; name: string; plural: string }[] }[];
+  kinds: { kind: string; units: { symbol: string; shown: string; name: string; plural: string }[] }[];
 }
 
 export default function UnitPicker({ onPick, onClose }: { onPick: (symbol: string) => void; onClose: () => void }) {
@@ -26,7 +26,7 @@ export default function UnitPicker({ onPick, onClose }: { onPick: (symbol: strin
   const kinds = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (sheet?.kinds ?? [])
-      .map((k) => ({ ...k, units: k.units.filter((u) => !q || u.symbol.toLowerCase().startsWith(q) || u.name.includes(q) || u.plural.includes(q)) }))
+      .map((k) => ({ ...k, units: k.units.filter((u) => !q || u.symbol.toLowerCase().startsWith(q) || u.shown.toLowerCase().startsWith(q) || u.name.includes(q) || u.plural.includes(q) || k.kind.includes(q)) }))
       .filter((k) => k.units.length);
   }, [sheet, search]);
   return (
@@ -36,7 +36,7 @@ export default function UnitPicker({ onPick, onClose }: { onPick: (symbol: strin
         autoFocus
         value={search}
         spellCheck={false}
-        placeholder="find a unit — kilo, hour, cup…"
+        placeholder="find a unit — kilo, hour, volt, micro…"
         onChange={(e) => setSearch(e.target.value)}
         onKeyDown={(e) => {
           const first = kinds[0]?.units[0];
@@ -49,7 +49,7 @@ export default function UnitPicker({ onPick, onClose }: { onPick: (symbol: strin
             <span className="unit-picker-name">{k.kind}</span>
             {k.units.map((u) => (
               <button key={u.symbol} className="unit-picker-unit" title={u.plural} onClick={() => onPick(u.symbol)}>
-                {u.symbol}
+                {u.shown}
               </button>
             ))}
           </div>

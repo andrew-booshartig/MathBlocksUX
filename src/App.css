@@ -6196,3 +6196,9 @@ math-field {
   font-size: 11.5px;
   color: var(--t-muted, #74748a);
 }
+
+.ref-fact-why {
+  margin-left: 4px;
+  color: var(--t-muted, #74748a);
+  font-size: 11px;
+}
