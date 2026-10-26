@@ -4689,10 +4689,17 @@ math-field {
 .smart-field math-field {
   border-color: var(--t-line, #2e2e3a);
   font-size: 20px;
+  /* tall enough for a fraction from the start: typing one (or putting one
+     on the line from the tape) doesn't make everything above it jump —
+     the + you just clicked stays under the mouse */
+  min-height: 59px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
 }
 
 .smart-preview {
-  min-height: 22px;
+  min-height: 24px; /* a fraction's height: an answer showing up doesn't move things */
   padding: 2px 4px 0;
   text-align: right;
   color: var(--t-muted, #7c8aa0);
