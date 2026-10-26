@@ -22,7 +22,8 @@ import dataclasses
 
 from .lang.ast import Const, Group, Mul, Num, Sym
 from .calculator import _fmt_decimal, op_calc
-from .parsing import MathInputError, build_scope, parse, tex
+from .parsing import MathInputError, build_scope, parse, step, tex
+from .arith import arithmetic_steps
 from .solve import interval_tex, op_solve, set_relational_tex, set_to_segments
 from .transform import op_transform
 
@@ -297,7 +298,7 @@ def op_smart(req: dict) -> dict:
             truth = bool(check(sympy.simplify(sides[0] - sides[1]), 0))
             return {**base, "kind": "truth", "result_latex": "\\text{true}" if truth else "\\text{false}"}
         value = op_calc({"expr": text, "angle": req.get("angle", "deg"), "vars": vars_})
-        return {
+        out = {
             **base,
             "kind": "value",
             "result_latex": value["exact_latex"],
@@ -305,6 +306,19 @@ def op_smart(req: dict) -> dict:
             # Ans is this answer, exact, as math (2√2, not 2.828…)
             "ans": value["exact_latex"],
         }
+        # plain arithmetic worked by hand — fractions the way a class does
+        # them — when there's more than one move to it: its steps, and Show
+        # work (decimals typed stay decimals: not turned into fractions here)
+        if not re.search(r"\d\.\d", latex):
+            try:
+                worked = arithmetic_steps(lang.to_sympy(node, evaluate=False))
+            except Exception:  # noqa: BLE001 — then just the answer
+                worked = None
+            fractions = worked and any("frac" in note or "Simplify" in note for note, _ in worked[1:])
+            if worked and (len(worked) > 2 or fractions):
+                out["steps"] = [step(note, shown) for note, shown in worked]
+                out["work"] = True
+        return out
 
     actions = (
         [{"kind": "solve", "var": v, "label": f"Solve for {v}"} for v in letters] if relation else EXPRESSION_ACTIONS

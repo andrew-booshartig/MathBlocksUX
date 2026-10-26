@@ -6,6 +6,7 @@ import re
 import sympy
 from sympy import Abs, Add, Interval, Mul, Pow, Rational, S, Symbol, Union
 
+from .arith import arithmetic_steps, written
 from .parsing import (
     EQUALS, INEQUALITY, MathInputError, X, Y, build_scope, no_eval, num, parse, prep,
     pretty_number, sign_word, step, tex,
@@ -111,7 +112,22 @@ def linear_steps(lhs_raw, rhs_raw, lhs, rhs, v, rel="=", start=True):
     """ax + b (rel) cx + d → v (rel) value, one move per step. Returns
     (steps, final_rel, value) — value is None for no solution / identity,
     with final_rel set to 'none' or 'all'."""
-    steps = [step("Start", rel_tex(lhs_raw, rhs_raw, rel, keep_order=True))] if start else []
+    # a side that's only numbers, written as typed (a fraction stays one),
+    # and worked out first, the way it's done by hand (÷ a fraction is ×
+    # its reciprocal, a common denominator, …)
+    shown = [written(lhs_raw) or tex(lhs_raw, keep_order=True), written(rhs_raw) or tex(rhs_raw, keep_order=True)]
+    steps = [step("Start", f"{shown[0]} {REL_TEX[rel]} {shown[1]}")] if start else []
+    for k, raw in enumerate((lhs_raw, rhs_raw)):
+        worked = arithmetic_steps(raw)
+        if not worked:
+            continue
+        for note, side in worked[1:]:
+            shown[k] = side
+            _push(steps, note, f"{shown[0]} {REL_TEX[rel]} {shown[1]}")
+        if k == 0:
+            lhs_raw = lhs
+        else:
+            rhs_raw = rhs
     L, R = sympy.expand(lhs), sympy.expand(rhs)
     if _needs_simplifying(lhs_raw, L) or _needs_simplifying(rhs_raw, R):
         _push(steps, "Simplify each side — distribute and combine like terms", rel_tex(L, R, rel))
