@@ -177,3 +177,21 @@ def test_compound_parts_are_checked_one_by_one():
     assert s[0][0] == "wrong" and "first part" in s[0][2] and "direction" in s[0][2]
     # merging parts is still checked as a whole
     assert statuses(r"x>2\text{ and }x>5", [r"x>5"])[0][0] == "ok"
+
+
+def test_hints_name_the_actual_slip():
+    problem = r"-12<2-5x\le7"
+    # ≥ written as >: an endpoint, not a missing ± (that's for square roots)
+    s = statuses(problem, [r"-14<-5x\le5", r"\frac{14}{5}>x>-1"])
+    assert s[1][0] == "wrong" and "endpoint $-1$" in s[1][2] and "pm" not in s[1][2]
+    assert "endpoint $3$" in statuses("x+2<5", [r"x\le3"])[0][2]
+    # neither sign flipped: both parts, said once
+    s = statuses(problem, [r"-14<-5x\le5", r"\frac{14}{5}<x\le-1"])
+    assert s[1][2].startswith("In both parts") and "direction" in s[1][2]
+    # 2 added instead of taken away: the arithmetic, not "work it on its own"
+    s = statuses(problem, [r"-10<-5x\le9"])
+    assert "$-12 - 2 = -14$, not $-10$" in s[0][2] and "second part" in s[0][2]
+    assert "$11 - 3 = 8$, not $14$" in statuses("2x+3=11", ["2x=14"])[0][2]
+    assert "$12 \\div 3 = 4$, not $36$" in statuses("3x=12", ["x=36"])[0][2]
+    # the ± hint stays for equations
+    assert "pm" in statuses("x^2=9", ["x=3"])[0][2]

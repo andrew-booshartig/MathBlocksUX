@@ -260,31 +260,33 @@ def _terms(line: Line):
 
 
 def diagnose(prev: Line, line: Line) -> str:
-    """Why doesn't `line` follow from `prev`? A useful nudge, not the answer."""
+    """Why doesn't `line` follow from `prev`? A useful nudge, not the answer.
+    The specific slips first (an endpoint, a sign, one side's arithmetic),
+    then what the solutions say."""
+    endpoint = _endpoint_slip(prev, line)
+    if endpoint:
+        return endpoint
+    if _same_shape(prev, line):
+        part = _part_hint(prev, line)
+        if part:
+            return part
+    slip = _slip(prev, line) or _arithmetic_slip(prev, line)
+    if slip:
+        return slip
     syms = sorted(set(prev.symbols) | set(line.symbols), key=str)
     if len(syms) == 1 and line.kind != "expression":
         try:
             before, after = prev.solution_set(syms[0]), line.solution_set(syms[0])
             if after.is_subset(before) and before != after and after != S.EmptySet:
-                return "Some solutions went missing — did you forget the $\\pm$ when taking a square root, or divide by something that could be zero?"
+                if line.kind == "equation":
+                    return "Some solutions went missing — did you forget the $\\pm$ when taking a square root, or divide by something that could be zero?"
+                return "Some solutions went missing — this line leaves out values the line above allows."
             if before.is_subset(after) and before != after:
                 return "This has **extra** solutions the line above doesn't — plug them back in to check."
         except Exception:
             pass
-    if _same_shape(prev, line):
-        # worked part by part: say which part went wrong (in order)
-        for i, (p, q) in enumerate(zip(prev.alts, line.alts)):
-            if equivalent(p, q) is False:
-                which = ("first", "second", "third", "fourth")[i] if i < 4 else f"#{i + 1}"
-                slip = _slip(p, q)
-                if slip:
-                    return f"In the {which} part, {slip[0].lower()}{slip[1:]}"
-                return f"The {which} part doesn't follow from ${p.latex()}$ — work it on its own."
     if line.alts:
         return "These answers don't match the solutions of the line above — check each one by plugging it back in."
-    slip = _slip(prev, line)
-    if slip:
-        return slip
     if line.kind == "expression":
         syms = line.symbols or prev.symbols
         point = {s: v for s, v in zip(syms, [2, 3, 5, 7, 11])}
@@ -294,6 +296,105 @@ def diagnose(prev: Line, line: Line) -> str:
             return f"Test it: with ${where}$ the line above is ${tex(sympy.nsimplify(va))}$ but this line is ${tex(sympy.nsimplify(vb))}$ — equal expressions always match."
         return "This isn't equal to the line above."
     return "This doesn't have the same solutions as the line above — find the step that changed it."
+
+
+_ORDINAL = ("first", "second", "third", "fourth")
+
+
+def _part_hint(prev: Line, line: Line) -> str | None:
+    """A compound worked part by part: which part went wrong, and how. The
+    same slip in every part (both signs left unflipped) is said once."""
+    wrong = [(i, p, q) for i, (p, q) in enumerate(zip(prev.alts, line.alts)) if equivalent(p, q) is False]
+    if not wrong:
+        return None
+    hints = [_slip(p, q) or _arithmetic_slip(p, q) for _, p, q in wrong]
+    lower = lambda h: h[0].lower() + h[1:]  # noqa: E731
+    if len(wrong) > 1 and hints[0] and all(h == hints[0] for h in hints):
+        where = "both parts" if len(wrong) == 2 else "every part" if len(wrong) == len(prev.alts) else "several parts"
+        return f"In {where}, {lower(hints[0])}"
+    i, p, _ = wrong[0]
+    which = _ORDINAL[i] if i < len(_ORDINAL) else f"#{i + 1}"
+    also = ""
+    if len(wrong) > 1:
+        others = [_ORDINAL[j] if j < len(_ORDINAL) else f"#{j + 1}" for j, _, _ in wrong[1:]]
+        also = f" (Then check the {' and '.join(others)} part{'s' if len(others) > 1 else ''} too.)"
+    if hints[0]:
+        return f"In the {which} part, {lower(hints[0])}{also}"
+    return f"The {which} part doesn't follow from ${p.latex()}$ — work it on its own.{also}"
+
+
+def _endpoint_slip(prev: Line, line: Line) -> str | None:
+    """The right numbers, but an endpoint went in or out: ≥ where it was
+    > (or the other way) — −1 ≤ x became −1 < x."""
+    syms = sorted(set(prev.symbols) | set(line.symbols), key=str)
+    if len(syms) != 1 or line.kind != "inequality":
+        return None
+    try:
+        before, after = prev.solution_set(syms[0]), line.solution_set(syms[0])
+        if before == after or before.closure != after.closure:
+            return None
+        lost, gained = sympy.Complement(before, after), sympy.Complement(after, before)
+    except Exception:
+        return None
+    if isinstance(lost, sympy.FiniteSet) and lost:
+        point = tex(min(lost))
+        return f"Check the endpoint ${point}$: the line above includes it (≤ or ≥), so this line should too — keep the “or equal to”."
+    if isinstance(gained, sympy.FiniteSet) and gained:
+        point = tex(min(gained))
+        return f"Check the endpoint ${point}$: the line above leaves it out (< or >), so this line should too — no “or equal to” there."
+    return None
+
+
+def _arithmetic_slip(prev: Line, line: Line) -> str | None:
+    """The same thing done to both sides, with one side's arithmetic off:
+    −12 < 2 − 5x → −10 < −5x took 2 from the right, so the left is
+    −12 − 2 = −14. Only said when fixing that number makes the line right."""
+    if prev.alts or line.alts or not prev.rel or not line.rel:
+        return None
+    syms = set(prev.symbols) | set(line.symbols)
+    if len(syms) != 1:
+        return None
+    sym = syms.pop()
+
+    def split(l: Line):
+        """(the side with the letter, the number side, where the number side is)"""
+        a, b = l.sides
+        if a.has(sym) and not b.has(sym):
+            return a, b, 1
+        if b.has(sym) and not a.has(sym):
+            return b, a, 0
+        return None
+
+    p, q = split(prev), split(line)
+    if not p or not q:
+        return None
+    (pv, pc, _), (qv, qc, at) = p, q
+
+    def fixed(value) -> bool:
+        sides = list(line.sides)
+        sides[at] = value
+        return bool(equivalent(prev, line.with_sides(sides)))
+
+    shift = sympy.expand(qv - pv)
+    if shift.is_number and shift != 0:
+        right = sympy.nsimplify(pc + shift)
+        if not _same_value(qc, right) and fixed(right):
+            if shift > 0:
+                did, sum_ = f"added ${tex(shift)}$", f"{tex(pc)} + {tex(shift)}"
+            else:
+                did, sum_ = f"subtracted ${tex(-shift)}$", f"{tex(pc)} - {tex(-shift)}"
+            return f"You {did} on the side with ${tex(sym)}$ — do the same to ${tex(pc)}$: ${sum_} = {tex(right)}$, not ${tex(qc)}$."
+    ratio = sympy.simplify(qv / pv)
+    if ratio.is_number and ratio not in (0, 1):
+        right = sympy.nsimplify(pc * ratio)
+        if not _same_value(qc, right) and fixed(right):
+            by = sympy.nsimplify(1 / ratio)
+            if by.is_integer:
+                shown = f"\\left({tex(by)}\\right)" if by < 0 else tex(by)
+                return f"You divided ${tex(pv)}$ by ${tex(by)}$ — divide ${tex(pc)}$ by ${tex(by)}$ too: ${tex(pc)} \\div {shown} = {tex(right)}$, not ${tex(qc)}$."
+            shown = f"\\left({tex(ratio)}\\right)" if ratio < 0 else tex(ratio)
+            return f"You multiplied ${tex(pv)}$ by ${tex(ratio)}$ — multiply ${tex(pc)}$ by it too: ${tex(pc)} \\cdot {shown} = {tex(right)}$, not ${tex(qc)}$."
+    return None
 
 
 def _slip(prev: Line, line: Line) -> str | None:
