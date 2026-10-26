@@ -4,7 +4,7 @@
 import katex from "katex";
 import { mathRequest } from "./mathSidecar";
 import { PRINT_PALETTE, numberLineSvg, numberLineTikz, plainMath, sameWritten } from "./numberLine";
-import { type AssignmentInfo, type LanguageSpec, type WorkHistoryEntry, newId } from "./store";
+import { type AssignmentInfo, type CarriedNotes, type LanguageSpec, type Note, type NoteStyle, type WorkHistoryEntry, newId } from "./store";
 
 type Parts = [string, string, string] | null;
 type Step = WorkHistoryEntry["steps"][number];
@@ -70,16 +70,23 @@ const pageMath = (latex: string, display = false) =>
  * column alignment — the work would come out centered, not lined up at its
  * = signs — so the page lines it up itself. Columns pair up right | left,
  * the way aligned does; a reason sits in the fourth. */
-function workTable(aligned: string): string {
+function workTable(aligned: string, notes: (string | null)[] = [], answer?: { latex: string; note: string | null }): string {
   const rows = aligned
     .replace(/^\\begin\{aligned\}\s*/, "")
     .replace(/\s*\\end\{aligned\}$/, "")
     .split(/\s*\\\\(?:\[[^\]]*\])?\s*/)
     .map((row) => row.split(/(?<!\\)&/).map((cell) => cell.trim()));
-  // a left-hand cell starts mid-formula ("= 8"): {} spaces its = like one
-  const cell = (latex: string, i: number) =>
-    `<td class="${i % 2 ? "l" : "r"}${i === 3 ? " why" : ""}">${latex ? pageMath(`\\displaystyle ${i % 2 ? "{}" : ""}${latex}`) : ""}</td>`;
-  return `<table class="steps">${rows.map((cells) => `<tr>${cells.map(cell).join("")}</tr>`).join("")}</table>`;
+  // a cell that starts mid-formula ("= 8"): {} spaces its = like one (but
+  // a leading minus stays a negative sign, −12, not − 12)
+  const midway = /^(=|<|>|\\[lg]eq?(?![a-z])|\\neq?(?![a-z])|\\[lg]t(?![a-z]))/;
+  const cell = (latex: string, i: number) => `<td class="${i % 2 ? "l" : "r"}">${latex ? pageMath(`\\displaystyle ${i % 2 && midway.test(latex) ? "{}" : ""}${latex}`) : ""}</td>`;
+  const noted = notes.some(Boolean) || !!answer?.note;
+  const note = (html: string | null | undefined) => (noted ? `<td class="note">${html ?? ""}</td>` : "");
+  const body = rows.map((cells, k) => `<tr>${cells.map(cell).join("")}${note(notes[k])}</tr>`);
+  // the final answer, boxed, under the steps (centered on them), its note
+  // in line with the others
+  if (answer) body.push(`<tr><td class="ans" colspan="2"><span class="box">${pageMath(`\\displaystyle ${answer.latex}`)}</span></td>${note(answer.note)}</tr>`);
+  return `<table class="steps">${body.join("")}</table>`;
 }
 
 const STEPS_CSS = `
@@ -87,7 +94,9 @@ const STEPS_CSS = `
   .steps td { padding: 3px 0; vertical-align: baseline; white-space: nowrap; }
   .steps td.r { text-align: right; }
   .steps td.l { text-align: left; }
-  .steps td.why { padding-left: 2em; color: #4b5563; }`;
+  .steps td.note { padding-left: 2em; white-space: normal; max-width: 300px; }
+  .steps td.ans { text-align: center; padding-top: 10px; vertical-align: middle; }
+  .steps tr:has(td.ans) td.note { vertical-align: middle; padding-top: 10px; }`;
 
 /** A self-contained web page: math as MathML (every modern browser draws
  * it, no fonts or internet needed), laid out to print cleanly. */
@@ -193,6 +202,98 @@ export function assignmentOptions(info: AssignmentInfo = {}) {
   return { box: info.box !== false, marks: info.marks === true, graphs: info.graphs !== false, reasons: info.reasons !== false };
 }
 
+/** How a note can look: its fonts (as on the printed page) and highlighters. */
+export const NOTE_FONTS: { value: NonNullable<NoteStyle["font"]>; label: string; css: string }[] = [
+  { value: "serif", label: "Serif", css: `"Iowan Old Style", "Palatino", Georgia, serif` },
+  { value: "sans", label: "Sans", css: `-apple-system, "Helvetica Neue", Arial, sans-serif` },
+  { value: "hand", label: "Handwriting", css: `"Bradley Hand", "Noteworthy", "Segoe Print", "Comic Neue", cursive` },
+  { value: "mono", label: "Mono", css: `"SF Mono", Menlo, Consolas, monospace` },
+];
+export const NOTE_HIGHLIGHTS: { value: NonNullable<NoteStyle["highlight"]>; label: string; color: string; tex: string }[] = [
+  { value: "yellow", label: "Yellow", color: "#fff1a1", tex: "yellow!35" },
+  { value: "green", label: "Green", color: "#cdf3c8", tex: "green!20" },
+  { value: "pink", label: "Pink", color: "#ffd3e6", tex: "magenta!15" },
+  { value: "blue", label: "Blue", color: "#d2e8ff", tex: "cyan!18" },
+];
+
+/** A note's look as CSS (also used by the Assignment tab's note fields). */
+export function noteCss(style: NoteStyle = {}): Record<string, string> {
+  const css: Record<string, string> = {};
+  const font = NOTE_FONTS.find((f) => f.value === style.font);
+  if (font && font.value !== "serif") css.fontFamily = font.css;
+  if (style.bold) css.fontWeight = "700";
+  if (style.italic) css.fontStyle = "italic";
+  if (style.underline) css.textDecoration = "underline";
+  const mark = NOTE_HIGHLIGHTS.find((h) => h.value === style.highlight);
+  if (mark) css.background = mark.color;
+  return css;
+}
+
+const kebab = (key: string) => key.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+
+function noteHtml(note: Note | null | undefined): string | null {
+  if (!note?.text.trim()) return null;
+  const css = Object.entries(noteCss(note.style))
+    .map(([k, v]) => `${kebab(k)}: ${v}`)
+    .join("; ");
+  return `<span class="nt${note.style?.highlight ? " hl" : ""}"${css ? ` style='${css}'` : ""}>${escapeHtml(note.text.trim()).replace(/\n/g, "<br>")}</span>`;
+}
+
+/** A note as LaTeX text (text mode). */
+function noteTex(note: Note | null | undefined): string | null {
+  if (!note?.text.trim()) return null;
+  const st = note.style ?? {};
+  let t = note.text
+    .trim()
+    .replace(/[\\&%$#_{}~^]/g, (c) => ({ "\\": "\\textbackslash{}", "~": "\\textasciitilde{}", "^": "\\textasciicircum{}" })[c] ?? "\\" + c)
+    .replace(/\n+/g, " \\\\ ");
+  if (st.font === "sans") t = `\\textsf{${t}}`;
+  if (st.font === "mono") t = `\\texttt{${t}}`;
+  if (st.font === "hand") t = `\\textit{${t}}`; // LaTeX has no handwriting font built in
+  if (st.bold) t = `\\textbf{${t}}`;
+  if (st.italic) t = `\\textit{${t}}`;
+  if (st.underline) t = `\\underline{${t}}`;
+  const mark = NOTE_HIGHLIGHTS.find((h) => h.value === st.highlight);
+  if (mark) t = `\\colorbox{${mark.tex}}{${t}}`;
+  return t;
+}
+
+/** The note beside step i: the one written on the assignment — or else
+ * the reason written for that step in Work. */
+export function stepNote(e: WorkHistoryEntry, i: number): Note | null {
+  const written = e.stepNotes?.[i];
+  if (written) return written;
+  const reason = stepReasons(e)[i];
+  return reason ? { text: reason } : null;
+}
+
+/** A filed problem's notes, to keep while it's reopened in Work. */
+export function carryNotes(e: WorkHistoryEntry): CarriedNotes | undefined {
+  const steps = e.steps.flatMap((s, i) => (e.stepNotes?.[i] ? [{ latex: s.latex, at: i, note: e.stepNotes[i]! }] : []));
+  return e.note || steps.length ? { note: e.note, steps } : undefined;
+}
+
+/** …and put back when it's filed again: the note under it, and each step's
+ * note on the step it was written for — or, for the step that was changed
+ * (the reason it was reopened), on the step in its place. */
+export function withCarriedNotes(e: WorkHistoryEntry, carried?: CarriedNotes): WorkHistoryEntry {
+  if (!carried) return e;
+  const plain = (latex: string) => latex.replace(/\s+/g, "");
+  const placed = new Set<(typeof carried.steps)[number]>();
+  const stepNotes: (Note | null)[] = e.steps.map((s) => {
+    const same = carried.steps.find((c) => !placed.has(c) && plain(c.latex) === plain(s.latex));
+    if (same) placed.add(same);
+    return same?.note ?? null;
+  });
+  for (const c of carried.steps) {
+    if (!placed.has(c) && c.at < stepNotes.length && !stepNotes[c.at]) {
+      stepNotes[c.at] = c.note;
+      placed.add(c);
+    }
+  }
+  return { ...e, ...(carried.note ? { note: carried.note } : {}), ...(stepNotes.some(Boolean) ? { stepNotes } : {}) };
+}
+
 /** the steps beside the reasons written for them (when they line up) */
 function stepReasons(e: WorkHistoryEntry): string[] {
   const written = e.lines.map((line, i) => [line, e.reasons[i] ?? ""] as const).filter(([line]) => line.trim());
@@ -200,21 +301,19 @@ function stepReasons(e: WorkHistoryEntry): string[] {
 }
 
 /** a problem's work as LaTeX: the steps lined up (all but the final
- * answer, which goes below to be boxed), with reasons and marks when chosen */
-function problemWork(e: WorkHistoryEntry, info: AssignmentInfo): { work: string; answer: string | null } {
+ * answer, which goes below to be boxed), with marks when chosen — and the
+ * note for each row (the problem's row has none) and for the answer */
+function problemWork(e: WorkHistoryEntry, info: AssignmentInfo): { work: string; rowNotes: (Note | null)[]; answer: string | null; answerNote: Note | null } {
   const o = assignmentOptions(info);
   const boxed = o.box && e.solved && e.steps.length > 0;
   const steps = boxed ? e.steps.slice(0, -1) : e.steps;
-  const reasons = o.reasons ? stepReasons(e) : [];
-  const rows = alignedWork(e.kind, e.problemLatex, e.problemParts, steps, o.marks)
-    .replace(/^\\begin\{aligned\} /, "")
-    .replace(/ \\end\{aligned\}$/, "")
-    .split(" \\\\[4pt] ");
-  const withReasons = rows.map((row, i) => (i > 0 && reasons[i - 1] ? `${row} && \\text{${reasons[i - 1].replace(/[{}\\]/g, "")}}` : row));
+  const note = (i: number) => (o.reasons ? stepNote(e, i) : null);
   const last = e.steps[e.steps.length - 1];
   return {
-    work: `\\begin{aligned} ${withReasons.join(" \\\\[6pt] ")} \\end{aligned}`,
+    work: alignedWork(e.kind, e.problemLatex, e.problemParts, steps, o.marks).replace(/ \\\\\[4pt\] /g, " \\\\[6pt] "),
+    rowNotes: [null, ...steps.map((_, i) => note(i))],
     answer: boxed && last ? last.latex : null,
+    answerNote: boxed ? note(e.steps.length - 1) : null,
   };
 }
 
@@ -223,19 +322,19 @@ const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "
 /** The assignment as a page to print or save as PDF. */
 export function assignmentHtml(info: AssignmentInfo, entries: WorkHistoryEntry[]): string {
   const o = assignmentOptions(info);
-  const math = pageMath;
   const title = info.title?.trim() || "Homework";
   const meta = [info.course?.trim(), info.instructor?.trim()].filter(Boolean).join(" · ");
   const problems = entries
     .map((e, i) => {
-      const { work, answer } = problemWork(e, info);
+      const { work, rowNotes, answer, answerNote } = problemWork(e, info);
       const instructions = e.instructions?.trim() || defaultInstructions(e);
+      const under = noteHtml(e.note);
       return `
   <section class="problem">
     <div class="ask"><span class="n">#${escapeHtml(e.number?.trim() || String(i + 1))}</span> ${escapeHtml(instructions)}${e.solved ? "" : ' <span class="open">not finished</span>'}</div>
-    <div class="work">${workTable(work)}</div>${answer ? `
-    <div class="answer"><span class="box">${math(`\\displaystyle ${answer}`)}</span></div>` : ""}${o.graphs && e.graph ? `
-    <figure class="graph">${numberLineSvg(e.graph.segments, 420, PRINT_PALETTE, { parts: e.graph.parts, answer: plainMath(e.graph.solution) })}</figure>` : ""}
+    <div class="work">${workTable(work, rowNotes.map(noteHtml), answer ? { latex: answer, note: noteHtml(answerNote) } : undefined)}</div>${o.graphs && e.graph ? `
+    <figure class="graph">${numberLineSvg(e.graph.segments, 420, PRINT_PALETTE, { parts: e.graph.parts, answer: plainMath(e.graph.solution) })}</figure>` : ""}${under ? `
+    <div class="note-under">${under}</div>` : ""}
   </section>`;
     })
     .join("\n");
@@ -260,8 +359,11 @@ export function assignmentHtml(info: AssignmentInfo, entries: WorkHistoryEntry[]
   .n { font-weight: 700; margin-right: 6px; }
   .open { font: 600 12px -apple-system, Helvetica, sans-serif; color: #8a5a00; background: #fdf3dc; padding: 1px 7px; border-radius: 999px; margin-left: 6px; }
   .work { overflow-x: auto; font-size: 17px; }
-  .answer { display: flex; justify-content: center; margin: 4px 0 2px; font-size: 18px; }
-  .box { border: 1.5px solid #1d2330; border-radius: 3px; padding: 3px 14px; }
+  .box { display: inline-block; border: 1.5px solid #1d2330; border-radius: 3px; padding: 3px 14px; font-size: 18px; }
+  .nt { font-size: 15px; line-height: 1.45; }
+  /* a highlighter prints too (browsers leave backgrounds out unless asked) */
+  .nt.hl { padding: 1px 4px; border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .note-under { margin: 10px 0 0; padding: 8px 0 0; border-top: 1px dashed #d4d8e0; }
   math[display="block"] { margin: 6px 0; }${STEPS_CSS}
   .graph { margin: 6px 0 0; display: flex; justify-content: center; }
   @media print { body { margin: 0; max-width: none; padding: 0; } .hint { display: none; } }
@@ -286,11 +388,18 @@ export function assignmentLatex(info: AssignmentInfo, entries: WorkHistoryEntry[
   const graphs = o.graphs && entries.some((e) => e.graph);
   const body = entries
     .map((e, i) => {
-      const { work, answer } = problemWork(e, info);
+      const { work, rowNotes, answer, answerNote } = problemWork(e, info);
       const instructions = clean(e.instructions?.trim() || defaultInstructions(e));
-      const parts = [`\\noindent\\textbf{\\#${clean(e.number?.trim() || String(i + 1))}} ${instructions}${e.solved ? "" : " \\hfill\\textit{(not finished)}"}`, `\\[\n${work}\n\\]`];
-      if (answer) parts.push(`\\[\n\\boxed{${answer}}\n\\]`);
+      // a note beside a step: a column of its own in the aligned work
+      const rows = work.replace(/^\\begin\{aligned\} /, "").replace(/ \\end\{aligned\}$/, "").split(" \\\\[6pt] ");
+      const noted = rows.map((row, k) => (noteTex(rowNotes[k]) ? `${row} && \\text{${noteTex(rowNotes[k])}}` : row));
+      const parts = [
+        `\\noindent\\textbf{\\#${clean(e.number?.trim() || String(i + 1))}} ${instructions}${e.solved ? "" : " \\hfill\\textit{(not finished)}"}`,
+        `\\[\n\\begin{aligned} ${noted.join(" \\\\[6pt] ")} \\end{aligned}\n\\]`,
+      ];
+      if (answer) parts.push(`\\[\n\\boxed{${answer}}${noteTex(answerNote) ? `\\qquad \\text{${noteTex(answerNote)}}` : ""}\n\\]`);
       if (o.graphs && e.graph) parts.push(`\\begin{center}\n${numberLineTikz(e.graph.segments, { parts: e.graph.parts })}\n\\end{center}`);
+      if (noteTex(e.note)) parts.push(`\\par\\smallskip\\noindent ${noteTex(e.note)}`);
       return `\\begin{minipage}{\\linewidth}\n${parts.join("\n")}\n\\end{minipage}\n\\bigskip`;
     })
     .join("\n\n");

@@ -4,8 +4,8 @@
  * line drawn for it. Preview it, print it or save it as a PDF. */
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { type AssignmentInfo, type WorkBlockData, type WorkHistoryEntry, useStore } from "../store";
-import { assignmentHtml, assignmentLatex, assignmentOptions, defaultInstructions, snapshot, todayLabel } from "../workHistory";
+import { type AssignmentInfo, type Note, type NoteStyle, type WorkBlockData, type WorkHistoryEntry, useStore } from "../store";
+import { NOTE_FONTS, NOTE_HIGHLIGHTS, assignmentHtml, assignmentLatex, assignmentOptions, carryNotes, defaultInstructions, noteCss, snapshot, stepNote, todayLabel, withCarriedNotes } from "../workHistory";
 import { Tex } from "../ui";
 
 type Work = Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
@@ -30,6 +30,8 @@ export default function AssignmentTab({
   const [flash, setFlash] = useState<string | null>(null);
   const [cleared, setCleared] = useState<{ history: WorkHistoryEntry[]; info: AssignmentInfo } | null>(null);
   const [filing, setFiling] = useState(false);
+  /** the problem whose notes are open (one at a time) */
+  const [notesFor, setNotesFor] = useState<string | null>(null);
   useEffect(() => {
     if (!flash) return;
     const timer = setTimeout(() => setFlash(null), 3500);
@@ -61,13 +63,29 @@ export default function AssignmentTab({
     const entry = await snapshot(work.workFor ?? work.problem ?? "", work.lines ?? [], work.reasons ?? [], syntax, languages).catch(() => null);
     setFiling(false);
     if (!entry) return setFlash("Couldn't add it — check the problem in Work");
-    update({ history: [...history, { ...entry, ...(work.graph ? { graph: work.graph } : {}) }], problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined });
+    update({
+      history: [...history, withCarriedNotes({ ...entry, ...(work.graph ? { graph: work.graph } : {}) }, work.carriedNotes)],
+      problem: "",
+      lines: [""],
+      reasons: [""],
+      workFor: undefined,
+      graph: undefined,
+      carriedNotes: undefined,
+    });
     setFlash("Added — Work is ready for the next problem");
   };
 
   const reopen = (entry: WorkHistoryEntry) => {
     if (!padEmpty) return;
-    update({ history: history.filter((h) => h.id !== entry.id), problem: entry.problem, lines: entry.lines.length ? entry.lines : [""], reasons: entry.reasons, workFor: entry.problem, graph: entry.graph });
+    update({
+      history: history.filter((h) => h.id !== entry.id),
+      problem: entry.problem,
+      lines: entry.lines.length ? entry.lines : [""],
+      reasons: entry.reasons,
+      workFor: entry.problem,
+      graph: entry.graph,
+      carriedNotes: carryNotes(entry), // put back when it's filed again
+    });
     onReopen();
   };
 
@@ -160,6 +178,9 @@ export default function AssignmentTab({
               <span className={`assign-status${h.solved ? " is-solved" : ""}`}>{h.solved ? "✓ solved" : "not finished"}</span>
               {h.graph && <span className="work-history-graph">number line</span>}
               <span className="assign-actions">
+                <button className={notesFor === h.id ? "is-on" : ""} title="Notes beside its steps and under it, on the printed page" onClick={() => setNotesFor(notesFor === h.id ? null : h.id)}>
+                  ✎ Notes{noteCount(h) ? ` · ${noteCount(h)}` : ""}
+                </button>
                 <button disabled={!padEmpty} title={padEmpty ? "Put it back in Work to fix it" : "Finish (or add) the problem in Work first"} onClick={() => reopen(h)}>
                   Reopen
                 </button>
@@ -168,6 +189,29 @@ export default function AssignmentTab({
                 </button>
               </span>
             </div>
+            {notesFor === h.id && (
+              <div className="assign-notes">
+                {h.steps.length > 0 && <div className="assign-notes-label">Beside each step</div>}
+                {h.steps.map((step, k) => (
+                  <div key={k} className="assign-note-row">
+                    <span className="assign-note-step">
+                      <Tex math={step.latex} />
+                    </span>
+                    <NoteField
+                      note={stepNote(h, k)}
+                      placeholder="a note beside this step"
+                      onChange={(note) => {
+                        const notes = h.steps.map((_, j) => h.stepNotes?.[j] ?? null);
+                        notes[k] = note;
+                        setEntry(h.id, { stepNotes: notes });
+                      }}
+                    />
+                  </div>
+                ))}
+                <div className="assign-notes-label">Under the problem</div>
+                <NoteField note={h.note ?? null} placeholder="a note under the problem" multiline onChange={(note) => setEntry(h.id, { note })} />
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -176,7 +220,7 @@ export default function AssignmentTab({
         {toggle("Box answers", "box", "Box each finished problem's final answer")}
         {toggle("Checkmarks", "marks", "The ✓ / ✗ beside each step")}
         {toggle("Graphs", "graphs", "The number line drawn for a problem")}
-        {toggle("Reasons", "reasons", "What you wrote beside steps, when there's any")}
+        {toggle("Step notes", "reasons", "Notes beside steps — and the reasons written in Work")}
       </div>
 
       <div className="assign-buttons">
@@ -217,6 +261,59 @@ export default function AssignmentTab({
       {flash && <div className="assign-flash">{flash}</div>}
 
       {preview && <AssignmentPreview html={assignmentHtml(info, history)} onClose={() => setPreview(false)} onPrint={print} />}
+    </div>
+  );
+}
+
+/** notes written for a problem (a step's reason from Work counts) */
+const noteCount = (h: WorkHistoryEntry) => h.steps.filter((_, k) => stepNote(h, k)?.text.trim()).length + (h.note?.text.trim() ? 1 : 0);
+
+/** A note, and how it looks printed: a font, bold / italic / underline, a
+ * highlighter — the bar shows while you're in it. The field shows the look. */
+function NoteField({ note, placeholder, multiline = false, onChange }: { note: Note | null; placeholder: string; multiline?: boolean; onChange: (note: Note) => void }) {
+  const text = note?.text ?? "";
+  const style = note?.style ?? {};
+  const setStyle = (patch: NoteStyle) => onChange({ text, style: { ...style, ...patch } });
+  const look = { ...noteCss(style), ...(style.highlight ? { color: "#1d2330" } : {}) };
+  // a button press keeps the cursor in the note
+  const keep = (e: React.PointerEvent) => e.preventDefault();
+  const flag = (key: "bold" | "italic" | "underline", label: string, title: string) => (
+    <button className={`note-flag is-${key}${style[key] ? " is-on" : ""}`} aria-pressed={!!style[key]} title={title} onPointerDown={keep} onClick={() => setStyle({ [key]: !style[key] })}>
+      {label}
+    </button>
+  );
+  return (
+    <div className="note-field">
+      {multiline ? (
+        <textarea className="note-text nodrag" rows={2} value={text} placeholder={placeholder} style={look} onChange={(e) => onChange({ text: e.target.value, style })} />
+      ) : (
+        <input className="note-text nodrag" value={text} placeholder={placeholder} style={look} onChange={(e) => onChange({ text: e.target.value, style })} />
+      )}
+      <div className="note-tools">
+        <select className="nodrag" value={style.font ?? "serif"} title="Font" onChange={(e) => setStyle({ font: e.target.value as NoteStyle["font"] })}>
+          {NOTE_FONTS.map((f) => (
+            <option key={f.value} value={f.value}>
+              {f.label}
+            </option>
+          ))}
+        </select>
+        {flag("bold", "B", "Bold")}
+        {flag("italic", "I", "Italic")}
+        {flag("underline", "U", "Underline")}
+        <span className="note-marks" title="Highlighter">
+          <button className={`note-mark is-none${style.highlight ? "" : " is-on"}`} title="No highlight" onPointerDown={keep} onClick={() => setStyle({ highlight: undefined })} />
+          {NOTE_HIGHLIGHTS.map((h) => (
+            <button
+              key={h.value}
+              className={`note-mark${style.highlight === h.value ? " is-on" : ""}`}
+              style={{ background: h.color }}
+              title={`${h.label} highlighter`}
+              onPointerDown={keep}
+              onClick={() => setStyle({ highlight: h.value })}
+            />
+          ))}
+        </span>
+      </div>
     </div>
   );
 }

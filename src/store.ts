@@ -242,6 +242,8 @@ export interface WorkBlockData extends BlockBase {
   graph?: NumberLineGraph;
   /** the history as an assignment to hand in: its header, and how it prints */
   assignment?: AssignmentInfo;
+  /** notes of the filed problem being fixed here (Reopen) */
+  carriedNotes?: CarriedNotes;
 }
 
 /** An assignment's header and print choices (the calculator's Assignment tab). */
@@ -258,7 +260,7 @@ export interface AssignmentInfo {
   marks?: boolean;
   /** number lines drawn for a problem (on unless turned off) */
   graphs?: boolean;
-  /** the reasons written beside steps, when there are any (on unless turned off) */
+  /** notes beside steps — and the reasons written in Work (on unless turned off) */
   reasons?: boolean;
 }
 
@@ -296,6 +298,35 @@ export interface WorkHistoryEntry {
   number?: string;
   /** what the problem asks ("Solve for y.") — worked out when left empty */
   instructions?: string;
+  /** a note beside each step (steps[i]) on the printed page — a step with
+   *  none shows the reason written for it in Work, if any */
+  stepNotes?: (Note | null)[];
+  /** a note under the problem */
+  note?: Note;
+}
+
+/** A note on an assignment, and how it looks printed. */
+export interface Note {
+  text: string;
+  style?: NoteStyle;
+}
+
+export interface NoteStyle {
+  /** serif (the page's own), sans, hand (handwriting), mono */
+  font?: "serif" | "sans" | "hand" | "mono";
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  /** a highlighter color behind it */
+  highlight?: "yellow" | "green" | "pink" | "blue";
+}
+
+/** A reopened problem's notes, kept while it's fixed in Work and put back
+ *  when it's filed again: a step's note follows the step it was written for
+ *  (or stays in its place, `at`, when that step was the one changed). */
+export interface CarriedNotes {
+  note?: Note;
+  steps: { latex: string; at: number; note: Note }[];
 }
 
 /** What the smart calculator did with a line: a value, a simplified or

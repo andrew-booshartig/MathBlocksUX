@@ -5059,6 +5059,166 @@ math-field {
   margin-left: auto;
 }
 
+.assign-actions button.is-on {
+  background: var(--t-bg4, #23232d);
+  color: var(--t-text, #e8e8f0);
+}
+
+/* a problem's notes: one beside each step, one under it */
+.assign-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--t-line, #2e2e3a);
+}
+
+.assign-notes-label {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-muted, #74748a);
+}
+
+.assign-note-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.assign-note-step {
+  flex: 0 1 40%;
+  min-width: 0;
+  padding-top: 5px;
+  overflow-x: auto;
+  color: var(--t-text, #e8e8f0);
+  font-size: 13px;
+}
+
+.note-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.note-text {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--t-bg1, #0e0e12);
+  color: var(--t-text, #e8e8f0);
+  padding: 5px 7px;
+  font: 13.5px/1.4 "Iowan Old Style", "Palatino", Georgia, serif;
+  outline: none;
+  resize: vertical;
+}
+
+.note-text:focus {
+  border-color: var(--t-faint, #55606e);
+}
+
+.note-text::placeholder {
+  color: var(--t-faint, #55606e);
+  font-style: normal;
+  font-weight: normal;
+}
+
+/* the look of a note: there while you're in it */
+.note-tools {
+  display: none;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.note-field:focus-within .note-tools {
+  display: flex;
+}
+
+.note-tools select {
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 6px;
+  background: var(--t-bg3, #1c1c24);
+  color: var(--t-text, #e8e8f0);
+  font-size: 11.5px;
+  padding: 2px 4px;
+}
+
+.note-flag {
+  width: 24px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-muted, #74748a);
+  font: 13px Georgia, serif;
+  cursor: pointer;
+}
+
+.note-flag:hover {
+  color: var(--t-text, #e8e8f0);
+}
+
+.note-flag.is-on {
+  background: var(--t-bg4, #23232d);
+  color: var(--t-text, #e8e8f0);
+}
+
+.note-flag.is-bold {
+  font-weight: 700;
+}
+
+.note-flag.is-italic {
+  font-style: italic;
+}
+
+.note-flag.is-underline {
+  text-decoration: underline;
+}
+
+.note-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.note-mark {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.note-mark.is-none {
+  background: none;
+  border-color: var(--t-faint, #55606e);
+  position: relative;
+}
+
+/* "none": an empty circle with a slash */
+.note-mark.is-none::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: -1px;
+  width: 1px;
+  height: 15px;
+  background: var(--t-faint, #55606e);
+  transform: rotate(45deg);
+}
+
+.note-mark.is-on {
+  outline: 2px solid var(--t-text, #e8e8f0);
+  outline-offset: 1px;
+}
+
 .assign-options {
   display: flex;
   flex-wrap: wrap;

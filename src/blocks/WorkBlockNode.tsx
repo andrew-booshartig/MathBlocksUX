@@ -11,7 +11,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { NodeProps } from "@xyflow/react";
 import { type LanguageSpec, type WorkBlockData, type WorkCheck, type WorkHistoryEntry, newId, useStore } from "../store";
 import { invoke } from "@tauri-apps/api/core";
-import { alignedWork, documentHtml, documentLatex, snapshot } from "../workHistory";
+import { alignedWork, carryNotes, documentHtml, documentLatex, snapshot, withCarriedNotes } from "../workHistory";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import { ErrorText, NumberLine, RichText, Segmented, Tex } from "../ui";
 import MathInput, { type MathInputHandle } from "../MathInput";
@@ -124,7 +124,7 @@ export function WorkPad({
   const [typing, setTyping] = useState<number | "problem" | null>(null);
   /** what Clear removed, so it can be undone for a few seconds */
   /** what Clear (or the problem's ×) removed, so it can be undone for a few seconds */
-  const [cleared, setCleared] = useState<{ lines?: string[]; reasons?: string[]; problem?: string; filed?: string; graph?: WorkBlockData["graph"] } | null>(null);
+  const [cleared, setCleared] = useState<{ lines?: string[]; reasons?: string[]; problem?: string; filed?: string; graph?: WorkBlockData["graph"]; carriedNotes?: WorkBlockData["carriedNotes"] } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [openEntry, setOpenEntry] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -249,11 +249,11 @@ export function WorkPad({
   /** File the work in the history (checked once more, as it stands). The id
    * is picked first so an Undo can take it back out. */
   // a graph drawn for the problem (calculator Graph tab) goes into its history entry
-  const fileWork = (problem: string, workLines: string[], workReasons: string[], id = newId("problem"), graph = latest.current.graph) =>
+  const fileWork = (problem: string, workLines: string[], workReasons: string[], id = newId("problem"), graph = latest.current.graph, carried = latest.current.carriedNotes) =>
     snapshot(problem, workLines, workReasons, syntax, customLanguages).then(
       (entry) => {
         if (!entry) return null;
-        update({ history: [...(latest.current.history ?? []), { ...entry, id, ...(graph ? { graph } : {}) }] });
+        update({ history: [...(latest.current.history ?? []), withCarriedNotes({ ...entry, id, ...(graph ? { graph } : {}) }, carried)] });
         return id;
       },
       () => null,
@@ -270,7 +270,7 @@ export function WorkPad({
     const before = d.workFor ?? "";
     if (hasWork && before.trim() && before.trim() !== problem.trim()) {
       fileWork(before, d.lines, d.reasons).then((id) => id && setFlash(`Last problem filed in History (${(latest.current.history ?? []).length})`));
-      update({ problem, lines: [""], reasons: [""], workFor: undefined, graph: undefined });
+      update({ problem, lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined });
       onReset?.();
     } else if (problem !== d.problem) update({ problem });
     setTimeout(() => (visual ? mathInputs.current[0]?.focus() : inputs.current[0]?.focus()), 40);
@@ -285,7 +285,7 @@ export function WorkPad({
     if (d.lines.some((l) => l.trim())) {
       fileWork(d.workFor ?? problem, d.lines, d.reasons).then((id) => id && setFlash(`Filed in History (${(latest.current.history ?? []).length})`));
     }
-    update({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined });
+    update({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined });
     setTyping(null);
     onReset?.();
     setTimeout(() => problemMath.current?.focus(), 30);
@@ -296,7 +296,7 @@ export function WorkPad({
     const rest = (d.history ?? []).filter((h) => h.id !== entry.id);
     // whatever was in the pad goes into the history first
     if (d.lines.some((l) => l.trim())) fileWork(d.workFor ?? d.problem, d.lines, d.reasons);
-    update({ history: rest, problem: entry.problem, lines: entry.lines.length ? entry.lines : [""], reasons: entry.reasons, workFor: entry.problem, graph: entry.graph });
+    update({ history: rest, problem: entry.problem, lines: entry.lines.length ? entry.lines : [""], reasons: entry.reasons, workFor: entry.problem, graph: entry.graph, carriedNotes: carryNotes(entry) });
     setHistoryOpen(false);
   };
 
@@ -866,10 +866,10 @@ export function WorkPad({
               // the work goes into the history (Undo takes it back out)
               const filed = lines.some((l) => l.trim()) && (data.workFor ?? data.problem).trim() ? newId("problem") : undefined;
               if (filed) fileWork(data.workFor ?? data.problem, lines, reasons, filed);
-              setCleared({ problem: data.problem, lines, reasons, filed, graph: data.graph });
+              setCleared({ problem: data.problem, lines, reasons, filed, graph: data.graph, carriedNotes: data.carriedNotes });
               clearTimeout(clearTimer.current);
               clearTimer.current = setTimeout(() => setCleared(null), 8000);
-              update({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined });
+              update({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined });
               setTimeout(() => problemMath.current?.focus(), 30);
             }}
           >
