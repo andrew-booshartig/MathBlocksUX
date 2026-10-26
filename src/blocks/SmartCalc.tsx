@@ -17,6 +17,7 @@ import {
 } from "../store";
 import { WorkPad } from "./WorkBlockNode";
 import AssignmentTab from "./AssignmentTab";
+import ReferenceTab, { type CalcLine } from "./ReferenceTab";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { NumberLine, StepList, Tex } from "../ui";
@@ -81,6 +82,7 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "work", label: "Work" },
   { value: "graph", label: "Graph" },
   { value: "assignment", label: "Assignment" },
+  { value: "reference", label: "Reference" },
 ];
 
 /** the same drawing (by what it shows — saved canvases come back as copies) */
@@ -306,6 +308,17 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       )
     );
 
+  /** a line on Ans (Ans ÷ 60): the named answer it went on from — so a
+   * chain reads 9000 meters per hour → ÷ 60 → 150 meters per minute */
+  const ansFrom = new Map<string, SmartEntry>();
+  {
+    let last: SmartEntry | undefined;
+    for (const e of entries) {
+      if (e.latex.includes("Ans") && last?.label) ansFrom.set(e.id, last);
+      if (e.result.ans) last = e;
+    }
+  }
+
   /** k = 1000 named "meters": answers that use k are in meters (9k → 9000
    * meters) — when every named variable they use says the same thing */
   const namedVariables = new Map(entries.filter((e) => e.result.kind === "assign" && e.result.name && e.label).map((e) => [e.result.name!, e.label!]));
@@ -337,13 +350,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
         setError(null);
         const list = current()?.smart ?? [];
         if (replace) {
-          // "Set k as a variable" (picked on the line): it's a variable now,
-          // locked — and an older k = … line goes
-          if (result.kind === "assign" && result.name && result.value_latex && (current()?.smart ?? []).find((e) => e.id === replace)?.result.kind !== "assign") {
-            save(list.filter((e) => e.id === replace || !(e.result.kind === "assign" && e.result.name === result.name)).map((e) => (e.id === replace ? { ...e, result, locked: true } : e)));
-            setVariable(result.name, result.value_latex, result.params);
-            return;
-          }
           save(list.map((e) => (e.id === replace ? { ...e, result } : e)));
           return;
         }
@@ -361,6 +367,23 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
         if (!replace) setError(String(err).replace(/^Error:\s*/, "") || "I can't read that yet");
       },
     );
+
+  /** lines from the Reference tab, into the history one after another —
+   * each on the answer before it (Ans), named with what it is now */
+  const playLines = async (lines: CalcLine[]) => {
+    setTab("calc");
+    let previous = ans;
+    for (const line of lines) {
+      try {
+        const result = await mathRequest<SmartResult>({ op: "smart", latex: line.latex, angle: data.angle, ans: previous, vars });
+        save([...(current()?.smart ?? []), { id: newId("calc"), latex: line.latex, result, label: line.label }]);
+        previous = result.ans ?? previous;
+      } catch (err) {
+        setError(String(err).replace(/^Error:\s*/, ""));
+        return;
+      }
+    }
+  };
 
   // a variable changed: every line that uses it is worked out again
   const previousVars = useRef(vars);
@@ -597,7 +620,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   }
 
   return (
-    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" ? " is-assignment" : ""}`} ref={root}>
+    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" || tab === "reference" ? " is-assignment" : ""}`} ref={root}>
       {tabs}
 
       {tab === "graph" && (
@@ -697,6 +720,10 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
         />
       )}
 
+      {tab === "reference" && (
+        <ReferenceTab lookup={data.smartReference} update={(smartReference) => updateBlock(data.id, { smartReference })} onTry={playLines} />
+      )}
+
       {tab === "assignment" && (
         <AssignmentTab
           work={data.smartWork ?? {}}
@@ -793,12 +820,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                     {worked && <Tex math={`\\Rightarrow ${worked}`} />}
                     {lockButton(entry)}
                     <span className="smart-assign-actions">
-                      {/* d = r·t with units: the values put in, the units cancelling */}
-                      {!!r.steps?.length && (
-                        <button className="chip" onClick={() => setOpenSteps(openSteps === entry.id ? null : entry.id)}>
-                          {openSteps === entry.id ? "Hide steps" : "Steps"}
-                        </button>
-                      )}
                       <button className="chip is-handoff" title="Copy this — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
                         ⧉ Copy
                       </button>
@@ -806,11 +827,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                         → Add to Work
                       </button>
                     </span>
-                    {openSteps === entry.id && r.steps && (
-                      <div className="smart-assign-steps">
-                        <StepList steps={r.steps} />
-                      </div>
-                    )}
                   </div>
                 );
               }
@@ -849,6 +865,11 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                   >
                     <Tex math={r.input_latex} />
                   </button>
+                  {ansFrom.get(entry.id) && (
+                    <span className="smart-ans-from" title="What Ans was on this line — the named answer before it">
+                      Ans = <Tex math={ansFrom.get(entry.id)!.result.ans ?? ""} /> {ansFrom.get(entry.id)!.label}
+                    </span>
+                  )}
                   {r.kind === "choose" ? (
                     <div className="smart-choose">
                       <span>What should I do?</span>

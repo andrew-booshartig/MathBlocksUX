@@ -375,6 +375,12 @@ export interface SmartResult {
   work_latex?: string;
 }
 
+export interface ReferenceLookup {
+  amount: string;
+  from: string;
+  to: string;
+}
+
 export interface SmartEntry {
   id: string;
   /** what was typed (LaTeX) */
@@ -424,7 +430,9 @@ export interface CalculatorBlockData extends BlockBase {
   /** the smart calculator's history (pretty math in, answers out) */
   smart?: SmartEntry[];
   /** which of its sections is showing */
-  smartTab?: "calc" | "work" | "graph" | "assignment";
+  smartTab?: "calc" | "work" | "graph" | "assignment" | "reference";
+  /** the Reference tab's lookup: 9 km/h → m/s */
+  smartReference?: ReferenceLookup;
   /** its own scratch values ("r = 4" on the line; LaTeX, as typed) — only
    * this calculator sees them, and AC / Next problem wipe them. With
    * `params` it's a function: f(x) = x² + 1 */

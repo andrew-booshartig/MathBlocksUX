@@ -9,8 +9,6 @@ import re
 import sympy
 from sympy import E, pi
 
-from . import units
-from . import units
 from .parsing import MathInputError, TRANSFORMS, _drop_unit_factors, build_scope, prep, tex
 from sympy.parsing.sympy_parser import parse_expr, rationalize
 
@@ -91,26 +89,6 @@ def _fmt_decimal(value: float) -> str:
     return text
 
 
-def _quantity(value, input_latex) -> dict:
-    """A value with units: exact, and as a decimal (with its units) when
-    the number isn't whole — 50 m; 5/4 m ≈ 1.25 m."""
-    terms = sympy.Add.make_args(value)
-    exact = sympy.Add(*[sympy.nsimplify(t) if t.has(sympy.Float) else t for t in terms])
-    exact_latex = tex(exact)
-    number, unit_part = units.split(exact) if len(terms) == 1 else (None, None)
-    decimal = None
-    if number is not None and number.is_number and not number.is_Integer:
-        decimal = f"{_fmt_decimal(float(number))} {units.plain(unit_part)}"  # plain text, beside the exact answer
-    return {
-        "input_latex": input_latex,
-        "exact_latex": exact_latex,
-        "decimal": decimal or exact_latex,
-        "exact_plain": str(exact),
-        "decimal_plain": str(exact),
-        "exact_differs": decimal is not None,
-    }
-
-
 def op_calc(req: dict) -> dict:
     raw = (req.get("expr") or "").strip()
     if not raw:
@@ -131,11 +109,9 @@ def op_calc(req: dict) -> dict:
         raise MathInputError("Syntax error — check the brackets and operators") from exc
     if not isinstance(value, sympy.Basic):
         value = sympy.sympify(value)
-    if units.without_units(value.free_symbols):
-        names = ", ".join(sorted(map(str, units.without_units(value.free_symbols))))
+    if value.free_symbols:
+        names = ", ".join(sorted(map(str, value.free_symbols)))
         raise MathInputError(f"{names} has no value — give it one in a Variable block")
-    if units.has_units(value):
-        return _quantity(units.normalize(value), input_latex)
     exact = sympy.nsimplify(value) if value.is_Float else sympy.simplify(value)
     if exact.has(sympy.zoo, sympy.oo, -sympy.oo, sympy.nan):
         raise MathInputError("Math error: division by zero")

@@ -24,10 +24,8 @@ from mathcore.balance import op_balance  # noqa: E402
 from mathcore.worklines import op_worklines  # noqa: E402
 from mathcore.calculator import op_calc  # noqa: E402
 from mathcore.ti85 import op_ti  # noqa: E402
+from mathcore.reference import op_reference, op_refconvert  # noqa: E402
 from mathcore.smartcalc import op_numberline, op_smart, op_smart_console, op_smart_vars  # noqa: E402
-from mathcore import units  # noqa: E402
-from mathcore.unitmap import op_unitask, op_unitlint, op_unitmap, op_unitpath, op_unitvars  # noqa: E402
-from mathcore.units import op_units  # noqa: E402
 from mathcore.lang import op_languages, op_translate  # noqa: E402
 from mathcore.analyze import op_line_public, op_quadratic, op_sequence, op_stats  # noqa: E402
 from mathcore.graphing import op_fit, op_graph, op_table  # noqa: E402
@@ -85,15 +83,11 @@ OPS = {
     "calc": op_calc,
     "ti": op_ti,
     "smart": op_smart,
+    "reference": op_reference,
+    "refconvert": op_refconvert,
     "smartvars": op_smart_vars,
     "smartconsole": op_smart_console,
     "numberline": op_numberline,
-    "units": op_units,
-    "unitmap": op_unitmap,
-    "unitpath": op_unitpath,
-    "unitask": op_unitask,
-    "unitlint": op_unitlint,
-    "unitvars": op_unitvars,
     "translate": op_translate,
     "languages": op_languages,
     "custom": op_custom,
@@ -104,9 +98,7 @@ def handle(request: dict) -> dict:
     op = OPS.get(request.get("op"))
     if op is None:
         raise MathInputError(f"unknown op “{request.get('op')}”")
-    # your own units (1 bag = 50 lb), for this request
-    with units.extra(request.get("units")):
-        return op(request)
+    return op(request)
 
 
 def main() -> None:
