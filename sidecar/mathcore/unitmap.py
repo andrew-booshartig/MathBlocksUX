@@ -200,7 +200,9 @@ def convert(start, to_units, typed_number: str | None = None) -> dict:
                 fact = f"1 {a} = {_nice(n)} {b}" if (a, b) in links() else f"1 {b} = {_nice(1 / n)} {a}"
                 why = f" — {a} is on the bottom (per {a}), so it divides" if power < 0 and op == "÷" else ""
                 current = sympy.Mul(*[units.symbol(units.UNITS[u]) ** p for u, p in now.items() if p])
-                walk.append({"note": f"{a} → {b}: {op} {_nice(shown)}   ({fact}){why}", "latex": f"{_amount_tex(sympy.nsimplify(value))}\\,{units.latex(current)}"})
+                # your name for a unit (k = km) isn't a step: it's what it means
+                note = f"{a} means {b}" if shown == 1 else f"{a} → {b}: {op} {_nice(shown)}   ({fact}){why}"
+                walk.append({"note": note, "latex": f"{_amount_tex(sympy.nsimplify(value))}\\,{units.latex(current)}"})
         parts.append({"kind": units.UNITS[sym].kind, "path": path, "on_bottom": power < 0, "steps": steps})
     value = sympy.nsimplify(value)
     arithmetic = " ".join([tex(number)] + [f"{'\\times' if op == '×' else '\\div'} {_nice(n)}" for op, n in factors]) if factors else tex(number)
@@ -303,26 +305,44 @@ def op_unitask(req: dict) -> dict:
     text = " ".join((req.get("text") or "").split())
     if not text:
         raise MathInputError("")
-    # your own unit, like a variable: k = 1000 m · k = km · 1 k = 1000 m
+    # a variable, a unit of your own: k = km · k = kilometers · k = 1000 m ·
+    # m = meters (naming a library unit) — and 1k = 1000m, a relationship:
+    # checked when k is known, a definition when it isn't
     define = re.fullmatch(r"(?:1\s*)?([A-Za-z]+)\s*=\s*(.+)", text)
     if define:
         symbol, amount = define.group(1), define.group(2).strip()
         found = units.find(symbol)
-        if found and not getattr(found, "defined_by", None):  # yours can be redefined
-            raise MathInputError(f"{symbol} is already a unit ({found.name}) — pick another name")
         # k = km: one of them (no number: 1)
         numbered = re.match(r"\s*(?:-?\d|-?\.\d)", amount)
         value = _amount_text(amount) if numbered else _unit_text(amount)
         number, unit_part = units.split(value)
         if not unit_part.is_Symbol:
             raise MathInputError("one unit on the right — like k = 1000 m (or k = km)")
-        return {
+        target = units.of(unit_part)
+        size = sympy.nsimplify(number) * target.size
+        out = {
             "kind": "define",
             "symbol": symbol,
-            "equals": f"{_amount_tex(number)}\\,{units.of(unit_part).symbol}",
+            "equals": f"{_amount_tex(number)}\\,{target.symbol}",
             "latex": f"\\mathrm{{{symbol}}} = {_amount_tex(number)}\\,{units.latex(unit_part)}",
             "kind_of": units.kind_name(unit_part),
         }
+        if found and found.dim == target.dim and sympy.nsimplify(found.size - size) == 0:
+            # already true: 1k = 1000m with k a kilometer — or m = meters
+            mine = bool(getattr(found, "defined_by", None))
+            if not mine and found.symbol != symbol:
+                raise MathInputError(f"{symbol} is already a unit ({found.name})")
+            if mine or text.lstrip().startswith("1"):
+                return {**out, "kind": "check", "note": f"That's true — 1 {symbol} is {_amount_tex(number)} {target.symbol}" + (f" ({found.name})" if not mine else "")}
+            return {**out, "named": found.name}  # m = meters: your name for the library's meter
+        if found and not getattr(found, "defined_by", None):
+            hint = ""
+            if found.dim == target.dim:
+                hint = f": 1 {symbol} is {_nice(found.size / target.size)} {target.symbol}"
+            raise MathInputError(f"{symbol} is already a unit ({found.name}){hint} — pick another name")
+        if found:  # yours, and different now: redefined
+            out["note"] = f"{symbol} was {_nice(found.size / units.UNITS[found.defined_by].size)} {found.defined_by} — now {_amount_tex(number)} {target.symbol}"
+        return out
     # how many X in Y · X in Y (X with no number: the units wanted)
     asking = re.fullmatch(r"(?:how\s+many\s+)?(.+?)\s+(?:are\s+)?in\s+(.+?)\??", text, re.I)
     if asking and not re.match(rf"\s*{_NUMBER}\s", asking.group(1) + " ", re.I):
@@ -333,7 +353,8 @@ def op_unitask(req: dict) -> dict:
     # A to B (or in / → / as) — split at each place it could be, first that reads
     # (the space after the word is looked at, not taken: "3 3/8 in to mm"
     # tries "in" and then "to")
-    for m in re.finditer(r"\s+(?:to|into|in|as|→|->)(?=\s)", text, re.I):
+    # an arrow needs no spaces: 9k->m, 9k→m
+    for m in re.finditer(r"\s*(?:->|→)\s*|\s+(?:to|into|in|as)(?=\s)", text, re.I):
         left, right = text[: m.start()], text[m.end() :].strip()
         try:
             start, target = _amount_text(left), _unit_text(right)
@@ -406,3 +427,34 @@ def op_unitlint(req: dict) -> dict:
     if out.get("from_kind") and out.get("to_kind"):
         out["fits"] = out["from_kind"] == out["to_kind"]
     return out
+
+
+def op_unitvars(req: dict) -> dict:
+    """Your variables (the units you've defined) — what each one is — and the
+    relationships between them, worked out from what they are: with
+    k = kilometers and m = meters, 1 k = 1000 m."""
+    found = []
+    for d in req.get("units") or []:
+        unit = units.find(str(d.get("symbol") or ""))
+        if not unit:
+            continue
+        mine = getattr(unit, "defined_by", None)
+        means = d.get("equals") or f"1\\,{unit.symbol}"
+        found.append(
+            {
+                "symbol": unit.symbol,
+                "means_latex": re.sub(r"\\,([A-Za-z]+)$", r"\\,\\mathrm{\1}", means),
+                "name": (units.UNITS[mine].name if mine and _n(unit.symbol, mine) == 1 else None) if mine else unit.name,
+                "kind": unit.kind,
+            }
+        )
+    relationships = []
+    for i, a in enumerate(found):
+        for b in found[i + 1 :]:
+            ua, ub = units.UNITS[a["symbol"]], units.UNITS[b["symbol"]]
+            if ua.dim != ub.dim or ua.size == ub.size:
+                continue
+            big, small = (ua, ub) if ua.size > ub.size else (ub, ua)
+            n = sympy.nsimplify(big.size / small.size)
+            relationships.append({"a": big.symbol, "b": small.symbol, "n": _nice(n), "latex": f"1\\,\\mathrm{{{big.symbol}}} = {_nice(n).replace('≈ ', '')}\\,\\mathrm{{{small.symbol}}}", "exact": not _nice(n).startswith("≈")})
+    return {"variables": found, "relationships": relationships}

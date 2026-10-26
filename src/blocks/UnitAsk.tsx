@@ -18,7 +18,7 @@ interface Walk {
   latex: string;
 }
 interface Answer {
-  kind: "convert" | "define";
+  kind: "convert" | "define" | "check";
   from_latex?: string;
   to_latex?: string;
   result_latex?: string;
@@ -31,6 +31,13 @@ interface Answer {
   equals?: string | null;
   latex?: string;
   kind_of?: string;
+  /** m = meters: the library unit it names */
+  named?: string;
+}
+/** your variables, and the relationships between them (worked out) */
+interface Vars {
+  variables: { symbol: string; means_latex: string; name: string | null; kind: string }[];
+  relationships: { a: string; b: string; latex: string; exact: boolean }[];
 }
 /** what the line says so far (the linter) */
 interface Lint {
@@ -71,7 +78,7 @@ export interface Asked {
   error?: string;
 }
 
-const EXAMPLES = ["k = 1000 m", "9k to m", "9 km/h to m/s", "3 3/8 in to mm", "mm in a mile"];
+const EXAMPLES = ["k = kilometers", "m = meters", "9k -> m", "9 km/h -> m/s", "3 3/8 in -> mm"];
 
 /** dragging a unit: its symbol, to drop into the line */
 const dragUnit = (symbol: string) => (e: React.DragEvent) => {
@@ -82,13 +89,23 @@ const dragUnit = (symbol: string) => (e: React.DragEvent) => {
 /** an answer: the result (exact, or ≈ with the exact one under it), and
  * its steps — the amount after every move */
 function AnswerView({ answer, steps, extra }: { answer: Answer; steps: boolean; extra?: React.ReactNode }) {
-  if (answer.kind === "define")
+  if (answer.kind === "check")
     return (
-      <div className="uask-answer">
-        <Tex math={answer.latex ?? ""} />
-        {answer.kind_of && <span className="uask-badge">{a(answer.kind_of)}</span>}
+      <div className="uask-answer is-check">
+        ✓ <span>{answer.note}</span>
         {extra}
       </div>
+    );
+  if (answer.kind === "define")
+    return (
+      <>
+        <div className="uask-answer">
+          <Tex math={answer.latex ?? ""} />
+          <span className="uask-badge">{answer.named ? `your name for the ${answer.named}` : answer.kind_of ? a(answer.kind_of) : ""}</span>
+          {extra}
+        </div>
+        {answer.note && <div className="uask-note">{answer.note}</div>}
+      </>
     );
   return (
     <>
@@ -143,6 +160,8 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
   // linter (the units it sees, words it doesn't know, kind → kind)
   const { result: live } = useLiveMath<Answer>(text.trim() ? { op: "unitask", text, units } : null, 200);
   const { result: lint } = useLiveMath<Lint>(text.trim() ? { op: "unitlint", text, units } : null, 120);
+  // the sidebar: your variables, and what they say about each other
+  const { result: vars } = useLiveMath<Vars>(mine.length ? { op: "unitvars", units } : null, 0);
 
   // the dropdowns: units matching the word being typed — and the whole
   // library, by kind, to browse
@@ -206,6 +225,38 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
   };
 
   return (
+    <div className="uask-wrap">
+      {/* your variables — drag one into the line, or click it — and the
+          relationships between them, worked out from what they are */}
+      <aside className="uask-side">
+        <div className="uask-side-title">Variables</div>
+        {!mine.length && <div className="uask-side-empty">None yet — try k = kilometers</div>}
+        {mine.map((u) => {
+          const v = vars?.variables.find((x) => x.symbol === u.symbol);
+          return (
+            <div key={u.id} className="uask-var" draggable onDragStart={dragUnit(u.symbol)} title={`Drag ${u.symbol} into the line, or click`}>
+              <button className="uask-var-use" onClick={() => put(u.symbol)}>
+                <Tex math={`\\mathrm{${u.symbol}} = ${v?.means_latex ?? u.equals}`} />
+                {v?.name && <span className="uask-var-name">{v.name}</span>}
+              </button>
+              <button className="uask-var-remove" title={`Remove ${u.symbol}`} onClick={() => update({ mine: mine.filter((m) => m.id !== u.id) })}>
+                ×
+              </button>
+            </div>
+          );
+        })}
+        {!!vars?.relationships.length && (
+          <>
+            <div className="uask-side-title">Relationships</div>
+            {vars.relationships.map((r) => (
+              <div key={`${r.a}-${r.b}`} className="uask-rel" title="Worked out from your variables">
+                <Tex math={r.latex} />
+                {!r.exact && <span className="uask-var-name">about</span>}
+              </div>
+            ))}
+          </>
+        )}
+      </aside>
     <div className="uask">
       <div className="uask-tape" ref={tape}>
         {!asked.length && !text.trim() && (
@@ -261,22 +312,6 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
         )}
       </div>
 
-      {/* your units, like variables in scope: drag one into the line, or click */}
-      {mine.length > 0 && (
-        <div className="uask-vars">
-          {mine.map((u) => (
-            <span key={u.id} className="uask-var" draggable onDragStart={dragUnit(u.symbol)} title={`Drag ${u.symbol} into the line, or click`}>
-              <button className="uask-var-use" onClick={() => put(u.symbol)}>
-                <Tex math={`\\mathrm{${u.symbol}} = ${u.equals.replace(/\\,([A-Za-z]+)$/, "\\,\\mathrm{$1}")}`} />
-              </button>
-              <button className="uask-var-remove" title={`Remove ${u.symbol}`} onClick={() => update({ mine: mine.filter((m) => m.id !== u.id) })}>
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
       <div className="uask-line">
         <span className="uask-prompt">›</span>
         <input
@@ -285,7 +320,7 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
           value={text}
           autoFocus
           spellCheck={false}
-          placeholder="9k to m   ·   k = 1000 m"
+          placeholder="k = kilometers   ·   9k -> m"
           onChange={(e) => {
             setText(e.target.value);
             setCaret(e.target.selectionStart ?? e.target.value.length);
@@ -435,8 +470,9 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
           )}
         </div>
       ) : (
-        <div className="uask-hint">Plain words: 9k to m · 3 3/8 in to mm · mm in a mile · your own unit, like a variable: k = 1000 m</div>
+        <div className="uask-hint">k = kilometers · 9k -&gt; m · 3 3/8 in -&gt; mm · mm in a mile</div>
       )}
+    </div>
     </div>
   );
 }

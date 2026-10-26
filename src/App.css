@@ -5031,7 +5031,62 @@ math-field {
   min-height: 0;
 }
 
+/* your variables on the left, the line on the right */
+.uask-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(104px, 32%) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.uask-side {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 10px;
+  border-right: 1px solid var(--t-line, #2e2e3a);
+}
+
+.uask-side-title {
+  margin: 4px 0 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-blue, #61afef);
+}
+
+.uask-side-title:not(:first-child) {
+  margin-top: 12px;
+}
+
+.uask-side-empty {
+  font-size: 12px;
+  color: var(--t-muted, #74748a);
+}
+
+.uask-var-name {
+  display: block;
+  font-size: 10.5px;
+  color: var(--t-muted, #74748a);
+}
+
+.uask-rel {
+  padding: 2px 4px;
+  font-size: 13px;
+  color: var(--t-subtle, #a9a9bd);
+}
+
+.uask-answer.is-check {
+  color: var(--t-green, #98c379);
+  font-size: 14px;
+}
+
 .uask {
+  min-width: 0;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -5195,26 +5250,24 @@ math-field {
   color: var(--t-muted, #74748a);
 }
 
-/* your units, like variables in scope — drag one into the line */
-.uask-vars {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
 .uask-var {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  border: 1px solid var(--t-line, #2e2e3a);
   border-radius: 8px;
-  background: var(--t-bg2, #17171f);
   cursor: grab;
 }
 
+.uask-var:hover {
+  background: var(--t-bg2, #17171f);
+}
+
 .uask-var-use {
+  flex: 1;
+  min-width: 0;
   border: none;
   background: none;
-  padding: 3px 4px 3px 9px;
+  padding: 3px 4px;
+  text-align: left;
   color: var(--t-text, #e8e8f0);
   font-size: 13px;
   cursor: inherit;
@@ -5338,6 +5391,16 @@ math-field {
   border-color: var(--t-faint, #55606e);
 }
 
+.uask-input,
+.uask-q,
+.uask-prompt {
+  /* a coding font with ligatures: -> draws as an arrow (Fira Code; Hack
+     Nerd Font and the system's monospace after it) */
+  font-family: "Fira Code", "FiraCode Nerd Font", "Hack Nerd Font", ui-monospace, "SF Mono", Menlo, monospace !important;
+  font-variant-ligatures: contextual common-ligatures;
+  font-feature-settings: "calt" 1, "liga" 1;
+}
+
 .uask-input {
   flex: 1;
   min-width: 0;
@@ -5345,7 +5408,7 @@ math-field {
   outline: none;
   background: none;
   color: var(--t-text, #e8e8f0);
-  font: 15px ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 15px;
   padding: 6px 0;
 }
 

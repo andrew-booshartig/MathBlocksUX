@@ -92,3 +92,18 @@ def test_your_units_like_variables():
         ask("m = 5 ft")  # a library unit can't be
     lint = handle({"op": "unitlint", "text": "k = 1000 m"})
     assert lint["pieces"][0] == {"text": "k", "new": True} and lint["define"]["kind"] == "length"
+
+
+def test_variables_name_units_and_relationships_are_worked_out():
+    assert ask("k=kilometers")["equals"] == r"1\,km"
+    m = ask("m=meters")
+    assert m["kind"] == "define" and m["named"] == "meter"  # your name for the library's meter
+    mine = [{"symbol": "k", "equals": r"1\,km"}, {"symbol": "m", "equals": r"1\,m"}, {"symbol": "h", "equals": r"1\,h"}, {"symbol": "s", "equals": r"1\,s"}]
+    check = ask("1k=1000m", units=mine)
+    assert check["kind"] == "check" and "true" in check["note"]  # k is known: it's checked, not redefined
+    r = ask("9k->m", units=mine)  # an arrow needs no spaces
+    assert r["result_latex"] == r"9000\,\mathrm{m}" and r["walk"][1]["note"] == "k means km"
+    assert ask("9k→m", units=mine)["result_latex"] == r"9000\,\mathrm{m}"
+    v = handle({"op": "unitvars", "units": mine})
+    assert {x["symbol"]: x["name"] for x in v["variables"]} == {"k": "kilometer", "m": "meter", "h": "hour", "s": "second"}
+    assert [x["latex"] for x in v["relationships"]] == [r"1\,\mathrm{k} = 1000\,\mathrm{m}", r"1\,\mathrm{h} = 3600\,\mathrm{s}"]
