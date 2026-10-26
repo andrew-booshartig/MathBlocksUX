@@ -7,7 +7,7 @@
  * The answer comes back with its steps — the amount after every move
  * (9 km/h → 9000 m/h → 150 m/min → 2.5 m/s), each with the fact it used.
  * Earlier questions stay above; ↑ brings one back to the line. */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type MyUnit, type UnitsWork, newId } from "../store";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import { Tex } from "../ui";
@@ -41,6 +41,27 @@ interface Lint {
 
 const a = (kind: string) => (/^[aeiou]/.test(kind) ? `an ${kind}` : `a ${kind}`);
 
+/** a unit in the library, for the dropdowns */
+interface LibraryUnit {
+  symbol: string;
+  name: string;
+  plural: string;
+  kind: string;
+  /** one of yours (1 k = 1000 m) */
+  mine?: boolean;
+}
+
+/** how well a unit matches what's being typed (lower is better; 99: not) */
+function rank(u: LibraryUnit, word: string): number {
+  const w = word.toLowerCase();
+  if (u.symbol === word) return 0;
+  if (u.symbol.toLowerCase() === w) return 1;
+  if (u.symbol.toLowerCase().startsWith(w)) return 2;
+  if (u.name.toLowerCase().startsWith(w) || u.plural.toLowerCase().startsWith(w)) return 3;
+  if (w.length >= 2 && u.name.toLowerCase().includes(w)) return 4;
+  return 99;
+}
+
 export interface Asked {
   id: string;
   text: string;
@@ -67,6 +88,46 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
   // doesn't know, and what kind of amount → what it's going into
   const units = mine.map(({ symbol, name, equals }) => ({ symbol, name, equals }));
   const { result: lint } = useLiveMath<Lint>(text.trim() ? { op: "unitlint", text, units } : null, 120);
+
+  // the dropdowns: units matching the word being typed — and the whole
+  // library, by kind, to browse
+  const { result: library } = useLiveMath<{ kinds: { kind: string; units: LibraryUnit[] }[] }>({ op: "units", units }, 0);
+  const all = useMemo(() => (library?.kinds ?? []).flatMap((k) => k.units.map((u) => ({ ...u, kind: k.kind }))), [library]);
+  const [caret, setCaret] = useState(0);
+  const [active, setActive] = useState(-1);
+  const [dismissed, setDismissed] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
+  const typing = /[A-Za-z]+$/.exec(text.slice(0, caret));
+  const word = typing?.[0] ?? "";
+  const matches = word
+    ? all
+        .map((u) => ({ u, r: rank(u, word) }))
+        .filter((m) => m.r < 99)
+        .sort((x, y) => x.r - y.r || x.u.symbol.length - y.u.symbol.length)
+        .slice(0, 8)
+        .map((m) => m.u)
+    : [];
+  // a word that's already exactly one unit doesn't need a list
+  const suggest = !dismissed && matches.length > 0 && !(matches.length === 1 && matches[0].symbol === word) ? matches : [];
+
+  /** a unit onto the line: in place of the word being typed, or at the caret */
+  const put = (u: LibraryUnit) => {
+    const start = word ? caret - word.length : caret;
+    const before = text.slice(0, start);
+    const after = text.slice(caret);
+    const lead = !word && before && !/\s$/.test(before) ? " " : "";
+    const next = before + lead + u.symbol + after;
+    const at = (before + lead + u.symbol).length;
+    setText(next);
+    setCaret(at);
+    setActive(-1);
+    setDismissed(true);
+    setBrowsing(false);
+    requestAnimationFrame(() => {
+      line.current?.focus();
+      line.current?.setSelectionRange(at, at);
+    });
+  };
 
   const ask = async (question: string) => {
     const q = question.trim();
@@ -179,8 +240,34 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
           autoFocus
           spellCheck={false}
           placeholder="9 km/h to m/s"
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setCaret(e.target.selectionStart ?? e.target.value.length);
+            setDismissed(false);
+            setActive(-1);
+          }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
           onKeyDown={(e) => {
+            // the dropdown, when it's open: ↑ ↓ to move, Tab (or Enter on a
+            // highlighted one) to pick, Esc to close
+            if (suggest.length) {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const n = suggest.length;
+                setActive((i) => (e.key === "ArrowDown" ? (i + 1) % n : (i <= 0 ? n - 1 : i - 1)));
+                return;
+              }
+              if (e.key === "Tab" || (e.key === "Enter" && active >= 0)) {
+                e.preventDefault();
+                put(suggest[Math.max(0, active)]);
+                return;
+              }
+              if (e.key === "Escape") {
+                setDismissed(true);
+                return;
+              }
+            }
+            if (e.key === "Escape") setBrowsing(false);
             if (e.key === "Enter") ask(text);
             // ↑ / ↓: earlier questions
             if ((e.key === "ArrowUp" || e.key === "ArrowDown") && asked.length) {
@@ -192,16 +279,63 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
             }
           }}
         />
+        <button className={`uask-browse${browsing ? " is-on" : ""}`} title="Every unit, by kind — click one to put it on the line" onPointerDown={(e) => e.preventDefault()} onClick={() => setBrowsing(!browsing)}>
+          Units ▾
+        </button>
         {asked.length > 0 && (
           <button className="smart-vars-action" title="Clear the questions (your own units stay)" onClick={() => update({ asks: [] })}>
             Clear
           </button>
         )}
+        {suggest.length > 0 && !browsing && (
+          <div className="uask-suggest" role="listbox">
+            {suggest.map((u, i) => (
+              <button
+                key={u.symbol}
+                role="option"
+                aria-selected={i === active}
+                className={`uask-option${i === active ? " is-on" : ""}`}
+                onPointerDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => put(u)}
+              >
+                <b>{u.symbol}</b>
+                <span className="uask-option-name">{u.name}</span>
+                <span className="uask-option-kind">{u.kind}</span>
+              </button>
+            ))}
+            <div className="uask-suggest-hint">Tab picks the top one · ↑ ↓ then Enter · Esc closes</div>
+          </div>
+        )}
+        {browsing && (
+          <div className="uask-suggest is-browse" role="listbox">
+            {(library?.kinds ?? []).map((k) => (
+              <div key={k.kind}>
+                <div className="uask-suggest-kind">{k.kind}</div>
+                {k.units.map((u) => (
+                  <div key={u.symbol} className="uask-option-row">
+                    <button role="option" className="uask-option" onPointerDown={(e) => e.preventDefault()} onClick={() => put({ ...u, kind: k.kind })}>
+                      <b>{u.symbol}</b>
+                      <span className="uask-option-name">{u.name}</span>
+                      {u.mine && <span className="uask-option-kind">yours</span>}
+                    </button>
+                    {u.mine && (
+                      <button className="uask-option-remove" title={`Remove ${u.symbol}`} onPointerDown={(e) => e.preventDefault()} onClick={() => update({ mine: mine.filter((m) => m.symbol !== u.symbol) })}>
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       {text.trim() && lint ? (
         <div className="uask-lint">
           {lint.pieces.map((p, i) =>
-            p.unknown ? (
+            // a word still being typed, with units in the dropdown for it, isn't "unknown" yet
+            p.unknown && suggest.length > 0 && p.text === word ? null : p.unknown ? (
               <span key={i} className="lint-unknown" title="Not a unit I know — the Map lists them, or make it: 1 name = 50 lb">
                 “{p.text}” isn't a unit
               </span>

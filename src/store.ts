@@ -318,19 +318,11 @@ export interface WorkHistoryEntry {
   note?: Note;
 }
 
-/** The Units tab: the unit map (look up and convert, the path shown) and
- *  practice (converting it yourself, a line at a time, each checked) — and
- *  units of your own. */
+/** The Units tab (Ask): questions in plain words — 9 km/h to m/s — with
+ *  their steps, and units of your own. */
 export interface UnitsWork {
-  /** ask (questions in plain words, with steps), the map, or practice */
-  view?: "ask" | "map" | "practice";
-  /** Ask's questions and their answers, oldest first */
+  /** the questions and their answers, oldest first */
   asks?: { id: string; text: string; answer?: unknown; error?: string }[];
-  /** the amount, as typed (LaTeX): 9\,\frac{km}{h} */
-  from?: string;
-  /** the units it's going into: \frac{m}{s} */
-  to?: string;
-  lines?: string[];
   /** your own units — 1 bag = 50 lb — used everywhere in the calculator */
   mine?: MyUnit[];
 }

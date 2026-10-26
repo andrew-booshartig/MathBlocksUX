@@ -17,7 +17,7 @@ import {
 } from "../store";
 import { WorkPad } from "./WorkBlockNode";
 import AssignmentTab from "./AssignmentTab";
-import UnitsTab from "./UnitsTab";
+import UnitAsk from "./UnitAsk";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { NumberLine, StepList, Tex } from "../ui";
@@ -538,7 +538,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   }
 
   return (
-    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" ? " is-assignment" : tab === "units" && (data.smartUnits?.view ?? "ask") === "ask" ? " is-units-ask" : ""}`} ref={root}>
+    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" ? " is-assignment" : tab === "units" ? " is-units-ask" : ""}`} ref={root}>
       {tabs}
 
       {tab === "graph" && (
@@ -639,7 +639,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       )}
 
       {tab === "units" && (
-        <UnitsTab work={data.smartUnits ?? {}} update={(patch) => updateBlock(data.id, { smartUnits: { ...(current()?.smartUnits ?? {}), ...patch } })} />
+        <UnitAsk work={data.smartUnits ?? {}} update={(patch) => updateBlock(data.id, { smartUnits: { ...(current()?.smartUnits ?? {}), ...patch } })} />
       )}
 
       {tab === "assignment" && (

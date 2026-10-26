@@ -310,6 +310,8 @@ def library() -> list[dict]:
                         "plural": u.plural,
                         "size_decimal": float(u.size),
                         "in_reference": None if u.symbol == ref or ref_size is None else _nice(u.size / ref_size),
+                        # one of yours (1 bag = 50 lb)
+                        "mine": bool(getattr(u, "defined_by", None)),
                     }
                     for u in units
                 ],
@@ -425,64 +427,6 @@ def steps(raw, number_tex) -> list[dict] | None:
             out.append(step(f"The units: ${' \\cdot '.join([symbol_] * total)} = {symbol_}^{{{total}}}$", latex(number * b**total, number_tex)))
     # the answer itself (worked out on its own, so this always agrees)
     out.append(step("So", latex(normalize(sympy.simplify(raw)), number_tex)))
-    return out
-
-
-def crossed_tex(raw) -> str | None:
-    """A line that multiplies by conversion fractions, with what cancels
-    crossed out: 9000 · 1/60 · m·h/(h·min). None when nothing cancels."""
-    pairs = _factors(raw)
-    found = [(f, p) for f, p in pairs if is_unit(f)]
-    crossed = {b for b, _ in found if any(p > 0 for bb, p in found if bb == b) and any(p < 0 for bb, p in found if bb == b)}
-    if not crossed:
-        return None
-    from .parsing import tex  # here: parsing reads units
-
-    numbers = [(f, p) for f, p in pairs if not is_unit(f) and sympy.simplify(f) != 1]
-    shown = " \\cdot ".join(tex(f) if p == 1 else f"\\frac{{1}}{{{tex(f)}}}" for f, p in numbers)
-    return f"{shown} \\cdot {_unit_tex(found, crossed)}" if shown else _unit_tex(found, crossed)
-
-
-# ------------------------------------------------------------- relationships
-
-# the facts conversions are built from: (bigger, smaller) — each "1 bigger =
-# n smaller", n from the library's sizes (so they're exact)
-RELATIONS = [
-    ("km", "m"), ("m", "cm"), ("cm", "mm"), ("in", "cm"), ("ft", "in"), ("yd", "ft"), ("mi", "ft"), ("mi", "km"),
-    ("min", "s"), ("h", "min"), ("h", "s"), ("day", "h"), ("wk", "day"),
-    ("kg", "g"), ("g", "mg"), ("lb", "oz"), ("lb", "kg"),
-    ("L", "mL"), ("gal", "qt"), ("qt", "pt"), ("pt", "cup"), ("cup", "tbsp"), ("tbsp", "tsp"), ("gal", "L"),
-]
-
-
-def relations() -> list[dict]:
-    out = []
-    pairs = list(RELATIONS) + [(u.symbol, u.defined_by) for u in LIBRARY if getattr(u, "defined_by", None)]
-    for a, b in pairs:
-        if a not in UNITS or b not in UNITS:
-            continue
-        ratio = sympy.nsimplify(UNITS[a].size / UNITS[b].size)
-        from .parsing import tex as _tex  # here: parsing reads units
-
-        # a short decimal stays one (2.54, not 127/50) — no thousands
-        # commas: these go into lines as typed math
-        def tex(r, _tex=_tex):
-            nice = _nice(r)
-            return _tex(r) if nice.startswith("≈") else nice.replace(",", "")
-
-        out.append(
-            {
-                "a": a,
-                "b": b,
-                "kind": UNITS[a].kind,
-                "n_latex": tex(ratio),
-                # the two fractions, each worth 1
-                "over_a": f"\\frac{{{tex(ratio)}\\,\\mathrm{{{b}}}}}{{1\\,\\mathrm{{{a}}}}}",
-                "over_b": f"\\frac{{1\\,\\mathrm{{{a}}}}}{{{tex(ratio)}\\,\\mathrm{{{b}}}}}",
-                "fact": f"1\\,\\mathrm{{{a}}} = {tex(ratio)}\\,\\mathrm{{{b}}}",
-                "custom": bool(getattr(UNITS[a], "defined_by", None)),
-            }
-        )
     return out
 
 

@@ -26,7 +26,6 @@ from mathcore.calculator import op_calc  # noqa: E402
 from mathcore.ti85 import op_ti  # noqa: E402
 from mathcore.smartcalc import op_numberline, op_smart, op_smart_console, op_smart_vars  # noqa: E402
 from mathcore import units  # noqa: E402
-from mathcore.convert import op_convertlines, op_relations  # noqa: E402
 from mathcore.unitmap import op_unitask, op_unitlint, op_unitmap, op_unitpath  # noqa: E402
 from mathcore.units import op_units  # noqa: E402
 from mathcore.lang import op_languages, op_translate  # noqa: E402
@@ -90,8 +89,6 @@ OPS = {
     "smartconsole": op_smart_console,
     "numberline": op_numberline,
     "units": op_units,
-    "convertlines": op_convertlines,
-    "relations": op_relations,
     "unitmap": op_unitmap,
     "unitpath": op_unitpath,
     "unitask": op_unitask,
