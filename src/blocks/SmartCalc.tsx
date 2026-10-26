@@ -371,9 +371,11 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           save(list.map((e) => (e.id === replace ? { ...e, result } : e)));
           return;
         }
-        // y = 4 after y = 7: the old y = 7 line goes (it isn't true any more)
-        const kept = result.kind === "assign" && result.name ? list.filter((e) => !(e.result.kind === "assign" && e.result.name === result.name)) : list;
-        save([...kept, { id: newId("calc"), latex, result, ...(result.kind === "assign" ? { locked: true } : {}) }]);
+        // y = 4 after y = 7: the old line becomes the new one, where it was —
+        // swap a number in and everything under it follows, in place
+        const old = result.kind === "assign" && result.name ? list.find((e) => e.result.kind === "assign" && e.result.name === result.name) : undefined;
+        if (old) save(list.map((e) => (e.id === old.id ? { ...e, latex, result } : e)));
+        else save([...list, { id: newId("calc"), latex, result, ...(result.kind === "assign" ? { locked: true } : {}) }]);
         // "r = 4": that's a variable now
         if (result.kind === "assign" && result.name && result.value_latex) setVariable(result.name, result.value_latex, result.params);
         // clear the field itself: our copy of the line may never have

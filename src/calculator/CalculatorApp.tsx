@@ -10,10 +10,13 @@ import SmartCalc from "../blocks/SmartCalc";
 import { DEFAULT_THEME, type Theme, ThemeError, applyTheme, builtInThemes, readTheme } from "./themes";
 import ThemeMenu from "./ThemeMenu";
 import ThemeEditor from "./ThemeEditor";
+import WorkspaceMenu from "./WorkspaceMenu";
 
 const SAVE = "__calculator__";
 const SETTINGS = "__settings__";
 const CALC_ID = "calculator";
+/** a named workspace's file (any name works — km/h to m/s too) */
+const wsFile = (name: string | null) => (name === null ? SAVE : `ws-${encodeURIComponent(name)}`);
 
 export interface ThemeProblem {
   file: string;
@@ -36,6 +39,54 @@ export default function CalculatorApp() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState<{ file?: string; text: string } | null>(null);
   const loaded = useRef(false);
+  /** the open workspace (null: Scratch) — and every saved one */
+  const [active, setActive] = useState<string | null>(null);
+  const activeRef = useRef<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<string[]>([]);
+  const [wsOpen, setWsOpen] = useState(false);
+  const listWorkspaces = useCallback(async () => {
+    const files = await invoke<string[]>("list_workspaces").catch(() => [] as string[]);
+    setWorkspaces(files.filter((f) => f.startsWith("ws-")).map((f) => decodeURIComponent(f.slice(3))).sort((a, b) => a.localeCompare(b)));
+  }, []);
+  const snapshot = () => {
+    const { blocks, order, edges } = useStore.getState();
+    return { blocks, order, edges };
+  };
+  /** switch: what's open is saved, then the other one comes in */
+  const openWorkspace = async (name: string | null) => {
+    setWsOpen(false);
+    await invoke("save_workspace", { name: wsFile(activeRef.current), data: snapshot() }).catch(() => {});
+    let next: WorkspaceSnapshot;
+    try {
+      next = await invoke<WorkspaceSnapshot>("load_workspace", { name: wsFile(name) });
+      if (!next.blocks?.[CALC_ID]) next = freshCalculator();
+    } catch {
+      next = freshCalculator();
+    }
+    activeRef.current = name;
+    setActive(name);
+    useStore.getState().loadSnapshot(next);
+  };
+  const saveAs = async (name: string) => {
+    setWsOpen(false);
+    await invoke("save_workspace", { name: wsFile(name), data: snapshot() });
+    activeRef.current = name;
+    setActive(name);
+    await listWorkspaces();
+  };
+  const deleteWorkspace = async (name: string) => {
+    await invoke("delete_workspace", { name: wsFile(name) }).catch(() => {});
+    if (activeRef.current === name) {
+      activeRef.current = null;
+      setActive(null);
+      try {
+        useStore.getState().loadSnapshot(await invoke<WorkspaceSnapshot>("load_workspace", { name: SAVE }));
+      } catch {
+        useStore.getState().loadSnapshot(freshCalculator());
+      }
+    }
+    await listWorkspaces();
+  };
 
   /** the chosen theme — yours win over a built-in of the same name */
   const theme = useMemo(() => [...themes].reverse().find((t) => t.name === themeName) ?? themes[0], [themes, themeName]);
@@ -62,18 +113,24 @@ export default function CalculatorApp() {
   useEffect(() => {
     let stop = () => {};
     (async () => {
+      let open: string | null = null;
       try {
-        const saved = await invoke<WorkspaceSnapshot>("load_workspace", { name: SAVE });
+        const settings = await invoke<{ theme?: string; workspace?: string | null }>("load_workspace", { name: SETTINGS });
+        if (settings.theme) setThemeName(settings.theme);
+        open = settings.workspace ?? null;
+      } catch {
+        // first run: One Dark, Scratch
+      }
+      try {
+        const saved = await invoke<WorkspaceSnapshot>("load_workspace", { name: wsFile(open) });
         useStore.getState().loadSnapshot(saved.blocks?.[CALC_ID] ? saved : freshCalculator());
       } catch {
+        open = null;
         useStore.getState().loadSnapshot(freshCalculator()); // first run
       }
-      try {
-        const settings = await invoke<{ theme?: string }>("load_workspace", { name: SETTINGS });
-        if (settings.theme) setThemeName(settings.theme);
-      } catch {
-        // first run: One Dark
-      }
+      activeRef.current = open;
+      setActive(open);
+      await listWorkspaces();
       await reloadThemes();
       loaded.current = true;
       // keep the calculator saved as it changes
@@ -81,13 +138,13 @@ export default function CalculatorApp() {
       stop = useStore.subscribe(() => {
         clearTimeout(timer);
         timer = setTimeout(() => {
-          const { blocks, order, edges } = useStore.getState();
-          invoke("save_workspace", { name: SAVE, data: { blocks, order, edges } }).catch((e) => console.error("save failed", e));
+          // into the open workspace (Scratch, or the named one)
+          invoke("save_workspace", { name: wsFile(activeRef.current), data: snapshot() }).catch((e) => console.error("save failed", e));
         }, 600);
       });
     })();
     return () => stop();
-  }, [reloadThemes]);
+  }, [reloadThemes, listWorkspaces]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // the theme on the page (a preview wins while there is one), and remembered
   useEffect(() => {
@@ -95,8 +152,8 @@ export default function CalculatorApp() {
   }, [theme, preview]);
   useEffect(() => {
     if (!loaded.current) return;
-    invoke("save_workspace", { name: SETTINGS, data: { theme: themeName } }).catch(() => {});
-  }, [themeName]);
+    invoke("save_workspace", { name: SETTINGS, data: { theme: themeName, workspace: active } }).catch(() => {});
+  }, [themeName, active]);
 
   const openFolder = async () => {
     try {
@@ -111,12 +168,16 @@ export default function CalculatorApp() {
       <header className="calc-app-bar">
         <span className="calc-app-title">Calculator</span>
         <span className="calc-app-tools">
+        <button className={`calc-app-workspaces${wsOpen ? " is-on" : ""}`} title="Workspaces — problems saved to come back to" onClick={() => setWsOpen((o) => !o)}>
+          {active ?? "Scratch"} ▾
+        </button>
         <button className={`calc-app-theme${menuOpen ? " is-on" : ""}`} title="Theme" onClick={() => setMenuOpen((open) => !open)}>
           <span className="calc-app-swatch" style={{ background: `linear-gradient(135deg, ${theme.ui.raised} 0 50%, ${theme.numberline.solution} 50% 100%)` }} />
           {theme.name}
         </button>
         </span>
       </header>
+      {wsOpen && <WorkspaceMenu names={workspaces} active={active} onOpen={openWorkspace} onSaveAs={saveAs} onDelete={deleteWorkspace} onClose={() => setWsOpen(false)} />}
       <main className="calc-app-main">{block && <SmartCalc data={block} />}</main>
 
       {menuOpen && (
