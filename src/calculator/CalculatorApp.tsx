@@ -10,7 +10,6 @@ import SmartCalc from "../blocks/SmartCalc";
 import { DEFAULT_THEME, type Theme, ThemeError, applyTheme, builtInThemes, readTheme } from "./themes";
 import ThemeMenu from "./ThemeMenu";
 import ThemeEditor from "./ThemeEditor";
-import UnitsPanel from "./UnitsPanel";
 
 const SAVE = "__calculator__";
 const SETTINGS = "__settings__";
@@ -35,8 +34,6 @@ export default function CalculatorApp() {
   /** hovering a theme in the menu (or editing one) shows it for a moment */
   const [preview, setPreview] = useState<Theme | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [unitsOpen, setUnitsOpen] = useState(false);
-  const closeUnits = useCallback(() => setUnitsOpen(false), []);
   const [editing, setEditing] = useState<{ file?: string; text: string } | null>(null);
   const loaded = useRef(false);
 
@@ -114,16 +111,12 @@ export default function CalculatorApp() {
       <header className="calc-app-bar">
         <span className="calc-app-title">Calculator</span>
         <span className="calc-app-tools">
-          <button className={`calc-app-units${unitsOpen ? " is-on" : ""}`} title="The units it knows — type one after a number with a space: 5 m" onClick={() => setUnitsOpen((open) => !open)}>
-            Units
-          </button>
         <button className={`calc-app-theme${menuOpen ? " is-on" : ""}`} title="Theme" onClick={() => setMenuOpen((open) => !open)}>
           <span className="calc-app-swatch" style={{ background: `linear-gradient(135deg, ${theme.ui.raised} 0 50%, ${theme.numberline.solution} 50% 100%)` }} />
           {theme.name}
         </button>
         </span>
       </header>
-      {unitsOpen && <UnitsPanel onClose={closeUnits} />}
       <main className="calc-app-main">{block && <SmartCalc data={block} />}</main>
 
       {menuOpen && (

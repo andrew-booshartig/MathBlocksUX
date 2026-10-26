@@ -85,6 +85,11 @@ ALIASES = {"sec": "s", "hr": "h", "hrs": "h", "lbs": "lb", "days": "day", "y": "
 
 _PREFIX = "unit_"
 
+# Units are off (2026-10-27): the calculator reads 1000 m as 1000·m, letters
+# like any other — make your own relationships (k = 1000m). A reference
+# sheet comes later; this library stays for it.
+ENABLED = False
+
 
 def find(symbol: str) -> Unit | None:
     return UNITS.get(ALIASES.get(symbol, symbol))
@@ -126,6 +131,8 @@ def mark(latex: str) -> str:
     """A unit written after a number (5\\,m, 10\\,s, 5\\,\\frac{m}{s}) made
     explicit — \\mathrm{m} — so it's read as a unit, not a letter. Letters
     that aren't a unit in the library are left alone (5\\,x is 5x)."""
+    if not ENABLED:
+        return latex
 
     def swap(m: re.Match) -> str:
         top, bottom = (m.group(2), m.group(3)) if m.group(2) else (m.group(4), m.group(5))

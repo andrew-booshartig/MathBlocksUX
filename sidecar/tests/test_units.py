@@ -6,6 +6,11 @@ import pytest
 from engine import handle
 from mathcore.parsing import MathInputError
 
+import pytest
+
+# units are off for now (units.ENABLED) — kept for the reference sheet
+pytestmark = pytest.mark.skipif(not __import__("mathcore.units", fromlist=["ENABLED"]).ENABLED, reason="units are off")
+
 
 def smart(latex, **req):
     return handle({"op": "smart", "latex": latex, **req})

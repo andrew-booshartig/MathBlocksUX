@@ -2,6 +2,11 @@
 
 from engine import handle
 
+import pytest
+
+# units are off for now (units.ENABLED) — kept for the reference sheet
+pytestmark = pytest.mark.skipif(not __import__("mathcore.units", fromlist=["ENABLED"]).ENABLED, reason="units are off")
+
 
 def path(start, target, **req):
     return handle({"op": "unitpath", "from": start, "to": target, **req})

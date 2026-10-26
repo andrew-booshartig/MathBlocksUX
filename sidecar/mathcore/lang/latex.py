@@ -409,7 +409,7 @@ class LatexReader:
                 if name == "e":
                     return Const("e")
                 unit = self.units.find(name)
-                if t == "mathrm" and unit:  # a unit: 5 m, 10 s
+                if t == "mathrm" and unit and self.units.ENABLED:  # a unit: 5 m, 10 s
                     return Sym(self.units.symbol(unit).name)
                 return Sym(name)
         raise self.unexpected(self.i - 1)

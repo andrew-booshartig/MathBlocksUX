@@ -318,56 +318,6 @@ export interface WorkHistoryEntry {
   note?: Note;
 }
 
-/** The Units tab (Ask): questions in plain words — 9 km/h to m/s — with
- *  their steps, and units of your own. */
-export interface UnitsWork {
-  /** the questions and their answers, oldest first */
-  asks?: { id: string; text: string; answer?: unknown; error?: string }[];
-  /** your own units — 1 bag = 50 lb — used everywhere in the calculator */
-  mine?: MyUnit[];
-  /** which view: Ask (the line) or Blocks */
-  view?: "ask" | "blocks";
-  /** Blocks: relationships (1 km = 1000 m) — locked ones link up by the
-   *  units they share, and changing any number moves the rest */
-  blocks?: UnitBlock[];
-  /** the numbers you've set in locked blocks, newest first (unit → amount) —
-   *  each linked group follows its newest */
-  seeds?: BlockSeed[];
-  /** the question over the blocks: top per per (m per s = ?), unit keys */
-  question?: { top: string; per: string };
-}
-
-export interface BlockSide {
-  /** as typed: 1, 1000, 3 3/8, 0.25 */
-  amount: string;
-  /** a unit (km, kilometers) or any word of your own (boxes) */
-  unit: string;
-}
-
-export interface UnitBlock {
-  id: string;
-  label?: string;
-  a: BlockSide;
-  b: BlockSide;
-  /** locked: the relationship is set, and it links to the others */
-  locked?: boolean;
-}
-
-export interface BlockSeed {
-  /** the unit's key (km — kilometers is km too) */
-  unit: string;
-  amount: string;
-}
-
-export interface MyUnit {
-  id: string;
-  /** what it's written as: bag */
-  symbol: string;
-  name?: string;
-  /** how much one is, with a library unit (LaTeX): 50\,lb */
-  equals: string;
-}
-
 /** A note on an assignment, and how it looks printed. */
 export interface Note {
   text: string;
@@ -432,6 +382,8 @@ export interface SmartEntry {
   result: SmartResult;
   /** a name for it, written on the tape ("rent", "tip") */
   label?: string;
+  /** locked: Clear all keeps it (a variable you set is locked; 🔓 lets it go) */
+  locked?: boolean;
 }
 
 export interface CalcHistoryEntry {
@@ -472,7 +424,7 @@ export interface CalculatorBlockData extends BlockBase {
   /** the smart calculator's history (pretty math in, answers out) */
   smart?: SmartEntry[];
   /** which of its sections is showing */
-  smartTab?: "calc" | "work" | "graph" | "assignment" | "units";
+  smartTab?: "calc" | "work" | "graph" | "assignment";
   /** its own scratch values ("r = 4" on the line; LaTeX, as typed) — only
    * this calculator sees them, and AC / Next problem wipe them. With
    * `params` it's a function: f(x) = x² + 1 */
@@ -482,8 +434,6 @@ export interface CalculatorBlockData extends BlockBase {
   smartPlot?: { mode?: "numberline" | "xy" | "xyz"; drawn?: NumberLineGraph };
   /** its Work section: the same data as a Show-your-work block */
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
-  /** its Units tab: a conversion worked a line at a time, and your own units */
-  smartUnits?: UnitsWork;
   ti?: TIState;
   /** the TI layout's extra-keys strip (fractions, powers…); on unless turned off */
   tiExtras?: boolean;

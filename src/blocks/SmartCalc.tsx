@@ -10,7 +10,6 @@ import {
   type SmartAction,
   type SmartEntry,
   type SmartResult,
-  type UnitsWork,
   type WorkBlockData,
   newId,
   useStore,
@@ -18,11 +17,9 @@ import {
 } from "../store";
 import { WorkPad } from "./WorkBlockNode";
 import AssignmentTab from "./AssignmentTab";
-import UnitAsk from "./UnitAsk";
-import UnitBlocks from "./UnitBlocks";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
-import { NumberLine, Segmented, StepList, Tex } from "../ui";
+import { NumberLine, StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
 import { plainMath, sameWritten } from "../numberLine";
 
@@ -63,6 +60,9 @@ function severalTerms(latex: string): boolean {
 }
 const MAX_ENTRIES = 60;
 
+/** locked 🔒: Clear all keeps it — variables you set are, unless you unlock them */
+const isLocked = (e: SmartEntry) => e.locked ?? e.result.kind === "assign";
+
 /** the line is the word "clear" (typed as letters, or clear()) */
 const isClearCommand = (latex: string) =>
   /^clear(\(\))?$/i.test(latex.replace(/\\(?:mathrm|operatorname|text)\{([^{}]*)\}/g, "$1").replace(/\\left|\\right|\\[,;:! ]|\s/g, ""));
@@ -81,7 +81,6 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "work", label: "Work" },
   { value: "graph", label: "Graph" },
   { value: "assignment", label: "Assignment" },
-  { value: "units", label: "Units" },
 ];
 
 /** the same drawing (by what it shows — saved canvases come back as copies) */
@@ -150,10 +149,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     .map(([key, value]) => ({ ...splitKey(key), value }))
     .filter((g) => !variables.some((v) => v.name === g.name));
   const items = [...globalItems, ...localItems];
-  const updateUnits = (patch: UnitsWork) => updateBlock(data.id, { smartUnits: { ...(current()?.smartUnits ?? {}), ...patch } });
-  /** your own units (the Units tab's: 1 bag = 50 lb) — they work everywhere here */
-  const myUnits = useMemo(() => (data.smartUnits?.mine ?? []).map(({ symbol, name, equals }) => ({ symbol, name, equals })), [data.smartUnits?.mine]);
-  const { result: resolved } = useLiveMath<{ values: Record<string, VarValue> }>(items.length ? { op: "smartvars", vars: items, units: myUnits } : null, 150);
+  const { result: resolved } = useLiveMath<{ values: Record<string, VarValue> }>(items.length ? { op: "smartvars", vars: items } : null, 150);
   const values = useMemo(() => resolved?.values ?? {}, [resolved]);
   /** what the engines get: r → its value, and f(x) → its body */
   const vars = useMemo(() => {
@@ -185,25 +181,30 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     updateBlock(data.id, { smartVars: [] });
     setWiped({ vars: list, entries: [] });
   };
-  /** Clear all: the line, every answer, and this calculator's variables */
+  /** Clear all: the line, every answer, and this calculator's variables —
+   * except what's locked 🔒 (and the variables locked lines set) */
   const clearEverything = () => {
     field.current?.setValue("");
     setError(null);
     recall.current = null;
     const d = current();
-    const vars = d?.smartVars ?? [];
-    const entries = d?.smart ?? [];
+    const keptEntries = (d?.smart ?? []).filter(isLocked);
+    const keptNames = new Set(keptEntries.filter((e) => e.result.kind === "assign").map((e) => e.result.name));
+    const vars = (d?.smartVars ?? []).filter((v) => !keptNames.has(v.name));
+    const entries = (d?.smart ?? []).filter((e) => !isLocked(e));
     if (!vars.length && !entries.length) return;
-    updateBlock(data.id, { smartVars: [], smart: [] });
+    updateBlock(data.id, { smartVars: (d?.smartVars ?? []).filter((v) => keptNames.has(v.name)), smart: keptEntries });
     setOpenSteps(null);
     setWiped({ vars, entries });
   };
   const undoClear = () => {
     if (!wiped) return;
     const d = current();
+    // back in their places: in the order they were made
+    const order = (e: SmartEntry) => e.id;
     updateBlock(data.id, {
       smartVars: [...wiped.vars, ...(d?.smartVars ?? []).filter((v) => !wiped.vars.some((w) => w.name === v.name))],
-      smart: [...wiped.entries, ...(d?.smart ?? [])].slice(-MAX_ENTRIES),
+      smart: [...wiped.entries, ...(d?.smart ?? [])].sort((a, b) => order(a).localeCompare(order(b))).slice(-MAX_ENTRIES),
     });
     setWiped(null);
   };
@@ -240,7 +241,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   };
 
   // a quiet preview of the answer while typing
-  const { result: preview } = useLiveMath<SmartResult>(draft.trim() ? { op: "smart", latex: draft, angle: data.angle, ans, vars, units: myUnits } : null, 250);
+  const { result: preview } = useLiveMath<SmartResult>(draft.trim() ? { op: "smart", latex: draft, angle: data.angle, ans, vars } : null, 250);
 
   useEffect(() => {
     tape.current?.scrollTo({ top: tape.current.scrollHeight });
@@ -279,21 +280,76 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = (next: SmartEntry[]) => updateBlock(data.id, { smart: next.slice(-MAX_ENTRIES) });
+  /** a history line's name (rent, tip — or meters, on k = 1000), or its edit box */
+  const labelView = (entry: SmartEntry) =>
+    labeling === entry.id ? (
+      <input
+        className="smart-label-edit nodrag"
+        autoFocus
+        defaultValue={entry.label ?? ""}
+        placeholder="name it"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") keepLabel.current = true;
+          if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+        }}
+        onBlur={(e) => {
+          if (!keepLabel.current) setLabel(entry.id, e.currentTarget.value);
+          keepLabel.current = false;
+          setLabeling(null);
+        }}
+      />
+    ) : (
+      entry.label && (
+        <button className="smart-label" title="Rename it" onClick={() => setLabeling(entry.id)}>
+          {entry.label}
+        </button>
+      )
+    );
+
+  /** k = 1000 named "meters": answers that use k are in meters (9k → 9000
+   * meters) — when every named variable they use says the same thing */
+  const namedVariables = new Map(entries.filter((e) => e.result.kind === "assign" && e.result.name && e.label).map((e) => [e.result.name!, e.label!]));
+  const unitWord = (names?: string[]) => {
+    const words = new Set((names ?? []).filter((n) => namedVariables.has(n)).map((n) => namedVariables.get(n)!));
+    return words.size === 1 ? [...words][0] : null;
+  };
+
+  /** 🔒 / 🔓 on a history line: locked lines stay through Clear all */
+  const lockButton = (entry: SmartEntry) => {
+    const locked = isLocked(entry);
+    return (
+      <button
+        className={`smart-lock${locked ? " is-locked" : ""}`}
+        title={locked ? "Locked — Clear all keeps it. Click to unlock" : "Lock it — Clear all keeps it"}
+        onPointerDown={(e) => e.preventDefault() /* keep the cursor in the line */}
+        onClick={() => save((current()?.smart ?? []).map((e) => (e.id === entry.id ? { ...e, locked: !locked } : e)))}
+      >
+        {locked ? "🔒" : "🔓"}
+      </button>
+    );
+  };
 
   /** Work out a line — or redo an earlier one (another action, or because a
    * variable it uses changed). */
   const run = (latex: string, action?: SmartAction, replace?: string, useVars = vars) =>
-    mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, action, vars: useVars, units: myUnits }).then(
+    mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, action, vars: useVars }).then(
       (result) => {
         setError(null);
         const list = current()?.smart ?? [];
         if (replace) {
+          // "Set k as a variable" (picked on the line): it's a variable now,
+          // locked — and an older k = … line goes
+          if (result.kind === "assign" && result.name && result.value_latex && (current()?.smart ?? []).find((e) => e.id === replace)?.result.kind !== "assign") {
+            save(list.filter((e) => e.id === replace || !(e.result.kind === "assign" && e.result.name === result.name)).map((e) => (e.id === replace ? { ...e, result, locked: true } : e)));
+            setVariable(result.name, result.value_latex, result.params);
+            return;
+          }
           save(list.map((e) => (e.id === replace ? { ...e, result } : e)));
           return;
         }
         // y = 4 after y = 7: the old y = 7 line goes (it isn't true any more)
         const kept = result.kind === "assign" && result.name ? list.filter((e) => !(e.result.kind === "assign" && e.result.name === result.name)) : list;
-        save([...kept, { id: newId("calc"), latex, result }]);
+        save([...kept, { id: newId("calc"), latex, result, ...(result.kind === "assign" ? { locked: true } : {}) }]);
         // "r = 4": that's a variable now
         if (result.kind === "assign" && result.name && result.value_latex) setVariable(result.name, result.value_latex, result.params);
         // clear the field itself: our copy of the line may never have
@@ -541,7 +597,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   }
 
   return (
-    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" ? " is-assignment" : tab === "units" ? " is-units-ask" : ""}`} ref={root}>
+    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" ? " is-assignment" : ""}`} ref={root}>
       {tabs}
 
       {tab === "graph" && (
@@ -641,27 +697,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
         />
       )}
 
-      {tab === "units" && (
-        <div className="units-tab">
-          {/* Blocks: relationships you lock in and link up · Ask: the line */}
-          <div className="units-views">
-            <Segmented
-              value={data.smartUnits?.view ?? "blocks"}
-              options={[
-                { value: "blocks", label: "Blocks", title: "Relationships you lock in and link — change any number, the rest follow" },
-                { value: "ask", label: "Ask", title: "Type a question: 9 km/h -> m/s" },
-              ]}
-              onChange={(view) => updateUnits({ view })}
-            />
-          </div>
-          {(data.smartUnits?.view ?? "blocks") === "blocks" ? (
-            <UnitBlocks work={data.smartUnits ?? {}} update={updateUnits} units={myUnits} />
-          ) : (
-            <UnitAsk work={data.smartUnits ?? {}} update={updateUnits} />
-          )}
-        </div>
-      )}
-
       {tab === "assignment" && (
         <AssignmentTab
           work={data.smartWork ?? {}}
@@ -745,12 +780,18 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
               if (r.kind === "assign") {
                 const worked = r.result_latex && r.result_latex.replace(/\s/g, "") !== r.input_latex.replace(/\s/g, "") ? r.result_latex : null;
                 return (
-                  <div key={entry.id} className="smart-entry is-assign">
+                  <div key={entry.id} className={`smart-entry is-assign${isLocked(entry) ? " is-locked" : ""}`}>
+                    <span className="smart-tape-tools">
+                      <button className="smart-tape-tool" title={entry.label ? "Rename it" : "Name it — meters, dollars… (answers using it say it too)"} onClick={() => setLabeling(entry.id)}>
+                        🏷
+                      </button>
+                    </span>
+                    {labelView(entry)}
                     <button className="smart-in" title="Put this in the line (at the cursor)" onPointerDown={(e) => e.preventDefault()} onClick={() => reuse(entry.latex)}>
                       <Tex math={r.input_latex} />
                     </button>
                     {worked && <Tex math={`\\Rightarrow ${worked}`} />}
-                    <span className="smart-saved">saved</span>
+                    {lockButton(entry)}
                     <span className="smart-assign-actions">
                       {/* d = r·t with units: the values put in, the units cancelling */}
                       {!!r.steps?.length && (
@@ -776,6 +817,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
               // on hover: name it, or put its answer on the line with + − × ÷
               const tools = (
                 <span className="smart-tape-tools">
+                  {lockButton(entry)}
                   <button className="smart-tape-tool" title={entry.label ? "Rename it" : "Name it — rent, tip…"} onClick={() => setLabeling(entry.id)}>
                     🏷
                   </button>
@@ -793,33 +835,11 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                     ))}
                 </span>
               );
-              const label =
-                labeling === entry.id ? (
-                  <input
-                    className="smart-label-edit nodrag"
-                    autoFocus
-                    defaultValue={entry.label ?? ""}
-                    placeholder="name it"
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") keepLabel.current = true;
-                      if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
-                    }}
-                    onBlur={(e) => {
-                      if (!keepLabel.current) setLabel(entry.id, e.currentTarget.value);
-                      keepLabel.current = false;
-                      setLabeling(null);
-                    }}
-                  />
-                ) : (
-                  entry.label && (
-                    <button className="smart-label" title="Rename it" onClick={() => setLabeling(entry.id)}>
-                      {entry.label}
-                    </button>
-                  )
-                );
+              const label = labelView(entry);
               return (
-                <div key={entry.id} className="smart-entry">
+                <div key={entry.id} className={`smart-entry${isLocked(entry) ? " is-locked" : ""}`}>
                   {tools}
+                  {isLocked(entry) && lockButton(entry)}
                   {label}
                   <button
                     className="smart-in"
@@ -848,6 +868,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                         onClick={() => r.result_latex && reuse(r.action?.kind === "solve" ? r.result_latex.replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)}
                       >
                         <Tex math={r.result_latex ?? ""} />
+                        {unitWord(r.names) && <span className="smart-unit-word">{unitWord(r.names)}</span>}
                         {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
                       {r.kind !== "truth" && (
@@ -893,7 +914,12 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
               onArrow={cycle}
             />
             <div className={`smart-preview${error ? " is-error" : ""}`}>
-              {error ? error : note ? <span className="smart-note">{note}</span> : previewText ? <Tex math={previewText} /> : null}
+              {error ? error : note ? <span className="smart-note">{note}</span> : previewText ? (
+                <>
+                  <Tex math={previewText} />
+                  {preview?.kind !== "assign" && unitWord(preview?.names) && <span className="smart-unit-word">{unitWord(preview?.names)}</span>}
+                </>
+              ) : null}
             </div>
           </div>
 
