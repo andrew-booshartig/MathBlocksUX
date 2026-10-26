@@ -125,3 +125,19 @@ def test_units_show_as_written_in_a_textbook():
 def test_a_unit_alone_over_the_bar_is_still_a_unit():
     """typing 12 V/4 kohm puts just the V over the bar"""
     assert smart(r"12\,\frac{V}{4\,kohm}\to mA")["result_latex"] == r"3\,\mathrm{mA}"
+
+
+@pytest.mark.parametrize(
+    "latex,result",
+    [
+        # the amusement park ride: per minute² → per second² is ÷ 60²
+        (r"2160\,\frac{deg}{min^2}\to\frac{deg}{s^2}", r"0.6\,\frac{\text{°}}{\mathrm{s}^{2}}"),
+        (r"90\,deg\to rad", r"\frac{\pi}{2}\,\mathrm{rad}"),
+        (r"\pi\,rad\to deg", r"180\,\text{°}"),
+        (r"100\,degC\to degF", r"212\,\text{°F}"),
+        (r"1\,MiB\to kB", r"1048.576\,\mathrm{kB}"),
+        (r"1\,atm\to kPa", r"101.325\,\mathrm{kPa}"),
+    ],
+)
+def test_more_kinds_of_units(latex, result):
+    assert smart(latex)["result_latex"] == result

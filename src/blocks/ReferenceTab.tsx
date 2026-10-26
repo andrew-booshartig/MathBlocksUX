@@ -38,20 +38,38 @@ export interface CalcLine {
 
 const START: ReferenceLookup = { amount: "9", from: "km/h", to: "m/s" };
 
-export default function ReferenceTab({ lookup, update, onTry }: { lookup?: ReferenceLookup; update: (next: ReferenceLookup) => void; onTry: (lines: CalcLine[]) => void }) {
+export default function ReferenceTab({
+  lookup,
+  update,
+  onTry,
+  onUnit,
+}: {
+  lookup?: ReferenceLookup;
+  update: (next: ReferenceLookup) => void;
+  onTry: (lines: CalcLine[]) => void;
+  /** a unit clicked on the sheet: into Calculate's line or Work's */
+  onUnit: (symbol: string, to: "calc" | "work") => void;
+}) {
   const look = lookup ?? START;
   const ready = look.from.trim() && look.to.trim();
   const { result: converted, error } = useLiveMath<Converted>(ready ? { op: "refconvert", amount: look.amount || "1", from: look.from, to: look.to } : null, 120);
   const { result: sheet } = useLiveMath<Sheet>({ op: "reference" }, 0);
   const [search, setSearch] = useState("");
+  /** where a clicked unit goes */
+  const [dropTo, setDropTo] = useState<"calc" | "work">("calc");
   const set = (patch: Partial<ReferenceLookup>) => update({ ...look, ...patch });
 
   // the facts that match the search (by symbol or name)
   const kinds = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (sheet?.kinds ?? [])
-      .map((k) => ({ ...k, facts: k.facts.filter((f) => !q || f.text.toLowerCase().includes(q) || f.names.toLowerCase().includes(q) || k.kind.includes(q)) }))
-      .filter((k) => k.facts.length);
+      .map((k) => ({
+        ...k,
+        // the kind itself (search "pressure") shows all of it
+        units: k.units.filter((u) => !q || k.kind.includes(q) || u.shown.toLowerCase().includes(q) || u.symbol.toLowerCase().includes(q) || u.name.toLowerCase().includes(q) || u.plural.toLowerCase().includes(q)),
+        facts: k.facts.filter((f) => !q || f.text.toLowerCase().includes(q) || f.names.toLowerCase().includes(q) || k.kind.includes(q)),
+      }))
+      .filter((k) => k.facts.length || k.units.length);
   }, [sheet, search]);
   const words = useMemo(() => (sheet?.kinds ?? []).flatMap((k) => k.units), [sheet]);
 
@@ -131,6 +149,16 @@ export default function ReferenceTab({ lookup, update, onTry }: { lookup?: Refer
           <span className="ref-heading">The sheet</span>
           <input className="ref-search nodrag" value={search} spellCheck={false} placeholder="search — mile, hour, volt, ohm…" onChange={(e) => setSearch(e.target.value)} />
         </div>
+        <div className="ref-drop">
+          Click a unit to put it in
+          <button className={dropTo === "calc" ? "is-on" : ""} onClick={() => setDropTo("calc")}>
+            Calculate
+          </button>
+          <button className={dropTo === "work" ? "is-on" : ""} onClick={() => setDropTo("work")}>
+            Work
+          </button>
+          <span className="ref-drop-hint">· click a fact to look it up</span>
+        </div>
         {/* how electrical units are made of each other: V = I·R, P = V·I */}
         {(sheet?.relations ?? []).some((r) => !search.trim() || `${r.text} ${r.why}`.toLowerCase().includes(search.trim().toLowerCase())) && (
           <div className="ref-kind">
@@ -149,6 +177,13 @@ export default function ReferenceTab({ lookup, update, onTry }: { lookup?: Refer
         {kinds.map((k) => (
           <div key={k.kind} className="ref-kind">
             <div className="ref-kind-name">{k.kind}</div>
+            <div className="ref-units">
+              {k.units.map((u) => (
+                <button key={u.symbol} className="ref-unit-chip" title={`${u.plural} — into ${dropTo === "calc" ? "Calculate" : "Work"} (type it: ${u.symbol})`} onClick={() => onUnit(u.symbol, dropTo)}>
+                  {u.shown}
+                </button>
+              ))}
+            </div>
             <div className="ref-facts">
               {k.facts.map((f) => (
                 <button key={f.text} className="ref-fact" title={`${f.names} — look it up`} onClick={() => set({ amount: "1", from: f.big, to: f.small })}>

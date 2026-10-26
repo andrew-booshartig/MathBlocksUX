@@ -101,6 +101,7 @@ export function WorkPad({
   onGraph,
   onCalculate,
   autoFocus,
+  insert,
 }: {
   data: WorkBlockData;
   update: (patch: Partial<WorkBlockData>) => void;
@@ -115,6 +116,9 @@ export function WorkPad({
   onCalculate?: (latex: string) => void;
   /** opened on purpose (its tab clicked): the cursor goes where you'd type next */
   autoFocus?: boolean;
+  /** something to put in the line being typed (a unit, from the Reference
+   * sheet) — a new n each time */
+  insert?: { latex: string; n: number };
 }) {
   const latest = useRef(data);
   latest.current = data;
@@ -187,6 +191,17 @@ export function WorkPad({
   const pendingFocus = useRef<{ index: number; caret?: number } | null>(null);
 
   const lines = data?.lines ?? [""];
+  // a unit dropped in from the Reference sheet: into the line being typed
+  // (or the last one), once the tab has opened
+  useEffect(() => {
+    if (!insert) return;
+    const timer = setTimeout(() => {
+      const target = activeMath.current ?? mathInputs.current[(latest.current?.lines ?? [""]).length - 1];
+      target?.insert(insert.latex);
+      target?.focus();
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [insert?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const reasons = data?.reasons ?? [];
   const { result, error } = useLiveMath<WorkResult>(data?.problem?.trim() ? { op: "worklines", problem: data.problem, lines, syntax, languages: customLanguages } : null, 300);
 

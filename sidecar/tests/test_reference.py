@@ -71,3 +71,9 @@ def test_prefixes_and_relations():
     sheet = op_reference({})
     assert {"current", "voltage", "resistance", "power"} <= {k["kind"] for k in sheet["kinds"]}
     assert any(r["text"] == "1 V = 1 A·Ω" for r in sheet["relations"])
+
+
+def test_temperature_is_taught_the_usual_way():
+    _, out = lines("98.6", "°F", "°C")
+    assert [line["latex"] for line in out["lines"]] == ["98.6 - 32", "\\mathrm{Ans} \\times \\frac{5}{9}"]
+    assert out["to"]["amount"]["text"] == "37"

@@ -31,6 +31,8 @@ COMBINED = {"mph": [("mi", 1), ("h", -1)], "kph": [("km", 1), ("h", -1)]}
 CHAINS = {
     "length": [["km", "m", "cm", "mm"], ["mi", "yd", "ft", "in"]],
     "time": [["wk", "day", "h", "min", "s"]],
+    "angle": [["rev", "deg", "arcmin", "arcsec"]],
+    "information": [["B", "bit"], ["TiB", "GiB", "MiB", "KiB", "B"]],
     "mass": [["kg", "g", "mg"], ["lb", "oz"]],
     "volume": [["L", "mL"], ["gal", "qt", "pt", "cup", "tbsp", "tsp"]],
 }
@@ -43,8 +45,17 @@ BRIDGES = {
     "volume": [("gal", "L")],
     # an amp-hour is an amp for an hour; a watt-hour, a watt for an hour
     "charge": [("Ah", "C")],
-    "energy": [("Wh", "J")],
+    "energy": [("Wh", "J"), ("cal", "J"), ("Cal", "kcal"), ("BTU", "J"), ("eV", "J")],
+    "angle": [("rad", "deg"), ("grad", "deg")],
+    "pressure": [("atm", "kPa"), ("bar", "kPa"), ("psi", "kPa"), ("mmHg", "Pa"), ("torr", "mmHg")],
+    "power": [("hp", "W")],
+    "force": [("lbf", "N"), ("kgf", "N")],
+    "area": [("acre", "ha")],
+    "speed": [("mph", "kph"), ("kn", "kph")],
 }
+BRIDGES["length"] += [("nmi", "m"), ("mil", "in"), ("angstrom", "nm"), ("au", "km"), ("ly", "km")]
+BRIDGES["mass"] += [("t", "kg"), ("ton", "lb")]
+BRIDGES["time"] += [("decade", "yr"), ("century", "decade")]
 
 
 def _prefixed() -> dict[str, list[tuple[str, str]]]:
@@ -54,7 +65,8 @@ def _prefixed() -> dict[str, list[tuple[str, str]]]:
     for u in LIBRARY:
         for p in sorted(PREFIXES, key=len, reverse=True):
             base = UNITS.get(u.symbol[len(p) :]) if u.symbol.startswith(p) else None
-            if base and base.kind == u.kind and base is not u:
+            # nmi is a nautical mile, not a nano-mile: the size has to fit
+            if base and base.kind == u.kind and base is not u and sympy.simplify(u.size - base.size * PREFIXES[p][3]) == 0:
                 out.setdefault(u.kind, []).append((u.symbol, base.symbol))
                 break
     return out
@@ -76,6 +88,10 @@ RELATIONS = [
     ("1 S = 1/Ω", "1/ohm", "S", "conductance is 1 ÷ resistance"),
     ("1 Hz = 1/s", "1/s", "Hz", "once per second"),
     ("1 F = 1 C/V", "C/V", "F", "charge stored per volt"),
+    ("°F = °C × 9/5 + 32", "degC", "degF", "Celsius to Fahrenheit"),
+    ("K = °C + 273.15", "degC", "K", "Celsius to kelvin"),
+    ("1 rev = 2π rad", "rev", "rad", "a full turn"),
+    ("1 Pa = 1 N/m²", "N/m^2", "Pa", "pressure = force ÷ area"),
 ]
 
 
@@ -112,11 +128,15 @@ def _path(a: str, b: str) -> list[str]:
             if nxt not in seen:
                 seen[nxt] = here
                 queue.append(nxt)
-    raise MathInputError(f"no way from {a} to {b} yet")
+    # no chain between them (atm and psi): one step, by their sizes
+    return [a, b]
 
 
 def _terminates(value) -> bool:
     """a fraction that's a finite decimal (its bottom only 2s and 5s)"""
+    value = sympy.nsimplify(value)
+    if not value.is_Rational:
+        return False  # π/180 never ends
     q = Rational(value).q
     for p in (2, 5):
         while q % p == 0:
@@ -136,12 +156,20 @@ def _decimal(value) -> str:
 
 
 def _number(value) -> dict:
-    """{latex, approx}: exact (2.5, or 25/6 as a fraction) — ≈ when it doesn't end"""
+    """{latex, text, exact, approx?}: exact (2.5, 25/6 as a fraction, 180/π)
+    — ≈ when it doesn't end"""
+    value = sympy.nsimplify(value)
+    if not value.is_Rational:
+        return {"latex": sympy.latex(value), "text": sympy.sstr(value).replace("pi", "π").replace("*", ""), "exact": str(value), "approx": f"{float(value):.6g}"}
     value = Rational(value)
     if _terminates(value):
-        return {"latex": _decimal(value), "text": _decimal(value)}
+        return {"latex": _decimal(value), "text": _decimal(value), "exact": str(value)}
+    if value.q > 10000:
+        # 1290320000000/8896443230521 says nothing — its decimal does
+        decimal = f"{float(value):.10g}"
+        return {"latex": decimal, "text": f"≈ {float(value):.6g}", "exact": str(value), "approx": f"{float(value):.6g}"}
     sign = "-" if value < 0 else ""
-    return {"latex": f"{sign}\\frac{{{abs(value.p)}}}{{{value.q}}}", "text": f"{value.p}/{value.q}", "approx": f"{float(value):.6g}"}
+    return {"latex": f"{sign}\\frac{{{abs(value.p)}}}{{{value.q}}}", "text": f"{value.p}/{value.q}", "exact": str(value), "approx": f"{float(value):.6g}"}
 
 
 def _lookup(word: str):
@@ -193,7 +221,7 @@ _POWER_WORD = {2: "square ", 3: "cubic "}
 
 def describe(us: list[tuple[str, int]], amount=None) -> str:
     """meters per hour · square feet · kilometer (one)"""
-    one = amount is not None and Rational(amount) == 1
+    one = amount is not None and sympy.nsimplify(amount) == 1
     top = [f"{_POWER_WORD.get(p, '')}{UNITS[s].name if one else UNITS[s].plural}" for s, p in us if p > 0]
     bottom = [f"{_POWER_WORD.get(-p, '')}{UNITS[s].name}" for s, p in us if p < 0]
     return " ".join(top or ["1"]) + "".join(f" per {b}" for b in bottom)
@@ -214,6 +242,8 @@ def _fact(a: str, b: str) -> tuple[str, str]:
     1 kg = 2.2046… lb)"""
     big, small = (a, b) if UNITS[a].size > UNITS[b].size else (b, a)
     if not _terminates(_how_many(big, small)):
+        if not _terminates(_how_many(small, big)):
+            return a, b  # neither ends: the way the link is written (1 psi ≈ 6.89 kPa)
         big, small = small, big
     return big, small
 
@@ -223,7 +253,7 @@ _SUPS = {2: "²", 3: "³"}
 
 def _dims(us: list[tuple[str, int]]) -> tuple:
     """what a list of units is made of (length, time, mass, current)"""
-    total = [0, 0, 0, 0]
+    total = [0] * len(UNITS["m"].dim)
     for s, p in us:
         for i, d in enumerate(UNITS[s].dim):
             total[i] += d * p
@@ -237,6 +267,70 @@ def _size(us: list[tuple[str, int]]):
     return out
 
 
+def _amount(text: str):
+    try:
+        return Rational(text)
+    except (TypeError, ValueError):
+        value = sympy.sympify(text.replace("π", "pi"))
+        if not value.is_number:
+            raise ValueError(text) from None
+        return value
+
+
+def _temperature(amount, a: str, b: str) -> dict:
+    """°C → °F: × 9/5, then + 32 — the way it's taught (and °F → °C: − 32,
+    then × 5/9): every temperature measured from its own zero"""
+    ua, ub = UNITS[a], UNITS[b]
+    scale = ua.size / ub.size
+    # b = (a·size_a + offset_a − offset_b) / size_b, written whichever way
+    # round has the plain number to add (32, not 160/9)
+    after = (ua.offset - ub.offset) / ub.size  # multiply, then add this
+    before = (ua.offset - ub.offset) / ua.size  # or add this, then multiply
+    value = amount * scale + after
+    steps = []
+    if _terminates(after) or not _terminates(before):
+        order = [("×", scale), ("+", after)]
+    else:
+        order = [("+", before), ("×", scale)]
+    current = amount
+    for op, by in order:
+        if op == "×" and by == 1 or op == "+" and by == 0:
+            continue
+        if op == "+":
+            current = current + by
+            sign, shown = ("+", by) if by >= 0 else ("−", -by)
+            latex_op = "+" if by >= 0 else "-"
+        else:
+            current = current * by
+            sign, shown, latex_op = "×", by, "\\times"
+        steps.append((sign, shown, latex_op, current))
+    fact = f"{ua.display} → {ub.display}: " + ", then ".join(f"{s} {_number(n)['text']}" for s, n, _, _ in steps)
+    lines = []
+    for i, (sign, shown, latex_op, current) in enumerate(steps):
+        lines.append(
+            {
+                "latex": f"{_number(amount)['latex'] if i == 0 else '\\mathrm{Ans}'} {latex_op} {_number(shown)['latex']}",
+                "op": sign,
+                "by": _number(shown)["text"],
+                "by_latex": _number(shown)["latex"],
+                "result": _number(current),
+                "label": describe([(b, 1)], current) if i == len(steps) - 1 else "",
+                "units": ub.display if i == len(steps) - 1 else "",
+                "why": fact if i == 0 else ("then " + f"{sign} {_number(shown)['text']}"),
+            }
+        )
+    one = _number(amount)["latex"]
+    for sign, shown, latex_op, _ in steps:
+        one = f"({one} {latex_op} {_number(shown)['latex']})" if latex_op != "\\times" else f"{one} {latex_op} {_number(shown)['latex']}"
+    return {
+        "from": {"amount": _number(amount), "label": describe([(a, 1)], amount), "units": ua.display},
+        "to": {"amount": _number(value), "label": describe([(b, 1)], value), "units": ub.display},
+        "lines": lines,
+        "one_line": one,
+        "factor": None,
+    }
+
+
 def _direct(amount, start: list, goal: list) -> dict:
     """units built differently but the same kind of thing (V·A → W, kWh →
     J): one step, by what each is made of"""
@@ -247,11 +341,12 @@ def _direct(amount, start: list, goal: list) -> dict:
         op, shown = "÷", 1 / by
     value = amount * by
     relation = next((why for text, a, b, why in RELATIONS if {_symbols(read_units(a)), _symbols(read_units(b))} == {_symbols(start), _symbols(goal)}), None)
-    fact = f"1 {_symbols(start)} = {_number(by)['text']} {_symbols(goal)}" + (f" ({relation})" if relation else "")
+    fact = f"1 {_symbols(start)} = {_number(by)['text']} {_symbols(goal)}".replace("= ≈", "≈") + (f" ({relation})" if relation else "")
     line = {
         "latex": f"{_number(amount)['latex']} {_TEX[op]} {_number(shown)['latex']}",
         "op": op,
         "by": _number(shown)["text"],
+        "by_latex": _number(shown)["latex"],
         "result": _number(value),
         "label": describe(goal, value),
         "units": _symbols(goal),
@@ -264,7 +359,7 @@ def _direct(amount, start: list, goal: list) -> dict:
         "one_line": f"{_number(amount)['latex']} {_TEX[op]} {_number(shown)['latex']}",
         "factor": _number(value / amount) if amount else None,
     }
-_TEX = {"×": "\\times", "÷": "\\div"}
+_TEX = {"×": "\\times", "÷": "\\div", "+": "+", "−": "-"}
 
 
 def op_refconvert(req: dict) -> dict:
@@ -273,7 +368,7 @@ def op_refconvert(req: dict) -> dict:
     amount_text = str(req.get("amount") or "1").strip().replace(",", "")
     try:
         mixed = re.fullmatch(r"(-?)(\d+)\s+(\d+/\d+)", amount_text)  # 3 3/8
-        amount = (-1 if mixed.group(1) else 1) * (Rational(mixed.group(2)) + Rational(mixed.group(3))) if mixed else Rational(amount_text)
+        amount = (-1 if mixed.group(1) else 1) * (Rational(mixed.group(2)) + Rational(mixed.group(3))) if mixed else _amount(amount_text)
     except (TypeError, ValueError, SyntaxError) as exc:
         raise MathInputError("the amount is a number — like 9, 3.5 or 3 3/8") from exc
     start, goal = read_units(str(req.get("from") or "")), read_units(str(req.get("to") or ""))
@@ -284,6 +379,9 @@ def op_refconvert(req: dict) -> dict:
             out.setdefault(UNITS[s].kind, []).append((s, p))
         return out
 
+    # °C ↔ °F ↔ K: each has its own zero, so it's not just a multiply
+    if len(start) == 1 == len(goal) and start[0][1] == 1 == goal[0][1] and UNITS[start[0][0]].kind == "temperature" == UNITS[goal[0][0]].kind and (UNITS[start[0][0]].offset or UNITS[goal[0][0]].offset):
+        return _temperature(amount, start[0][0], goal[0][0])
     # the same kind of thing? — by what each unit is made of (V·A is W)
     if _dims(start) != _dims(goal):
         raise MathInputError(f"{_symbols(start)} is {describe(start)}, {_symbols(goal)} is {describe(goal)} — they measure different things")
@@ -325,7 +423,7 @@ def op_refconvert(req: dict) -> dict:
             # 1 h = 60 min: per hour → per minute, ÷ 60
             big, small = _fact(here, there)
             B, Sm = UNITS[big].display, UNITS[small].display
-            fact = f"1 {B} = {_number(_how_many(big, small))['text']} {Sm}"
+            fact = f"1 {B} = {_number(_how_many(big, small))['text']} {Sm}".replace("= ≈", "≈")
             if abs(p) > 1:
                 fact += f", so 1 {B}{_SUPS[abs(p)]} = {_number(_how_many(big, small) ** abs(p))['text']} {Sm}{_SUPS[abs(p)]}"
             change = f"{describe([(here, p)])} → {describe([(there, p)])}" if p > 0 else f"per {describe([(here, -p)], 1)} → per {describe([(there, -p)], 1)}"
@@ -336,13 +434,14 @@ def op_refconvert(req: dict) -> dict:
                     "latex": f"{left} {_TEX[op]} {_number(shown)['latex']}",
                     "op": op,
                     "by": _number(shown)["text"],
+                    "by_latex": _number(shown)["latex"],
                     "result": _number(value),
                     "label": describe(us, value),
                     "units": _symbols(us),
                     "why": why,
                 }
             )
-    one_line = _number(amount)["latex"] + "".join(f" {_TEX[line['op']]} {_number(Rational(line['by']))['latex']}" for line in lines)
+    one_line = _number(amount)["latex"] + "".join(f" {_TEX[line['op']]} {line['by_latex']}" for line in lines)
     return {
         "from": {"amount": _number(amount), "label": describe(start, amount), "units": _symbols(start)},
         "to": {"amount": _number(value), "label": describe(goal, value), "units": _symbols(goal)},
@@ -362,7 +461,7 @@ def op_reference(req: dict) -> dict:
         for a, b in _links(kind):
             big, small = _fact(a, b)
             n = _number(_how_many(big, small))
-            facts.append({"big": big, "small": small, "n": n, "text": f"1 {UNITS[big].display} = {n['text']} {UNITS[small].display}", "names": f"{UNITS[big].name} · {UNITS[small].plural}"})
+            facts.append({"big": big, "small": small, "n": n, "text": f"1 {UNITS[big].display} = {n['text']} {UNITS[small].display}".replace("= ≈", "≈"), "names": f"{UNITS[big].name} · {UNITS[small].plural}"})
         kinds.append(
             {
                 "kind": kind,

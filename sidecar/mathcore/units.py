@@ -20,8 +20,10 @@ from sympy import Rational, Symbol
 from .parsing import MathInputError
 
 # a kind is powers of these: speed is length¹ · time⁻¹, a volt is
-# kg·m²·s⁻³·A⁻¹ (what a volt is made of, so V·A can be seen to be W)
-BASE = ("length", "time", "mass", "current")
+# kg·m²·s⁻³·A⁻¹ (what a volt is made of, so V·A can be seen to be W). Angle
+# and information are their own (SI calls them pure numbers — here 30° stays
+# 30°, not 0.52…)
+BASE = ("length", "time", "mass", "current", "temperature", "amount", "angle", "information")
 
 
 @dataclass(frozen=True)
@@ -31,11 +33,14 @@ class Unit:
     plural: str
     kind: str
     dim: tuple
-    #: its size in the kind's base unit (km: 1000, in meters)
-    size: Rational
+    #: its size in the kind's base unit (km: 1000, in meters; ° is π/180 rad)
+    size: object
     #: how it's shown, when that isn't how it's typed (ohm → Ω, uA → µA)
     shown: str = ""
     tex: str = ""
+    #: where its zero sits, in the base unit (°C: 273.15 K) — only a plain
+    #: temperature conversion uses it; a change of 5 °C is 5 K
+    offset: object = 0
 
     @property
     def display(self) -> str:
@@ -46,34 +51,49 @@ class Unit:
         return self.tex or f"\\mathrm{{{self.symbol}}}"
 
 
-#        kind                 (length, time, mass, current)   in SI
+def _d(**powers) -> tuple:
+    return tuple(powers.get(b.split()[0], 0) for b in BASE)
+
+
+#        kind                     made of                           in SI
 _KINDS = {
-    "length": ((1, 0, 0, 0), "m"),
-    "area": ((2, 0, 0, 0), "m²"),
-    "volume": ((3, 0, 0, 0), "m³"),
-    "time": ((0, 1, 0, 0), "s"),
-    "mass": ((0, 0, 1, 0), "kg"),
-    "speed": ((1, -1, 0, 0), "m/s"),
-    "acceleration": ((1, -2, 0, 0), "m/s²"),
-    "frequency": ((0, -1, 0, 0), "Hz"),
-    "force": ((1, -2, 1, 0), "N"),
-    "energy": ((2, -2, 1, 0), "J"),
-    "power": ((2, -3, 1, 0), "W"),
-    "current": ((0, 0, 0, 1), "A"),
-    "charge": ((0, 1, 0, 1), "C"),
-    "voltage": ((2, -3, 1, -1), "V"),
-    "resistance": ((2, -3, 1, -2), "Ω"),
-    "conductance": ((-2, 3, -1, 2), "S"),
-    "capacitance": ((-2, 4, -1, 2), "F"),
-    "inductance": ((2, -2, 1, -2), "H"),
-    "magnetic flux": ((2, -2, 1, -1), "Wb"),
-    "magnetic field": ((0, -2, 1, -1), "T"),
-    "current density": ((-2, 0, 0, 1), "A/m²"),
+    "length": (_d(length=1), "m"),
+    "area": (_d(length=2), "m²"),
+    "volume": (_d(length=3), "m³"),
+    "time": (_d(time=1), "s"),
+    "mass": (_d(mass=1), "kg"),
+    "speed": (_d(length=1, time=-1), "m/s"),
+    "acceleration": (_d(length=1, time=-2), "m/s²"),
+    "frequency": (_d(time=-1), "Hz"),
+    "force": (_d(length=1, time=-2, mass=1), "N"),
+    "pressure": (_d(length=-1, time=-2, mass=1), "Pa"),
+    "energy": (_d(length=2, time=-2, mass=1), "J"),
+    "power": (_d(length=2, time=-3, mass=1), "W"),
+    "current": (_d(current=1), "A"),
+    "charge": (_d(time=1, current=1), "C"),
+    "voltage": (_d(length=2, time=-3, mass=1, current=-1), "V"),
+    "resistance": (_d(length=2, time=-3, mass=1, current=-2), "Ω"),
+    "conductance": (_d(length=-2, time=3, mass=-1, current=2), "S"),
+    "capacitance": (_d(length=-2, time=4, mass=-1, current=2), "F"),
+    "inductance": (_d(length=2, time=-2, mass=1, current=-2), "H"),
+    "magnetic flux": (_d(length=2, time=-2, mass=1, current=-1), "Wb"),
+    "magnetic field": (_d(time=-2, mass=1, current=-1), "T"),
+    "current density": (_d(length=-2, current=1), "A/m²"),
+    "temperature": (_d(temperature=1), "K"),
+    "amount": (_d(amount=1), "mol"),
+    "angle": (_d(angle=1), "rad"),
+    "angular speed": (_d(angle=1, time=-1), "rad/s"),
+    "information": (_d(information=1), "bit"),
+    "data rate": (_d(information=1, time=-1), "bit/s"),
 }
 
 
-def _u(symbol, name, plural, kind, size, shown="", tex=""):
-    return Unit(symbol, name, plural, kind, _KINDS[kind][0], Rational(size), shown, tex)
+def _size(size):
+    return Rational(size) if isinstance(size, str) else sympy.nsimplify(size) if isinstance(size, float) else size
+
+
+def _u(symbol, name, plural, kind, size, shown="", tex="", offset=0):
+    return Unit(symbol, name, plural, kind, _KINDS[kind][0], _size(size), shown, tex, _size(offset) if offset else 0)
 
 
 # the metric prefixes: typed (u for micro), shown (µ), LaTeX, name, size
@@ -114,25 +134,39 @@ def _family(symbol, name, plural, kind, size, prefixes, shown="", tex=""):
 
 
 _EVERYDAY = ["k", "h", "da", "d", "c", "m", "u"]
+_PI = sympy.pi
 LIBRARY = [
     # metric, every prefix a class meets (km … µm, nm)
     *_family("m", "meter", "meters", "length", "1", [*_EVERYDAY, "n"]),
     *_family("g", "gram", "grams", "mass", "1/1000", _EVERYDAY),
     *_family("L", "liter", "liters", "volume", "1/1000", _EVERYDAY),
     *_family("s", "second", "seconds", "time", "1", ["m", "u", "n", "p"]),
-    # US customary
+    # length, more
     _u("in", "inch", "inches", "length", "0.0254"),
     _u("ft", "foot", "feet", "length", "0.3048"),
     _u("yd", "yard", "yards", "length", "0.9144"),
     _u("mi", "mile", "miles", "length", "1609.344"),
-    _u("oz", "ounce", "ounces", "mass", "0.028349523125"),
-    _u("lb", "pound", "pounds", "mass", "0.45359237"),
+    _u("mil", "mil", "mils", "length", "0.0000254"),  # a thousandth of an inch (wire, circuit boards)
+    _u("nmi", "nautical mile", "nautical miles", "length", "1852"),
+    _u("angstrom", "angstrom", "angstroms", "length", "1/10000000000", shown="Å", tex="\\text{Å}"),
+    _u("au", "astronomical unit", "astronomical units", "length", "149597870700"),
+    _u("ly", "light-year", "light-years", "length", "9460730472580800"),
+    # area
+    _u("ha", "hectare", "hectares", "area", "10000"),
+    _u("acre", "acre", "acres", "area", "4046.8564224"),
+    # volume, more
     _u("tsp", "teaspoon", "teaspoons", "volume", "0.00000492892159375"),
     _u("tbsp", "tablespoon", "tablespoons", "volume", "0.00001478676478125"),
+    _u("floz", "fluid ounce", "fluid ounces", "volume", "0.0000295735295625", shown="fl oz", tex="\\mathrm{fl\\,oz}"),
     _u("cup", "cup", "cups", "volume", "0.0002365882365"),
     _u("pt", "pint", "pints", "volume", "0.000473176473"),
     _u("qt", "quart", "quarts", "volume", "0.000946352946"),
     _u("gal", "gallon", "gallons", "volume", "0.003785411784"),
+    # mass, more
+    _u("oz", "ounce", "ounces", "mass", "0.028349523125"),
+    _u("lb", "pound", "pounds", "mass", "0.45359237"),
+    _u("t", "tonne", "tonnes", "mass", "1000"),
+    _u("ton", "ton", "tons", "mass", "907.18474"),  # US short ton, 2000 lb
     # time beyond seconds
     _u("min", "minute", "minutes", "time", "60"),
     _u("h", "hour", "hours", "time", "3600"),
@@ -140,7 +174,26 @@ LIBRARY = [
     _u("wk", "week", "weeks", "time", "604800"),
     # a year is 365 or 366 days; this is the average, 365.25 (science's year)
     _u("yr", "year", "years", "time", "31557600"),
+    _u("decade", "decade", "decades", "time", "315576000"),
+    _u("century", "century", "centuries", "time", "3155760000"),
+    # speed
     _u("mph", "mile per hour", "miles per hour", "speed", f"{Rational('1609.344') / 3600}"),
+    _u("kph", "kilometer per hour", "kilometers per hour", "speed", "5/18"),
+    _u("kn", "knot", "knots", "speed", f"{Rational(1852, 3600)}"),
+    # force, pressure, energy, power — beyond SI
+    _u("lbf", "pound-force", "pounds-force", "force", "4.4482216152605"),
+    _u("kgf", "kilogram-force", "kilograms-force", "force", "9.80665"),
+    *_family("Pa", "pascal", "pascals", "pressure", "1", ["h", "k", "M", "G"]),
+    *_family("bar", "bar", "bars", "pressure", "100000", ["m"]),
+    _u("atm", "atmosphere", "atmospheres", "pressure", "101325"),
+    _u("psi", "pound per square inch", "pounds per square inch", "pressure", f"{Rational('4.4482216152605') / Rational('0.0254') ** 2}"),
+    _u("mmHg", "millimeter of mercury", "millimeters of mercury", "pressure", "133.322387415"),
+    _u("torr", "torr", "torr", "pressure", f"{Rational(101325, 760)}"),
+    *_family("cal", "calorie", "calories", "energy", "4.184", ["k"]),
+    _u("Cal", "food Calorie", "food Calories", "energy", "4184"),
+    *_family("eV", "electronvolt", "electronvolts", "energy", "1.602176634e-19", ["k", "M", "G"]),
+    _u("BTU", "British thermal unit", "British thermal units", "energy", "1055.05585262"),
+    _u("hp", "horsepower", "horsepower", "power", "745.69987158227022"),
     # electrical engineering: what flows, what pushes it, what resists it,
     # what's stored, and how fast it changes
     *_family("A", "ampere", "amperes", "current", "1", ["k", "m", "u", "n", "p"]),
@@ -157,12 +210,42 @@ LIBRARY = [
     *_family("Hz", "hertz", "hertz", "frequency", "1", ["k", "M", "G"]),
     *_family("Wb", "weber", "webers", "magnetic flux", "1", ["m"]),
     *_family("T", "tesla", "teslas", "magnetic field", "1", ["m", "u"]),
+    _u("G", "gauss", "gauss", "magnetic field", "1/10000"),
     *_family("N", "newton", "newtons", "force", "1", ["k"]),
+    # temperature: kelvin from absolute zero; °C and °F have their own zeros
+    *_family("K", "kelvin", "kelvins", "temperature", "1", ["m"]),
+    _u("degC", "degree Celsius", "degrees Celsius", "temperature", "1", shown="°C", tex="\\text{°C}", offset="273.15"),
+    _u("degF", "degree Fahrenheit", "degrees Fahrenheit", "temperature", "5/9", shown="°F", tex="\\text{°F}", offset=f"{Rational('459.67') * Rational(5, 9)}"),
+    # amount of substance (chemistry)
+    *_family("mol", "mole", "moles", "amount", "1", ["k", "m", "u", "n"]),
+    # angles: a full turn is 360° or 2π radians
+    _u("rad", "radian", "radians", "angle", 1),
+    _u("mrad", "milliradian", "milliradians", "angle", Rational(1, 1000)),
+    _u("deg", "degree", "degrees", "angle", _PI / 180, shown="°", tex="\\text{°}"),
+    _u("arcmin", "arcminute", "arcminutes", "angle", _PI / 10800, shown="′", tex="\\text{′}"),
+    _u("arcsec", "arcsecond", "arcseconds", "angle", _PI / 648000, shown="″", tex="\\text{″}"),
+    _u("rev", "revolution", "revolutions", "angle", 2 * _PI),
+    _u("grad", "gradian", "gradians", "angle", _PI / 200),
+    _u("rpm", "revolution per minute", "revolutions per minute", "angular speed", 2 * _PI / 60),
+    # data: a byte is 8 bits; kB is 1000 bytes, KiB is 1024
+    *_family("bit", "bit", "bits", "information", "1", ["k", "M", "G", "T"]),
+    *_family("B", "byte", "bytes", "information", "8", ["k", "M", "G", "T"]),
+    _u("KiB", "kibibyte", "kibibytes", "information", 8 * 1024),
+    _u("MiB", "mebibyte", "mebibytes", "information", 8 * 1024**2),
+    _u("GiB", "gibibyte", "gibibytes", "information", 8 * 1024**3),
+    _u("TiB", "tebibyte", "tebibytes", "information", 8 * 1024**4),
+    *_family("bps", "bit per second", "bits per second", "data rate", "1", ["k", "M", "G"]),
 ]
 UNITS = {u.symbol: u for u in LIBRARY}
 # more ways to write them: words (amps, ohms, kilometers), the shown form
 # (Ω, kΩ, µA), and a few short ones
-ALIASES = {"sec": "s", "hr": "h", "hrs": "h", "lbs": "lb", "days": "day", "y": "yr", "ml": "mL", "l": "L", "amp": "A", "amps": "A", "Ω": "ohm", "µ": "u"}
+ALIASES = {
+    "sec": "s", "hr": "h", "hrs": "h", "lbs": "lb", "days": "day", "y": "yr", "ml": "mL", "l": "L",
+    "amp": "A", "amps": "A", "Ω": "ohm", "µ": "u", "mcg": "ug", "cc": "mL", "°": "deg", "degrees": "deg",
+    "°C": "degC", "°F": "degF", "Celsius": "degC", "Fahrenheit": "degF", "celsius": "degC", "fahrenheit": "degF",
+    "turn": "rev", "turns": "rev", "revs": "rev", "rps": "Hz", "knots": "kn", "kt": "kn", "Å": "angstrom",
+    "tonne": "t", "metric ton": "t", "byte": "B", "bytes": "B",
+}
 for _unit in LIBRARY:
     for _word in (_unit.name, _unit.plural, _unit.display):
         if _word not in UNITS and " " not in _word:
@@ -206,7 +289,7 @@ _RUN = r"[A-Za-z]+"
 # unit: m · m^2 · m/s · \frac{m}{s}
 _POW = r"(?:\^\{?\d\}?)?"
 _AFTER_NUMBER = re.compile(
-    rf"(?<=[\d}}])(\s*\\,\s*|\s+)(?:\\frac\{{({_RUN}){_POW}\}}\{{({_RUN})({_POW})\}}|({_RUN})(?:\s*/\s*({_RUN}))?)"
+    rf"(?:(?<=[\d}}])|(?<=\\pi))(\s*\\,\s*|\s+)(?:\\frac\{{({_RUN}){_POW}\}}\{{({_RUN})({_POW})\}}|({_RUN})(?:\s*/\s*({_RUN}))?)"
 )
 
 

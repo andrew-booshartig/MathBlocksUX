@@ -6202,3 +6202,54 @@ math-field {
   color: var(--t-muted, #74748a);
   font-size: 11px;
 }
+
+/* the sheet's units: click one into Calculate or Work */
+.ref-drop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--t-muted, #74748a);
+}
+
+.ref-drop button {
+  border: 1px solid var(--t-line, #2e2e3a);
+  background: none;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--t-subtle, #a9a9bd);
+  cursor: pointer;
+}
+
+.ref-drop button.is-on {
+  border-color: var(--t-teal, #55d6be);
+  color: var(--t-teal, #55d6be);
+  font-weight: 600;
+}
+
+.ref-units {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.ref-unit-chip {
+  min-width: 30px;
+  border: 1px solid color-mix(in srgb, var(--t-teal, #55d6be) 45%, transparent);
+  background: color-mix(in srgb, var(--t-teal, #55d6be) 10%, transparent);
+  color: var(--t-teal, #55d6be);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ref-unit-chip:hover {
+  border-color: var(--t-teal, #55d6be);
+}

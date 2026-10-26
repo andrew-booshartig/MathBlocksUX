@@ -316,18 +316,15 @@ def _convert_line(req: dict, left: str, right: str) -> dict:
     number, unit_part = units.split(value)
     target_text = _units_text(right)
     target = sympy.Mul(*[units.symbol(units.UNITS[s]) ** p for s, p in read_units(target_text)])  # for its plain text
-    exact = number.is_Rational
-    out = op_refconvert({"amount": str(number) if exact else "1", "from": units.plain(unit_part), "to": target_text})
-    factor = sympy.Rational(out["to"]["amount"]["text"].replace("/", "/")) if exact else None
-    result = sympy.nsimplify(factor) if exact else number * sympy.Rational(sympy.nsimplify(out["factor"]["text"]))
+    out = op_refconvert({"amount": str(number), "from": units.plain(unit_part), "to": target_text})
+    result = sympy.sympify(out["to"]["amount"]["exact"])
     def shown(n, us) -> str:
         # exact: 0.05 when it ends, 25/6 when it doesn't
-        number_tex = _number(n)["latex"] if n.is_Rational else tex(n)
+        number_tex = _number(n)["latex"]
         return f"{number_tex}\\,{_units_latex(read_units(us))}"
 
     steps = [step("Start", worked["result_latex"])]
-    if exact:
-        steps += [step(line["why"], shown(sympy.Rational(line["result"]["text"]), line["units"])) for line in out["lines"]]
+    steps += [step(line["why"], shown(sympy.sympify(line["result"]["exact"]), line["units"] or out["to"]["units"])) for line in out["lines"]]
     result_latex = shown(result, target_text)
     decimal = None if (result.is_Rational and out["to"]["amount"].get("approx") is None) else f"{float(result):.6g} {units.plain(target)}"
     return {

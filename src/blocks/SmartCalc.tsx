@@ -135,6 +135,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const tape = useRef<HTMLDivElement>(null);
   /** the variables list is open (it folds away — type a name to see its value) */
   const [varsOpen, setVarsOpen] = useState(false);
+  /** a unit from the Reference sheet, on its way into the Work tab's line */
+  const [workInsert, setWorkInsert] = useState<{ latex: string; n: number } | null>(null);
   /** writing the note at the top */
   const [noting, setNoting] = useState(false);
   /** the unit key's list */
@@ -820,6 +822,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           frame={tabFrame("smart-tab-work")}
           autoFocus={focusOn.current === "work"}
           onReset={clearOwnVariables}
+          insert={workInsert ?? undefined}
           onCalculate={(latex) => {
             // onto the Calculate line (in place of anything half-typed there)
             const typed = draft.trim();
@@ -838,7 +841,25 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       )}
 
       {tab === "reference" && (
-        <ReferenceTab lookup={data.smartReference} update={(smartReference) => updateBlock(data.id, { smartReference })} onTry={playLines} />
+        <ReferenceTab
+          lookup={data.smartReference}
+          update={(smartReference) => updateBlock(data.id, { smartReference })}
+          onTry={playLines}
+          onUnit={(symbol, to) => {
+            // a unit from the sheet, onto the line in Calculate or Work
+            const latex = `\\,\\mathrm{${symbol}}`;
+            if (to === "work") {
+              setWorkInsert((w) => ({ latex, n: (w?.n ?? 0) + 1 }));
+              setTab("work");
+            } else {
+              setTab("calc");
+              setTimeout(() => {
+                field.current?.insert(latex);
+                field.current?.focus();
+              }, 80);
+            }
+          }}
+        />
       )}
 
       {tab === "assignment" && (
