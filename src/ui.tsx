@@ -107,10 +107,10 @@ export function ErrorText({ error }: { error: string | null }) {
 
 /** An inequality's solution on a number line: open/closed dots and the
  * shaded rays or segments, the way it's drawn in class. */
-export function NumberLine({ segments, width = 300, parts, answer }: { segments: NumberLineSegment[]; width?: number; parts?: NumberLinePart[]; answer?: string }) {
+export function NumberLine({ segments, width = 300, parts }: { segments: NumberLineSegment[]; width?: number; parts?: NumberLinePart[] }) {
   // one drawing for the app and for documents (numberLine.ts) — no solution
-  // is an empty line, and an "and" shows its parts above the answer
-  return <span className="number-line-wrap" dangerouslySetInnerHTML={{ __html: numberLineSvg(segments, width, undefined, { parts, answer }) }} />;
+  // is an empty line (an "and" whose parts never meet shows them, faint)
+  return <span className="number-line-wrap" dangerouslySetInnerHTML={{ __html: numberLineSvg(segments, width, undefined, { parts }) }} />;
 }
 
 /** A labelled select that stops the canvas from treating clicks as drags. */

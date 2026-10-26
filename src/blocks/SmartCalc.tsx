@@ -21,7 +21,7 @@ import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { NumberLine, StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
-import { plainMath, sameWritten } from "../numberLine";
+import { sameWritten } from "../numberLine";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
@@ -435,7 +435,10 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       setGraphError("Type what to graph — like x < 3");
       return;
     }
-    mathRequest<{ variable: string; latex: string; solution_latex: string; segments: NumberLineGraph["segments"]; parts?: NumberLineGraph["parts"] }>({ op: "numberline", latex }).then(
+    mathRequest<{ variable: string; latex: string; solution_latex: string; interval_latex?: string; segments: NumberLineGraph["segments"]; parts?: NumberLineGraph["parts"] }>({
+      op: "numberline",
+      latex,
+    }).then(
       (r) => {
         setGraphError(null);
         const graph: NumberLineGraph = {
@@ -444,6 +447,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           solution: r.solution_latex,
           variable: r.variable,
           segments: r.segments,
+          ...(r.interval_latex ? { interval: r.interval_latex } : {}),
           ...(r.parts?.length ? { parts: r.parts } : {}),
         };
         const work = current()?.smartWork ?? {};
@@ -504,11 +508,21 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
               <div className="smart-graph-label">
                 <Tex math={drawn.latex} />
               </div>
-              <NumberLine segments={drawn.segments} width={320} parts={drawn.parts} answer={plainMath(drawn.solution)} />
-              {/* the picture already says it for an "and" (its answer line) and for no solution */}
-              {!drawn.parts?.length && drawn.segments.length > 0 && !sameWritten(drawn.latex, drawn.solution) && (
+              <NumberLine segments={drawn.segments} width={320} parts={drawn.parts} />
+              {/* the picture already says it for no solution (∅) */}
+              {drawn.segments.length > 0 && (!sameWritten(drawn.latex, drawn.solution) || drawn.interval) && (
                 <div className="smart-graph-together">
-                  together: <Tex math={drawn.solution} />
+                  {!sameWritten(drawn.latex, drawn.solution) && (
+                    <span>
+                      together: <Tex math={drawn.solution} />
+                    </span>
+                  )}
+                  {drawn.interval && (
+                    // single values ({4}) are a set, not an interval
+                    <span title="The same solution set, written as a set">
+                      {drawn.interval.includes("\\{") ? "set notation" : "interval notation"}: <Tex math={drawn.interval} />
+                    </span>
+                  )}
                 </div>
               )}
               <div className="smart-graph-foot">

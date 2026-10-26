@@ -1,110 +1,47 @@
-/** A solution set drawn on a number line, the way it's drawn in class: open
- * or closed dots, shaded segments, arrows for rays. One drawing for the app
- * (dark), printed documents (light) and LaTeX (TikZ). */
+/** A solution set on a number line, drawn by the standard convention (as in
+ * college algebra texts): one line with arrows at both ends and evenly
+ * spaced ticks (steps of 1, 2, 5, 10…); the solution set shaded in one
+ * color; an open circle where an endpoint isn't included (< >), a closed
+ * one where it is (≤ ≥); an arrowhead where the shading goes on forever;
+ * and each endpoint's value written once, exactly (4/3, not 1.33), under
+ * the line at its place. No solution is the line with nothing shaded,
+ * labeled ∅. One drawing for the app, printed pages and LaTeX (TikZ). */
 import type { NumberLineSegment } from "./mathSidecar";
 
-// ---- the overlap's color: the two parts' colors mixed, as paint (or two
-// sheets of colored glass) would — a hue between theirs, so it reads as
-// "both" at a glance. Mixed in OKLCH (perceptual: the halfway hue really
-// looks halfway), keeping the stronger color's saturation so it doesn't
-// go muddy.
-
-const toLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-const fromLinear = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
-
-function hexToOklch(hex: string): [number, number, number] {
-  const h = hex.replace("#", "");
-  const full = h.length === 3 ? [...h].map((c) => c + c).join("") : h.slice(0, 6);
-  const [r, g, b] = [0, 2, 4].map((i) => toLinear(parseInt(full.slice(i, i + 2), 16) / 255));
-  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
-  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
-  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-  const L = 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
-  const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
-  const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
-  return [L, Math.hypot(A, B), Math.atan2(B, A)];
-}
-
-function oklchToHex([L, C, H]: [number, number, number]): string {
-  // out of the screen's range: ease the saturation down until it fits
-  for (let c = C; c >= 0; c -= 0.005) {
-    const A = c * Math.cos(H), B = c * Math.sin(H);
-    const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
-    const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
-    const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
-    const rgb = [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
-    if (rgb.every((v) => v >= -0.0005 && v <= 1.0005)) {
-      return "#" + rgb.map((v) => Math.round(Math.min(1, Math.max(0, fromLinear(Math.min(1, Math.max(0, v))))) * 255).toString(16).padStart(2, "0")).join("");
-    }
-  }
-  return "#808080";
-}
-
-/** The color halfway between two (OKLCH, the shorter way round the hue
- * circle), as saturated as the stronger of them. */
-export function mixColors(a: string, b: string): string {
-  const [L1, C1, H1] = hexToOklch(a);
-  const [L2, C2, H2] = hexToOklch(b);
-  let dH = H2 - H1;
-  if (dH > Math.PI) dH -= 2 * Math.PI;
-  if (dH < -Math.PI) dH += 2 * Math.PI;
-  return oklchToHex([(L1 + L2) / 2, Math.max(C1, C2), H1 + dH / 2]);
-}
-
-/** Flat, muted colors — easy on the eyes (bright, saturated color on a dark
- * page halos for people with astigmatism): one per part, and a clearly
- * different one where parts overlap. */
 export interface NumberLinePalette {
+  /** the line, its ticks and arrows */
   axis: string;
   /** the scale's numbers */
   label: string;
-  /** the numbers at the dots */
-  tag: string;
-  /** one color per part (round again after these) */
-  shades: string[];
-  /** where parts overlap */
-  both: string;
-  /** the inside of an open dot (the page) */
+  /** an endpoint's value — part of the answer, so it stands out a little */
+  value: string;
+  /** the solution set: one color */
+  shade: string;
+  /** an "and" whose parts never meet: the parts, faint and dashed (they're
+   * the reason there's no solution, not an answer) */
+  work: string;
+  /** inside an open circle (the page) */
   hole: string;
 }
 
-/** the app's: a theme sets these (the calculator app's themes), and the
- * canvas app falls back to the muted defaults */
+/** the app's: a theme sets these (the calculator app's themes); the canvas
+ * app falls back to One Dark's */
 export const APP_PALETTE: NumberLinePalette = {
   axis: "var(--nl-axis, #4b5260)",
   label: "var(--nl-label, #8b90a0)",
-  tag: "var(--nl-tag, #c3c7d2)",
-  shades: ["var(--nl-a, #e06c75)", "var(--nl-b, #61afef)"], // One Dark's red and blue
-  both: `var(--nl-both, ${mixColors("#e06c75", "#61afef")})`, // the two, mixed: purple
+  value: "var(--nl-value, #d7dae0)",
+  shade: "var(--nl-shade, #61afef)",
+  work: "var(--nl-work, #abb2bf)",
   hole: "var(--nl-hole, #17171f)",
 };
 export const PRINT_PALETTE: NumberLinePalette = {
-  axis: "#6b7280",
+  axis: "#4b5563",
   label: "#374151",
-  tag: "#1f2937",
-  shades: ["#c0392b", "#2c6fbb"], // brick red, slate blue (for paper)
-  both: mixColors("#c0392b", "#2c6fbb"), // the two, mixed: purple
+  value: "#111827",
+  shade: "#2c6fbb",
+  work: "#6b7280",
   hole: "#ffffff",
 };
-
-/** The line cut where any part starts or stops: each stretch, and which
- * parts cover it (so it's drawn in one flat color — a part's, or the
- * overlap's). Single points are only dots. */
-function stretches(segments: NumberLineSegment[], part: (i: number) => number) {
-  const stops = [...new Set(segments.flatMap((s) => [s.lo, s.hi]).filter((v): v is number => v !== null))].sort((a, b) => a - b);
-  const edges = [-Infinity, ...stops, Infinity];
-  const out: { a: number; b: number; parts: Set<number> }[] = [];
-  for (let k = 0; k + 1 < edges.length; k++) {
-    const a = edges[k];
-    const b = edges[k + 1];
-    const mid = a === -Infinity ? (b === Infinity ? 0 : b - 1) : b === Infinity ? a + 1 : (a + b) / 2;
-    const parts = new Set(segments.flatMap((s, i) => ((s.lo ?? -Infinity) < mid && mid < (s.hi ?? Infinity) ? [part(i)] : [])));
-    if (parts.size) out.push({ a, b, parts });
-  }
-  return out;
-}
-
-const fmt = (n: number) => String(Math.round(n * 100) / 100);
 
 /** Is the combined answer just what was typed, written another way? (Then
  * there's nothing to add under the graph; z < 4 or z ≥ -6 → "together: all
@@ -112,36 +49,6 @@ const fmt = (n: number) => String(Math.round(n * 100) / 100);
 export function sameWritten(a: string, b: string): boolean {
   const plain = (s: string) => s.replace(/\\text\{([^}]*)\}/g, "$1").replace(/\\(quad|qquad|,|;|:|!| )|\s/g, "");
   return plain(a) === plain(b);
-}
-
-/** the stretch of the line to show, and its tick marks */
-function layout(segments: NumberLineSegment[]) {
-  const ends = segments.flatMap((s) => [s.lo, s.hi]).filter((v): v is number => v !== null);
-  let lo = ends.length ? Math.min(...ends) : -5;
-  let hi = ends.length ? Math.max(...ends) : 5;
-  const span = Math.max(hi - lo, 4);
-  lo = Math.floor(lo - span * 0.35);
-  hi = Math.ceil(hi + span * 0.35);
-  const step = Math.max(1, Math.ceil((hi - lo) / 12));
-  const ticks: number[] = [];
-  for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) ticks.push(t);
-  return { lo, hi, ticks };
-}
-
-/** One piece of an "and" — its own line in the picture: "3y + 7 < 2y". */
-export interface NumberLinePart {
-  /** plain text (no LaTeX) — it's drawn inside the picture */
-  label: string;
-  latex?: string;
-  segments: NumberLineSegment[];
-}
-
-export interface NumberLineExtras {
-  /** an "and" whose parts never meet: they're drawn (both on the one line,
-   * each in its own color), with "no solution (∅)" — as in class */
-  parts?: NumberLinePart[];
-  /** the answer, as plain text, for the answer line's label */
-  answer?: string;
 }
 
 /** A LaTeX answer as plain text for a label: −14 < y < −7, no solution. */
@@ -162,132 +69,211 @@ export function plainMath(latex: string): string {
     .trim();
 }
 
-const FONT = `font-family="-apple-system, Helvetica, sans-serif"`;
+/** One piece of an "and" whose parts never meet: "x < 1". */
+export interface NumberLinePart {
+  /** plain text (no LaTeX) */
+  label: string;
+  latex?: string;
+  segments: NumberLineSegment[];
+}
 
-/** One number line at height y: the axis, its ticks (numbered or not), and
- * the shading with its dots — everything a single line needs. */
-function drawLine(
-  out: string[],
-  segments: NumberLineSegment[],
-  o: { y: number; width: number; sx: (v: number) => number; ticks: number[]; palette: NumberLinePalette; numbers?: number; tagsAt?: number; part?: (i: number) => number },
-) {
-  const { y, width, sx, ticks, palette } = o;
-  const { axis, label, hole } = palette;
-  const part = o.part ?? ((i: number) => i);
-  const shade = (p: number) => palette.shades[p % palette.shades.length];
-  const group: string[] = [
+export interface NumberLineExtras {
+  /** an "and" whose parts never meet: drawn faint and dashed on the empty
+   * line, so you can see they don't */
+  parts?: NumberLinePart[];
+}
+
+/** a value as it's written — exact when it's a simple fraction (a drawing
+ * saved before the engine sent exact values) */
+function written(v: number): string {
+  if (Number.isInteger(v)) return String(v);
+  for (let q = 2; q <= 16; q++) {
+    const p = Math.round(v * q);
+    if (Math.abs(v * q - p) < 1e-9) return `${p}/${q}`;
+  }
+  return String(Math.round(v * 100) / 100);
+}
+
+/** the line's ends and ticks: evenly spaced, in steps of 1, 2, 5, 10, 20… */
+function layout(points: number[]) {
+  const min = points.length ? Math.min(...points) : -5;
+  const max = points.length ? Math.max(...points) : 5;
+  const span = Math.max(max - min, 4);
+  const raw = (span * 1.7) / 10; // about ten ticks across
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const step = Math.max(1, [1, 2, 5, 10].map((m) => m * power).find((s) => s >= raw) ?? 10 * power);
+  const lo = Math.floor((min - span * 0.35) / step) * step;
+  const hi = Math.ceil((max + span * 0.35) / step) * step;
+  const ticks: number[] = [];
+  for (let t = lo; t <= hi + 1e-9; t += step) ticks.push(Math.round(t * 1e6) / 1e6);
+  return { lo, hi, ticks };
+}
+
+/** The pieces as one solution set: overlapping or touching pieces joined
+ * (a drawing saved before "or" was graphed as a set had a piece per part —
+ * z < 4 or z ≥ −6 was two overlapping rays, with an open dot at 4). */
+function union(segments: NumberLineSegment[]): NumberLineSegment[] {
+  const lo = (s: NumberLineSegment) => s.lo ?? -Infinity;
+  const hi = (s: NumberLineSegment) => s.hi ?? Infinity;
+  const out: NumberLineSegment[] = [];
+  for (const s of [...segments].sort((a, b) => lo(a) - lo(b) || Number(b.loClosed) - Number(a.loClosed))) {
+    const last = out[out.length - 1];
+    if (last && (lo(s) < hi(last) || (lo(s) === hi(last) && (last.hiClosed || s.loClosed)))) {
+      if (lo(s) === lo(last)) last.loClosed ||= s.loClosed;
+      if (hi(s) > hi(last)) Object.assign(last, { hi: s.hi, hiClosed: s.hiClosed, hiLabel: s.hiLabel });
+      else if (hi(s) === hi(last)) last.hiClosed ||= s.hiClosed;
+    } else out.push({ ...s });
+  }
+  return out;
+}
+
+/** each endpoint's value, once: where it is and how it's written */
+function endpoints(segments: NumberLineSegment[]): { at: number; text: string }[] {
+  const out = new Map<number, string>();
+  for (const s of segments) {
+    if (s.lo !== null && !out.has(s.lo)) out.set(s.lo, s.loLabel ?? written(s.lo));
+    if (s.hi !== null && !out.has(s.hi)) out.set(s.hi, s.hiLabel ?? written(s.hi));
+  }
+  return [...out].map(([at, text]) => ({ at, text }));
+}
+
+const FONT = `font-family="-apple-system, Helvetica, sans-serif"`;
+const escapeXml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const FRACTION = /^(−?)(\d+)\/(\d+)$/;
+const isFraction = (text: string) => FRACTION.test(text.replace(/-/g, "−"));
+
+/** A value under the line, at x: a fraction stacked (4 over 3, its sign
+ * beside it), anything else as written. */
+function valueText(x: number, y: number, text: string, color: string, strong: boolean): string {
+  const t = text.replace(/-/g, "−");
+  const weight = strong ? ` font-weight="600"` : "";
+  const m = t.match(FRACTION);
+  if (!m) return `<text x="${x}" y="${y}" font-size="10" text-anchor="middle"${weight} style="fill:${color}" ${FONT}>${escapeXml(t)}</text>`;
+  const [, sign, n, d] = m;
+  const half = (Math.max(n.length, d.length) * 5.6) / 2 + 1;
+  return (
+    (sign ? `<text x="${x - half - 1}" y="${y + 4}" font-size="10" text-anchor="end"${weight} style="fill:${color}" ${FONT}>−</text>` : "") +
+    `<text x="${x}" y="${y - 1}" font-size="9" text-anchor="middle"${weight} style="fill:${color}" ${FONT}>${n}</text>` +
+    `<line x1="${x - half}" x2="${x + half}" y1="${y + 2}" y2="${y + 2}" style="stroke:${color}" stroke-width="1"/>` +
+    `<text x="${x}" y="${y + 11}" font-size="9" text-anchor="middle"${weight} style="fill:${color}" ${FONT}>${d}</text>`
+  );
+}
+
+/** The number line as SVG markup (only numbers and the engine's value
+ * labels go in, escaped, so it's safe to inline). */
+export function numberLineSvg(given: NumberLineSegment[], width = 300, palette: NumberLinePalette = APP_PALETTE, extras: NumberLineExtras = {}): string {
+  const segments = union(given);
+  const parts = extras.parts ?? [];
+  const work = segments.length ? [] : parts.flatMap((p) => p.segments);
+  const marked = endpoints([...segments, ...work]);
+  const { lo, hi, ticks } = layout(marked.map((e) => e.at));
+  const pad = 16;
+  const sx = (v: number) => pad + ((v - lo) / (hi - lo)) * (width - pad * 2);
+  const empty = !segments.length;
+  const y = empty ? 34 : 22; // room above for "no solution (∅)"
+  const labelsAt = y + 18;
+  const height = labelsAt + (marked.some((e) => isFraction(e.text)) ? 16 : 6);
+  const { axis, label, shade, hole } = palette;
+  const out: string[] = [];
+
+  // the line: arrows at both ends (it goes on forever), ticks, their numbers
+  out.push(
     `<line x1="4" x2="${width - 4}" y1="${y}" y2="${y}" style="stroke:${axis}" stroke-width="1.5"/>`,
     `<polygon points="${width - 2},${y} ${width - 9},${y - 4} ${width - 9},${y + 4}" style="fill:${axis}"/>`,
     `<polygon points="2,${y} 9,${y - 4} 9,${y + 4}" style="fill:${axis}"/>`,
-  ];
+  );
+  // about how wide a value is written (a fraction: its wider number)
+  const wide = (text: string) => {
+    const m = text.replace(/-/g, "−").match(FRACTION);
+    return m ? Math.max(m[2].length, m[3].length) * 5.6 + (m[1] ? 7 : 0) : text.length * 6;
+  };
+  const crowded = (t: number) => marked.some((e) => Math.abs(sx(e.at) - sx(t)) < (wide(e.text) + wide(String(t))) / 2 + 3);
   for (const t of ticks) {
-    group.push(`<line x1="${sx(t)}" x2="${sx(t)}" y1="${y - 5}" y2="${y + 5}" style="stroke:${axis}"/>`);
-    if (o.numbers !== undefined) group.push(`<text x="${sx(t)}" y="${o.numbers}" font-size="9" style="fill:${label}" text-anchor="middle" ${FONT}>${t}</text>`);
+    out.push(`<line x1="${sx(t)}" x2="${sx(t)}" y1="${y - 5}" y2="${y + 5}" style="stroke:${axis}"/>`);
+    // an endpoint's own value goes here instead (or a neighbor's is too close)
+    if (!crowded(t)) out.push(`<text x="${sx(t)}" y="${labelsAt}" font-size="9" text-anchor="middle" style="fill:${label}" ${FONT}>${String(t).replace(/-/g, "−")}</text>`);
   }
-  // the shading: each stretch one flat color — a part's, or the overlap's
-  for (const { a, b, parts } of stretches(segments, part)) {
-    const c = parts.size > 1 ? palette.both : shade([...parts][0]);
-    const x1 = a === -Infinity ? 6 : sx(a);
-    const x2 = b === Infinity ? width - 6 : sx(b);
-    group.push(`<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" style="stroke:${c}" stroke-width="5"/>`);
-    if (a === -Infinity) group.push(`<polygon points="1,${y} 11,${y - 6} 11,${y + 6}" style="fill:${c}"/>`);
-    if (b === Infinity) group.push(`<polygon points="${width - 1},${y} ${width - 11},${y - 6} ${width - 11},${y + 6}" style="fill:${c}"/>`);
+  // each endpoint: a tick at its place (it may fall between) and its value
+  for (const e of marked) {
+    if (!ticks.includes(e.at)) out.push(`<line x1="${sx(e.at)}" x2="${sx(e.at)}" y1="${y - 5}" y2="${y + 5}" style="stroke:${axis}"/>`);
+    out.push(valueText(sx(e.at), labelsAt, e.text, empty ? label : palette.value, !empty));
   }
-  // then the dots, solid, on top — each in its part's color
-  const tags = new Set<number>();
-  segments.forEach((s, i) => {
-    const c = shade(part(i));
-    const dot = (v: number, closed: boolean) => {
-      group.push(`<circle cx="${sx(v)}" cy="${y}" r="5" style="fill:${closed ? c : hole};stroke:${c}" stroke-width="2"/>`);
-      tags.add(v);
-    };
-    if (s.lo !== null && s.lo === s.hi) dot(s.lo, true);
-    else {
-      if (s.lo !== null) dot(s.lo, s.loClosed);
-      if (s.hi !== null) dot(s.hi, s.hiClosed);
+
+  const ray = (left: boolean, color: string, size: number) =>
+    left
+      ? `<polygon points="1,${y} ${1 + size * 1.7},${y - size} ${1 + size * 1.7},${y + size}" style="fill:${color}"/>`
+      : `<polygon points="${width - 1},${y} ${width - 1 - size * 1.7},${y - size} ${width - 1 - size * 1.7},${y + size}" style="fill:${color}"/>`;
+  const dot = (v: number, closed: boolean, color: string, r: number) =>
+    `<circle cx="${sx(v)}" cy="${y}" r="${r}" style="fill:${closed ? color : hole};stroke:${color}" stroke-width="2"/>`;
+  const draw = (segs: NumberLineSegment[], color: string, faint: boolean) => {
+    for (const s of segs) {
+      if (s.lo !== null && s.lo === s.hi) continue; // a single value: just its dot
+      const x1 = s.lo === null ? 6 : sx(s.lo);
+      const x2 = s.hi === null ? width - 6 : sx(s.hi);
+      out.push(`<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" style="stroke:${color}" stroke-width="${faint ? 3 : 5}"${faint ? ` stroke-dasharray="6 4"` : ""}/>`);
+      if (s.lo === null) out.push(ray(true, color, faint ? 4 : 6));
+      if (s.hi === null) out.push(ray(false, color, faint ? 4 : 6));
     }
-  });
-  for (const v of tags) group.push(`<text x="${sx(v)}" y="${o.tagsAt ?? y - 10}" font-size="10" style="fill:${palette.tag}" text-anchor="middle" ${FONT}>${fmt(v)}</text>`);
-  out.push(group.join(""));
+    // the circles on top (an open one stays open)
+    for (const s of segs) {
+      if (s.lo !== null && s.lo === s.hi) out.push(dot(s.lo, true, color, faint ? 4 : 5));
+      else {
+        if (s.lo !== null) out.push(dot(s.lo, s.loClosed, color, faint ? 4 : 5));
+        if (s.hi !== null) out.push(dot(s.hi, s.hiClosed, color, faint ? 4 : 5));
+      }
+    }
+  };
+  draw(work, palette.work, true);
+  draw(segments, shade, false);
+  if (empty) out.push(`<text x="${width / 2}" y="13" font-size="11" text-anchor="middle" style="fill:${label}" ${FONT}>no solution (∅)</text>`);
+  return `<svg class="number-line" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${out.join("")}</svg>`;
 }
 
-const svg = (width: number, height: number, body: string[]) =>
-  `<svg class="number-line" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${body.join("")}</svg>`;
-
-/** The number line as SVG markup (only numbers go in, so it's safe to
- * inline). No solution is the line with nothing shaded,
- * labeled ∅ — or, for an "and" whose parts never meet (x < 3 and x > 6),
- * both parts on it in their own colors, so you can see they don't. */
-export function numberLineSvg(segments: NumberLineSegment[], width = 300, palette: NumberLinePalette = APP_PALETTE, extras: NumberLineExtras = {}): string {
-  const parts = extras.parts ?? [];
-  const { lo, hi, ticks } = layout([...segments, ...parts.flatMap((p) => p.segments)]);
-  const pad = 16;
-  const sx = (v: number) => pad + ((v - lo) / (hi - lo)) * (width - pad * 2);
-  const out: string[] = [];
-  const none = `no solution (∅)`;
-
-  if (parts.length && !segments.length) {
-    const drawn = parts.flatMap((p) => p.segments);
-    const owner = parts.flatMap((p, i) => p.segments.map(() => i));
-    const y = 40;
-    out.push(`<text x="${width / 2}" y="13" font-size="11" style="fill:${palette.label}" text-anchor="middle" ${FONT}>${none}</text>`);
-    drawLine(out, drawn, { y, width, sx, ticks, palette, numbers: y + 16, tagsAt: y - 10, part: (i) => owner[i] });
-    return svg(width, y + 22, out);
-  }
-
-  if (!segments.length) {
-    // no solution: the line, with nothing on it
-    drawLine(out, [], { y: 30, width, sx, ticks, palette, numbers: 46 });
-    out.push(`<text x="${width / 2}" y="14" font-size="11" style="fill:${palette.label}" text-anchor="middle" ${FONT}>${none}</text>`);
-    return svg(width, 54, out);
-  }
-
-  const y = 26;
-  drawLine(out, segments, { y, width, sx, ticks, palette, numbers: y + 16, tagsAt: y - 10 });
-  return svg(width, 48, out);
+/** a value as LaTeX: −14/5 → -\frac{14}{5}, √2 → \sqrt{2} */
+function valueTex(text: string): string {
+  return text
+    .replace(/−/g, "-")
+    .replace(/^(-?)(\d+)\/(\d+)$/, "$1\\frac{$2}{$3}")
+    .replace(/√(\d+|\([^)]*\))/g, (_all, r: string) => `\\sqrt{${r.replace(/^\(|\)$/g, "")}}`);
 }
 
 /** The same picture for a LaTeX document (TikZ). */
-export function numberLineTikz(segments: NumberLineSegment[], extras: NumberLineExtras = {}): string {
+export function numberLineTikz(given: NumberLineSegment[], extras: NumberLineExtras = {}): string {
+  const segments = union(given);
   const parts = extras.parts ?? [];
-  const { lo, hi, ticks } = layout([...segments, ...parts.flatMap((p) => p.segments)]);
+  const work = segments.length ? [] : parts.flatMap((p) => p.segments);
+  const marked = endpoints([...segments, ...work]);
+  const { lo, hi, ticks } = layout(marked.map((e) => e.at));
   const scale = Math.min(1, 12 / (hi - lo)); // about 12 cm wide
-  const out = [`\\begin{tikzpicture}[x=${scale.toFixed(3)}cm]`];
-  // the print palette's colors (xcolor), so paper matches the app's scheme
   const hex = (c: string) => c.replace("#", "").toUpperCase();
-  out.push(
-    `\\definecolor{nlA}{HTML}{${hex(PRINT_PALETTE.shades[0])}}\\definecolor{nlB}{HTML}{${hex(PRINT_PALETTE.shades[1])}}\\definecolor{nlBoth}{HTML}{${hex(PRINT_PALETTE.both)}}`,
-  );
-  const named = (p: number) => (p % 2 === 0 ? "nlA" : "nlB");
-  const line = (segs: NumberLineSegment[], y: number, part: (i: number) => number, numbers: boolean) => {
-    out.push(`\\draw[<->, gray] (${lo - 0.4},${y}) -- (${hi + 0.4},${y});`);
-    for (const t of ticks) out.push(`\\draw[gray] (${t},${y + 0.12}) -- (${t},${y - 0.12})${numbers ? ` node[below, font=\\scriptsize] {$${t}$}` : ""};`);
-    for (const { a, b, parts } of stretches(segs, part)) {
-      const c = parts.size > 1 ? "nlBoth" : named([...parts][0]);
-      const arrows = a === -Infinity && b === Infinity ? "<->" : a === -Infinity ? "<-" : b === Infinity ? "->" : "-";
-      out.push(`\\draw[line width=2.2pt, ${c}, ${arrows}] (${a === -Infinity ? lo - 0.4 : a},${y}) -- (${b === Infinity ? hi + 0.4 : b},${y});`);
+  const out = [`\\begin{tikzpicture}[x=${scale.toFixed(3)}cm]`, `\\definecolor{nlShade}{HTML}{${hex(PRINT_PALETTE.shade)}}`];
+  out.push(`\\draw[<->, gray] (${lo - 0.4},0) -- (${hi + 0.4},0);`);
+  const crowded = (t: number) => marked.some((e) => Math.abs(e.at - t) * scale < 0.45);
+  for (const t of ticks) out.push(`\\draw[gray] (${t},0.12) -- (${t},-0.12)${crowded(t) ? "" : ` node[below, font=\\scriptsize] {$${t}$}`};`);
+  for (const e of marked) {
+    const value = segments.length ? `\\boldsymbol{${valueTex(e.text)}}` : valueTex(e.text);
+    out.push(`\\draw[gray] (${e.at},0.12) -- (${e.at},-0.12) node[below, font=\\scriptsize] {$${value}$};`);
+  }
+  const draw = (segs: NumberLineSegment[], color: string, faint: boolean) => {
+    for (const s of segs) {
+      if (s.lo !== null && s.lo === s.hi) continue;
+      const arrows = s.lo === null && s.hi === null ? "<->" : s.lo === null ? "<-" : s.hi === null ? "->" : "-";
+      out.push(`\\draw[line width=${faint ? "1.2pt, dashed" : "2.2pt"}, ${color}, ${arrows}] (${s.lo ?? lo - 0.4},0) -- (${s.hi ?? hi + 0.4},0);`);
     }
-    // dots after all the shading (an open circle stays open)
-    segs.forEach((s, i) => {
-      const c = named(part(i));
-      const dot = (x: number, closed: boolean) => out.push(closed ? `\\fill[${c}] (${x},${y}) circle (3pt);` : `\\draw[thick, ${c}, fill=white] (${x},${y}) circle (3pt);`);
+    // the circles after the shading (an open circle stays open)
+    for (const s of segs) {
+      const r = faint ? "2.4pt" : "3pt";
+      const dot = (x: number, closed: boolean) => out.push(closed ? `\\fill[${color}] (${x},0) circle (${r});` : `\\draw[thick, ${color}, fill=white] (${x},0) circle (${r});`);
       if (s.lo !== null && s.lo === s.hi) dot(s.lo, true);
       else {
         if (s.lo !== null) dot(s.lo, s.loClosed);
         if (s.hi !== null) dot(s.hi, s.hiClosed);
       }
-    });
+    }
   };
-  if (parts.length && !segments.length) {
-    // the parts on the one line, each in its color — and no solution
-    const drawn = parts.flatMap((p) => p.segments);
-    const owner = parts.flatMap((p, i) => p.segments.map(() => i));
-    line(drawn, 0, (i) => owner[i], true);
-    out.push(`\\node[above, font=\\small] at (${(lo + hi) / 2},0.3) {no solution ($\\varnothing$)};`);
-  } else {
-    line(segments, 0, (i) => i, true);
-    if (!segments.length) out.push(`\\node[above, font=\\small] at (${(lo + hi) / 2},0.2) {no solution ($\\varnothing$)};`);
-  }
+  draw(work, "gray!60", true);
+  draw(segments, "nlShade", false);
+  if (!segments.length) out.push(`\\node[above, font=\\small] at (${(lo + hi) / 2},0.25) {no solution ($\\varnothing$)};`);
   out.push("\\end{tikzpicture}");
   return out.join("\n");
 }

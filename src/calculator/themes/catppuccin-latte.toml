@@ -25,5 +25,4 @@ purple = "#8839ef"
 pink   = "#ea76cb"
 
 [numberline]
-first   = "#d20f39"
-second  = "#1e66f5"
+solution = "#1e66f5"

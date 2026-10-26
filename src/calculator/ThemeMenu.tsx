@@ -8,7 +8,7 @@ import type { ThemeProblem } from "./CalculatorApp";
 function Swatch({ theme }: { theme: Theme }) {
   return (
     <span className="theme-swatch" style={{ background: theme.ui.surface, borderColor: theme.ui.border }}>
-      {[theme.numberline.first, theme.numberline.second, theme.numberline.overlap, theme.colors.orange].map((c, i) => (
+      {[theme.numberline.solution, theme.colors.red, theme.colors.green, theme.colors.orange].map((c, i) => (
         <i key={i} style={{ background: c }} />
       ))}
     </span>

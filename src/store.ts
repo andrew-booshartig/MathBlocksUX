@@ -275,7 +275,9 @@ export interface NumberLineGraph {
   solution: string;
   variable: string;
   segments: NumberLineSegment[];
-  /** an "and": each part on its own line above the answer's (as on paper) */
+  /** the solution set in interval notation: (2, ∞), (−∞, 1) ∪ (5, ∞) */
+  interval?: string;
+  /** an "and" whose parts never meet: the parts, drawn faint */
   parts?: { label: string; latex?: string; segments: NumberLineSegment[] }[];
 }
 

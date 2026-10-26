@@ -21,6 +21,9 @@ export interface NumberLineSegment {
   hi: number | null;
   loClosed: boolean;
   hiClosed: boolean;
+  /** each end exactly, as it's written under the line: "4/3", "−7", "√2" */
+  loLabel?: string;
+  hiLabel?: string;
 }
 
 export interface SolveResult {

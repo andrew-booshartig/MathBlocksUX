@@ -154,7 +154,7 @@ def test_compound_inequalities():
 def test_a_solved_inequality_comes_with_a_number_line():
     r = handle({"op": "worklines", "problem": r"-3<2x+1<7", "lines": [r"-4<2x<6", r"-2<x<3"], "syntax": "latex"})
     assert "numberline" not in r["lines"][0]  # only on the finished line
-    assert r["lines"][1]["numberline"] == [{"lo": -2.0, "hi": 3.0, "loClosed": False, "hiClosed": False}]
+    assert r["lines"][1]["numberline"] == [{"lo": -2.0, "hi": 3.0, "loClosed": False, "hiClosed": False, "loLabel": "-2", "hiLabel": "3"}]
     r = handle({"op": "worklines", "problem": r"x<1\text{ or }x>-5", "lines": [r"\text{all real numbers}"], "syntax": "latex"})
     assert r["lines"][0]["numberline"] == [{"lo": None, "hi": None, "loClosed": False, "hiClosed": False}]
 

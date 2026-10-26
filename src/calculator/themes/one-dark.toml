@@ -42,6 +42,4 @@ purple = "purple"
 pink   = "purple"
 
 [numberline]               # the Graph tab's number line
-first   = "red"            # the first part of an "and" / "or"
-second  = "blue"           # the second part — pick two that mix well
-overlap = "mix"           # where they overlap: the two mixed, like paint (or name a color)
+solution = "blue"          # the solution set — one color, as in a textbook

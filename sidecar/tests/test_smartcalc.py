@@ -157,10 +157,15 @@ def test_compound_inequalities_on_the_line():
     assert run("3<5\\text{ and }2>4")["result_latex"] == "\\text{false}"
 
 
+def bare(segments):
+    """segments without their exact labels (checked on their own)"""
+    return [{k: v for k, v in s.items() if not k.endswith("Label")} for s in segments]
+
+
 def test_inequality_answers_come_with_a_number_line():
-    line = run("2x-3<-7\\text{ or }2x-3>7")["numberline"]
+    line = bare(run("2x-3<-7\\text{ or }2x-3>7")["numberline"])
     assert line == [{"lo": None, "hi": -2.0, "loClosed": False, "hiClosed": False}, {"lo": 5.0, "hi": None, "loClosed": False, "hiClosed": False}]
-    assert run("-3\\le2x+1<7")["numberline"] == [{"lo": -2.0, "hi": 3.0, "loClosed": True, "hiClosed": False}]
+    assert bare(run("-3\\le2x+1<7")["numberline"]) == [{"lo": -2.0, "hi": 3.0, "loClosed": True, "hiClosed": False}]
     assert run("2x+1=7")["numberline"] is None  # equations: no number line
 
 
@@ -172,8 +177,11 @@ def test_graph_tab_number_line():
     # an "or" is drawn as written: each part with its own dots (they may overlap)
     both = handle({"op": "numberline", "latex": "z<4\\,\\text{ or }\\,z\\ge-6"})
     assert both["solution_latex"] == "\\text{all real numbers}"
-    assert both["segments"] == [{"lo": None, "hi": 4.0, "loClosed": False, "hiClosed": False}, {"lo": -6.0, "hi": None, "loClosed": True, "hiClosed": False}]
-    assert handle({"op": "numberline", "latex": "x=4"})["segments"] == [{"lo": 4.0, "hi": 4.0, "loClosed": True, "hiClosed": True}]
+    # graphed as its solution set, as a textbook does: the whole line — no
+    # open dot at 4 (4 is a solution: it's ≥ −6)
+    assert both["segments"] == [{"lo": None, "hi": None, "loClosed": False, "hiClosed": False}]
+    assert both["interval_latex"] in ("(-\\infty, \\infty)", "\\left(-\\infty, \\infty\\right)")
+    assert handle({"op": "numberline", "latex": "x=4"})["segments"] == [{"lo": 4.0, "hi": 4.0, "loClosed": True, "hiClosed": True, "loLabel": "4", "hiLabel": "4"}]
     assert handle({"op": "numberline", "latex": "x<1\\text{ and }x>5"})["segments"] == []
     for bad, message in [("x+y<3", "one letter"), ("2+3", "inequality"), ("", "type what")]:
         with pytest.raises(MathInputError, match=message):
@@ -191,7 +199,19 @@ def test_an_and_with_no_solution_draws_its_parts():
     # parts that meet: just the overlap — the answer — on the line
     r = handle({"op": "numberline", "latex": "3y+7<2y\\text{ and }4y+8>-48"})
     assert "parts" not in r
-    assert r["segments"] == [{"lo": -14.0, "hi": -7.0, "loClosed": False, "hiClosed": False}]
+    assert bare(r["segments"]) == [{"lo": -14.0, "hi": -7.0, "loClosed": False, "hiClosed": False}]
     # a chain that works is already one piece; an "or" keeps its own look
     assert "parts" not in handle({"op": "numberline", "latex": "-2\\le x<3"})
     assert "parts" not in handle({"op": "numberline", "latex": "x<-2\\text{ or }x>5"})
+
+
+def test_number_line_ends_are_exact_and_come_in_interval_notation():
+    from engine import handle
+
+    r = handle({"op": "numberline", "latex": "x>\\frac{4}{3}\\text{ and }x>2"})
+    assert r["interval_latex"] == "\\left(2, \\infty\\right)" and r["segments"][0]["loLabel"] == "2"
+    r = handle({"op": "numberline", "latex": "x>-\\frac{14}{5}"})
+    assert r["segments"][0]["loLabel"] == "-14/5"  # exact, not −2.8
+    assert handle({"op": "numberline", "latex": "x^2<2"})["segments"][0]["hiLabel"] == "√2"
+    assert "\\cup" in handle({"op": "numberline", "latex": "x<1\\text{ or }x>5"})["interval_latex"]
+    assert handle({"op": "numberline", "latex": "x<1\\text{ and }x>5"})["interval_latex"] == "\\varnothing"

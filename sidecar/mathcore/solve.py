@@ -435,9 +435,23 @@ def solve_equation(text, vars_, target, method):
 # ------------------------------------------------------------ inequality
 
 
+def point_label(v) -> str:
+    """An endpoint as it's written under a number line: −7, 4/3, √2 —
+    exact, never 1.33."""
+    if v.is_Float:
+        v = sympy.nsimplify(v)
+    if v.is_Integer:
+        return str(v)
+    if v.is_Rational:
+        return f"{v.p}/{v.q}"
+    pretty = sympy.pretty(v, use_unicode=True)
+    return pretty if "\n" not in pretty else str(v)
+
+
 def set_to_segments(s) -> list[dict]:
     """A sympy set as number-line pieces: {lo, hi, loClosed, hiClosed}
-    with None for ±∞; single points have lo == hi."""
+    with None for ±∞; single points have lo == hi. Each end also comes
+    exact, as it's written (loLabel, hiLabel)."""
     if s is S.EmptySet:
         return []
     if s is S.Reals:
@@ -447,14 +461,29 @@ def set_to_segments(s) -> list[dict]:
     if isinstance(s, Interval):
         lo = None if s.start == -sympy.oo else num(s.start)
         hi = None if s.end == sympy.oo else num(s.end)
-        return [{"lo": lo, "hi": hi, "loClosed": not s.left_open and lo is not None, "hiClosed": not s.right_open and hi is not None}]
+        seg = {"lo": lo, "hi": hi, "loClosed": not s.left_open and lo is not None, "hiClosed": not s.right_open and hi is not None}
+        if lo is not None:
+            seg["loLabel"] = point_label(s.start)
+        if hi is not None:
+            seg["hiLabel"] = point_label(s.end)
+        return [seg]
     if s.is_FiniteSet:
-        return [{"lo": num(p), "hi": num(p), "loClosed": True, "hiClosed": True} for p in s]
+        return [{"lo": num(p), "hi": num(p), "loClosed": True, "hiClosed": True, "loLabel": point_label(p), "hiLabel": point_label(p)} for p in s]
     return []
 
 
+def interval_tex(s) -> str:
+    """A solution set in interval notation: (2, ∞), (−∞, 1) ∪ (5, ∞), ∅ —
+    or, for single values, set notation {4}."""
+    if s is S.Reals:
+        return "(-\\infty, \\infty)"
+    if s is S.EmptySet:
+        return "\\varnothing"
+    return tex(s)
+
+
 def _finish_inequality(result, v, solset, steps):
-    interval = tex(solset) if solset not in (S.Reals, S.EmptySet) else ("(-\\infty, \\infty)" if solset is S.Reals else "\\varnothing")
+    interval = interval_tex(solset)
     answer = set_relational_tex(v, solset)
     steps.append(step("Solution in interval notation", interval))
     result.update(steps=steps, solution_latex=answer, interval_latex=interval, numberline=set_to_segments(solset))

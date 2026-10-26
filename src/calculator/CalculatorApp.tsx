@@ -111,7 +111,7 @@ export default function CalculatorApp() {
       <header className="calc-app-bar">
         <span className="calc-app-title">Calculator</span>
         <button className={`calc-app-theme${menuOpen ? " is-on" : ""}`} title="Theme" onClick={() => setMenuOpen((open) => !open)}>
-          <span className="calc-app-swatch" style={{ background: `linear-gradient(135deg, ${theme.numberline.first} 0 50%, ${theme.numberline.second} 50% 100%)` }} />
+          <span className="calc-app-swatch" style={{ background: `linear-gradient(135deg, ${theme.ui.raised} 0 50%, ${theme.numberline.solution} 50% 100%)` }} />
           {theme.name}
         </button>
       </header>

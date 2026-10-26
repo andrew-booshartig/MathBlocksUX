@@ -23,7 +23,7 @@ import dataclasses
 from .lang.ast import Const, Group, Mul, Num, Sym
 from .calculator import _fmt_decimal, op_calc
 from .parsing import MathInputError, build_scope, parse, tex
-from .solve import op_solve, set_relational_tex, set_to_segments
+from .solve import interval_tex, op_solve, set_relational_tex, set_to_segments
 from .transform import op_transform
 
 # how the engines above read text: 2*x, x^2, one "=" for equals
@@ -470,6 +470,7 @@ def op_numberline(req: dict) -> dict:
             "variable": "x",
             "latex": latex,
             "solution_latex": "\\text{all real numbers}" if everything else "\\text{no solution}",
+            "interval_latex": "(-\\infty, \\infty)" if everything else "\\varnothing",
             "segments": [{"lo": None, "hi": None, "loClosed": False, "hiClosed": False}] if everything else [],
         }
     try:
@@ -486,17 +487,15 @@ def op_numberline(req: dict) -> dict:
         solutions = line.solution_set(v)
     except Exception:  # noqa: BLE001
         raise MathInputError("I can't draw that one on a number line") from None
-    # drawn the way it's written: each part of an "or" with its own open or
-    # closed dots (z < 4 or z ≥ -6 is two overlapping rays — that's why
-    # it's every number), an "and" (or a chain) as the overlap
-    if line.alts and line.joiner == "or":
-        segments = [seg for part in line.alts for seg in set_to_segments(part.solution_set(v))]
-    else:
-        segments = set_to_segments(solutions)
+    # the solution set, as a textbook graphs it: an "or" is everything
+    # either part allows (z < 4 or z ≥ −6 is the whole line — no dot at 4,
+    # which is a solution), an "and" (or a chain) the overlap
+    segments = set_to_segments(solutions)
     out = {
         "variable": str(v),
         "latex": line.latex(),
         "solution_latex": set_relational_tex(v, solutions),
+        "interval_latex": interval_tex(solutions),
         "segments": segments,
     }
     # an "and" whose parts never meet (x < 3 and x > 6; 5 < x < 1): there's

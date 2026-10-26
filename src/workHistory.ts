@@ -3,7 +3,7 @@
  * browser) or a LaTeX file — for handing in a whole assignment. */
 import katex from "katex";
 import { mathRequest } from "./mathSidecar";
-import { PRINT_PALETTE, numberLineSvg, numberLineTikz, plainMath, sameWritten } from "./numberLine";
+import { PRINT_PALETTE, numberLineSvg, numberLineTikz, sameWritten } from "./numberLine";
 import { type AssignmentInfo, type CarriedNotes, type LanguageSpec, type Note, type NoteStyle, type WorkHistoryEntry, newId } from "./store";
 
 type Parts = [string, string, string] | null;
@@ -112,7 +112,7 @@ export function documentHtml(title: string, entries: WorkHistoryEntry[]): string
       // graphed while it was being worked — so it's part of the answer (not graphed: no graph)
       e.graph
         ? `
-    <figure class="graph">${numberLineSvg(e.graph.segments, 420, PRINT_PALETTE, { parts: e.graph.parts, answer: plainMath(e.graph.solution) })}<figcaption>${math(e.graph.latex)}${
+    <figure class="graph">${numberLineSvg(e.graph.segments, 420, PRINT_PALETTE, { parts: e.graph.parts })}<figcaption>${math(e.graph.latex)}${
           e.graph.parts?.length || !e.graph.segments.length || sameWritten(e.graph.latex, e.graph.solution) ? "" : ` <span class="together">— together: ${math(e.graph.solution)}</span>`
         }</figcaption></figure>`
         : ""
@@ -333,7 +333,7 @@ export function assignmentHtml(info: AssignmentInfo, entries: WorkHistoryEntry[]
   <section class="problem">
     <div class="ask"><span class="n">#${escapeHtml(e.number?.trim() || String(i + 1))}</span> ${escapeHtml(instructions)}${e.solved ? "" : ' <span class="open">not finished</span>'}</div>
     <div class="work">${workTable(work, rowNotes.map(noteHtml), answer ? { latex: answer, note: noteHtml(answerNote) } : undefined)}</div>${o.graphs && e.graph ? `
-    <figure class="graph">${numberLineSvg(e.graph.segments, 420, PRINT_PALETTE, { parts: e.graph.parts, answer: plainMath(e.graph.solution) })}</figure>` : ""}${under ? `
+    <figure class="graph">${numberLineSvg(e.graph.segments, 420, PRINT_PALETTE, { parts: e.graph.parts })}</figure>` : ""}${under ? `
     <div class="note-under">${under}</div>` : ""}
   </section>`;
     })

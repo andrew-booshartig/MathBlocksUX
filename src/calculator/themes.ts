@@ -1,10 +1,9 @@
 /** Calculator themes — every one, built in or yours, is a small TOML file
  * (see themes/one-dark.toml, the documented template). A theme names the
  * window's levels of background and text, eight accent hues, and the
- * number line's three colors; the app turns them into the CSS variables
+ * number line's solution color; the app turns them into the CSS variables
  * App.css's colors fall back from (scripts/tokenize-colors.py). */
 import { parse, TomlError } from "smol-toml";
-import { mixColors } from "../numberLine";
 
 const BUILT_IN_FILES = import.meta.glob("./themes/*.toml", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
@@ -12,7 +11,10 @@ export const DEFAULT_THEME = "One Dark";
 
 const UI_KEYS = ["shadow", "background", "surface", "overlay", "raised", "border", "faint", "muted", "subtle", "text"] as const;
 const HUES = ["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink"] as const;
-const LINE_KEYS = ["first", "second", "overlap"] as const;
+const LINE_KEYS = ["solution"] as const;
+// a number line once had a color per part and one where they overlapped;
+// it's one color now (the standard), and themes written then still read
+const OLD_LINE_KEYS = ["first", "second", "overlap"];
 
 /** the CSS variable each UI level fills (App.css's roles, darkest first) */
 const UI_TOKEN: Record<(typeof UI_KEYS)[number], string> = {
@@ -35,8 +37,6 @@ export interface Theme {
   ui: Record<(typeof UI_KEYS)[number], string>;
   colors: Record<(typeof HUES)[number], string>;
   numberline: Record<(typeof LINE_KEYS)[number], string>;
-  /** its overlap color is first and second mixed (not one it named) */
-  overlapIsMix?: boolean;
   /** where it came from: built in, or the file in your themes folder */
   source: "built-in" | string;
   /** the TOML it was read from */
@@ -81,8 +81,8 @@ export function readTheme(text: string, source: string, known: Theme[] = []): Th
     if (!HEX.test(resolved)) throw new ThemeError(`${where} = "${value}" isn't a color — use "#rrggbb" or a name from [palette]`);
     return resolved.toLowerCase();
   };
-  const section = <K extends string>(key: string, keys: readonly K[], fallback: Record<K, string> | undefined): Record<K, string> => {
-    const t = table(data[key], key) ?? {};
+  const section = <K extends string>(key: string, keys: readonly K[], fallback: Record<K, string> | undefined, given?: Table): Record<K, string> => {
+    const t = given ?? table(data[key], key) ?? {};
     const out = {} as Record<K, string>;
     for (const k of keys) {
       if (t[k] !== undefined) out[k] = color(`${key}.${k}`, t[k]);
@@ -95,23 +95,14 @@ export function readTheme(text: string, source: string, known: Theme[] = []): Th
 
   const ui = section("ui", UI_KEYS, base?.ui);
   const colors = section("colors", HUES, base?.colors);
-  // the number line: the theme's red and blue unless it says — and where
-  // they overlap, the two mixed (unless the theme names a color)
-  const lineTable = table(data.numberline, "numberline") ?? {};
-  const saysMix = lineTable.overlap === "mix";
-  if (saysMix) delete lineTable.overlap; // a word, not a color: handled here
-  const leftOut = !saysMix && lineTable.overlap === undefined;
-  // left out: the theme it extends decides — a color it named, or the mix
-  const namedByBase = leftOut && base && !base.overlapIsMix ? base.numberline.overlap : undefined;
-  const numberline = section("numberline", LINE_KEYS, {
-    first: base?.numberline.first ?? colors.red,
-    second: base?.numberline.second ?? colors.blue,
-    overlap: namedByBase ?? "#000000", // (replaced below when it's the mix)
-  });
-  const overlapIsMix = saysMix || (leftOut && !namedByBase);
-  if (overlapIsMix) numberline.overlap = mixColors(numberline.first, numberline.second);
+  // the number line: the solution set in one color — the theme's blue
+  // unless it says (an older theme's first color stands in for it)
+  const lineTable = { ...(table(data.numberline, "numberline") ?? {}) };
+  if (lineTable.solution === undefined && lineTable.first !== undefined) lineTable.solution = lineTable.first;
+  for (const old of OLD_LINE_KEYS) delete lineTable[old];
+  const numberline = section("numberline", LINE_KEYS, { solution: base?.numberline.solution ?? colors.blue }, lineTable);
   const appearance = data.appearance === "light" || data.appearance === "dark" ? data.appearance : (base?.appearance ?? "dark");
-  return { name, author: typeof data.author === "string" ? data.author : undefined, appearance, ui, colors, numberline, overlapIsMix, source, text };
+  return { name, author: typeof data.author === "string" ? data.author : undefined, appearance, ui, colors, numberline, source, text };
 }
 
 function table(value: unknown, key: string): Table | undefined {
@@ -133,12 +124,11 @@ export function themeVariables(theme: Theme): Record<string, string> {
   const vars: Record<string, string> = {};
   for (const k of UI_KEYS) vars[UI_TOKEN[k]] = theme.ui[k];
   for (const h of HUES) vars[`--t-${h}`] = theme.colors[h];
-  vars["--nl-a"] = theme.numberline.first;
-  vars["--nl-b"] = theme.numberline.second;
-  vars["--nl-both"] = theme.numberline.overlap;
+  vars["--nl-shade"] = theme.numberline.solution;
   vars["--nl-axis"] = theme.ui.faint;
   vars["--nl-label"] = theme.ui.muted;
-  vars["--nl-tag"] = theme.ui.subtle;
+  vars["--nl-value"] = theme.ui.text;
+  vars["--nl-work"] = theme.ui.subtle;
   vars["--nl-hole"] = theme.ui.surface;
   return vars;
 }
@@ -166,7 +156,7 @@ export function newThemeText(from: Theme, name: string): string {
     ...HUES.map((k) => `${k.padEnd(6)} = "${from.colors[k]}"`),
     ``,
     `[numberline]`,
-    ...LINE_KEYS.map((k) => (k === "overlap" && from.overlapIsMix ? `overlap = "mix"   # the two above, mixed — or a color` : `${k.padEnd(7)} = "${from.numberline[k]}"`)),
+    `solution = "${from.numberline.solution}"   # the solution set, in one color`,
     ``,
   ];
   return lines.join("\n");
