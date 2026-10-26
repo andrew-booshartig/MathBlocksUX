@@ -20,7 +20,7 @@ import AssignmentTab from "./AssignmentTab";
 import ReferenceTab, { type CalcLine } from "./ReferenceTab";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
-import { NumberLine, StepList, Tex } from "../ui";
+import { NumberLine, RichText, StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
 import { plainMath, sameWritten } from "../numberLine";
 import { nameOf } from "../calcNames";
@@ -64,6 +64,15 @@ function severalTerms(latex: string): boolean {
   return /[+\-=<>]|\\(le|ge|ne|pm)\b/.test(flat.replace(/^\s*-/, ""));
 }
 const MAX_ENTRIES = 60;
+
+/** s = 9 km/h → its number, to edit right in the line (and the rest:
+ * the units, as typed and as shown) — null when it isn't one number */
+function numberIn(latex: string, shown: string) {
+  const typed = /^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)(?![\d.])(.*)$/.exec(latex);
+  const seen = /^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)(?![\d.])(.*)$/.exec(shown);
+  if (!typed || !seen) return null;
+  return { name: typed[1], number: typed[2], rest: typed[3], restShown: seen[3] };
+}
 
 /** locked 🔒: Clear all keeps it — variables you set are, unless you unlock them */
 const isLocked = (e: SmartEntry) => e.locked ?? e.result.kind === "assign";
@@ -126,6 +135,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const tape = useRef<HTMLDivElement>(null);
   /** the variables list is open (it folds away — type a name to see its value) */
   const [varsOpen, setVarsOpen] = useState(false);
+  /** writing the note at the top */
+  const [noting, setNoting] = useState(false);
   /** the unit key's list */
   const [unitsOpen, setUnitsOpen] = useState(false);
   const varsPanel = useRef<HTMLDivElement>(null);
@@ -344,6 +355,48 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const answerName = (r?: SmartResult | null) =>
     // an answer with real units (72 L) says them already
     r && !/\\mathrm\{/.test(r.result_latex ?? "") ? nameOf(r.dims, variableNames) : null;
+
+  /** the number in a variable's line, being typed: it's worked out as you
+   * type, and everything using the variable follows */
+  const [numbers, setNumbers] = useState<Record<string, string>>({});
+  const retyping = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const retype = (entry: SmartEntry, latex: string) => {
+    clearTimeout(retyping.current);
+    retyping.current = setTimeout(async () => {
+      try {
+        const result = await mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, vars });
+        if (result.kind !== "assign" || !result.name) return;
+        save((current()?.smart ?? []).map((e) => (e.id === entry.id ? { ...e, latex, result } : e)));
+        if (result.value_latex) setVariable(result.name, result.value_latex, result.params);
+      } catch {
+        // half a number (−, 2.) — wait for the rest
+      }
+    }, 120);
+  };
+  const numberField = (entry: SmartEntry, parts: NonNullable<ReturnType<typeof numberIn>>) => {
+    const text = numbers[entry.id] ?? parts.number;
+    return (
+      <span className="smart-in is-editable">
+        <Tex math={`${nameTex(parts.name)} =`} />
+        <input
+          className="smart-num nodrag"
+          value={text}
+          inputMode="decimal"
+          spellCheck={false}
+          title="Type a new number — everything using it follows"
+          style={{ width: `${Math.max(2, text.length) + 1.2}ch` }}
+          onChange={(e) => {
+            const next = e.target.value;
+            setNumbers((n) => ({ ...n, [entry.id]: next }));
+            if (/^-?\d+(\.\d+)?$/.test(next)) retype(entry, `${parts.name}=${next}${parts.rest}`);
+          }}
+          onBlur={() => setNumbers(({ [entry.id]: _, ...rest }) => rest)}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        />
+        {parts.restShown.trim() && <Tex math={parts.restShown} />}
+      </span>
+    );
+  };
 
   /** 🔒 / 🔓 on a history line: locked lines stay through Clear all */
   const lockButton = (entry: SmartEntry) => {
@@ -767,6 +820,11 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                 Variables · {allVariables.length} {varsOpen ? "▴" : "▾"}
               </button>
             )}
+            {data.smartNote === undefined && !noting && (
+              <button className="smart-vars-action" title="A note at the top — what this problem is, in plain words" onClick={() => setNoting(true)}>
+                + Note
+              </button>
+            )}
             {wiped ? (
               <button className="smart-vars-action is-undo" title="Bring back what was just cleared" onClick={undoClear}>
                 ↶ Undo
@@ -811,6 +869,28 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           </div>
           {/* the history: a fixed-height window that scrolls, so the calculator
               stays one size however many answers there are */}
+          {(data.smartNote !== undefined || noting) && (
+            <div className="smart-note-box">
+              {noting ? (
+                <textarea
+                  className="smart-note-edit nodrag"
+                  autoFocus
+                  defaultValue={data.smartNote ?? ""}
+                  placeholder="What's this problem? In your own words…"
+                  onBlur={(e) => {
+                    const text = e.currentTarget.value.trim();
+                    updateBlock(data.id, { smartNote: text || undefined });
+                    setNoting(false);
+                  }}
+                  onKeyDown={(e) => e.key === "Escape" && e.currentTarget.blur()}
+                />
+              ) : (
+                <button className="smart-note-text" title="Click to edit the note" onClick={() => setNoting(true)}>
+                  <RichText text={data.smartNote ?? ""} />
+                </button>
+              )}
+            </div>
+          )}
           <div className={`smart-tape${tapeScrolled ? " is-scrolled" : ""}`} ref={tape} onScroll={(e) => setTapeScrolled(e.currentTarget.scrollTop > 4)}>
             {!entries.length && <div className="smart-empty">Type math — numbers, x, an equation, or r = 4 to save a value — and press Enter.</div>}
             {entries.map((entry) => {
@@ -835,9 +915,14 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                       </button>
                     </span>
                     {labelView(entry)}
-                    <button className="smart-in" title="Put this in the line (at the cursor)" onPointerDown={(e) => e.preventDefault()} onClick={() => reuse(entry.latex)}>
-                      <Tex math={r.input_latex} />
-                    </button>
+                    {/* s = [9] km/h: the number edits right here */}
+                    {numberIn(entry.latex, r.input_latex) ? (
+                      numberField(entry, numberIn(entry.latex, r.input_latex)!)
+                    ) : (
+                      <button className="smart-in" title="Put this in the line (at the cursor)" onPointerDown={(e) => e.preventDefault()} onClick={() => reuse(entry.latex)}>
+                        <Tex math={r.input_latex} />
+                      </button>
+                    )}
                     {worked && <Tex math={`\\Rightarrow ${worked}`} />}
                     {lockButton(entry)}
                     <span className="smart-assign-actions">

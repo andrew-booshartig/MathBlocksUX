@@ -6106,3 +6106,67 @@ math-field {
 .unit-picker-unit:hover {
   border-color: var(--t-teal, #55d6be);
 }
+
+/* s = [9] km/h: the number in a variable's line, typed over in place */
+.smart-in.is-editable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+
+.smart-num {
+  font: inherit;
+  font-family: "KaTeX_Main", "Times New Roman", serif;
+  font-size: 1.21em;
+  text-align: center;
+  color: var(--t-teal, #55d6be);
+  background: var(--t-bg1, #0e0e12);
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 6px;
+  padding: 0 4px;
+  outline: none;
+}
+
+.smart-num:hover,
+.smart-num:focus {
+  border-color: var(--t-teal, #55d6be);
+}
+
+/* the note at the top: what this problem is, in plain words */
+.smart-note-box {
+  margin-bottom: 6px;
+}
+
+.smart-note-text {
+  width: 100%;
+  text-align: left;
+  background: var(--t-bg2, #17171f);
+  border: none;
+  border-left: 3px solid var(--t-blue, #61afef);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--t-subtle, #a9a9bd);
+  font: inherit;
+  font-family: -apple-system, "Inter", Helvetica, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  cursor: text;
+}
+
+.smart-note-edit {
+  width: 100%;
+  min-height: 90px;
+  box-sizing: border-box;
+  resize: vertical;
+  background: var(--t-bg1, #0e0e12);
+  border: 1px solid var(--t-teal, #55d6be);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--t-text, #e8e8f0);
+  font-family: -apple-system, "Inter", Helvetica, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.5;
+  outline: none;
+}

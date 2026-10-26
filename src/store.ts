@@ -434,6 +434,8 @@ export interface CalculatorBlockData extends BlockBase {
   smart?: SmartEntry[];
   /** which of its sections is showing */
   smartTab?: "calc" | "work" | "graph" | "assignment" | "reference";
+  /** a note at the top of Calculate: what this problem is, in plain words */
+  smartNote?: string;
   /** the Reference tab's lookup: 9 km/h → m/s */
   smartReference?: ReferenceLookup;
   /** its own scratch values ("r = 4" on the line; LaTeX, as typed) — only
