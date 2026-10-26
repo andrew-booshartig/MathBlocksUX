@@ -724,6 +724,12 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                     {worked && <Tex math={`\\Rightarrow ${worked}`} />}
                     <span className="smart-saved">saved</span>
                     <span className="smart-assign-actions">
+                      {/* d = r·t with units: the values put in, the units cancelling */}
+                      {!!r.steps?.length && (
+                        <button className="chip" onClick={() => setOpenSteps(openSteps === entry.id ? null : entry.id)}>
+                          {openSteps === entry.id ? "Hide steps" : "Steps"}
+                        </button>
+                      )}
                       <button className="chip is-handoff" title="Copy this — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
                         ⧉ Copy
                       </button>
@@ -731,6 +737,11 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                         → Add to Work
                       </button>
                     </span>
+                    {openSteps === entry.id && r.steps && (
+                      <div className="smart-assign-steps">
+                        <StepList steps={r.steps} />
+                      </div>
+                    )}
                   </div>
                 );
               }

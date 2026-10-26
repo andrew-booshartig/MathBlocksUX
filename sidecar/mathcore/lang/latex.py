@@ -85,7 +85,10 @@ def _tokens(text: str) -> list[tuple[str, str]]:
 
 class LatexReader:
     def __init__(self, text: str):
-        text = clean(text)
+        from .. import units  # here: units reads through parsing, which lang uses too
+
+        self.units = units
+        text = units.mark(clean(text))
         if "\\placeholder" in text:
             raise Incomplete("there's an empty box ▢ to fill in")
         self.toks = _tokens(text)
@@ -405,6 +408,9 @@ class LatexReader:
                     return self.function(_OPERATORNAME[name])
                 if name == "e":
                     return Const("e")
+                unit = self.units.find(name)
+                if t == "mathrm" and unit:  # a unit: 5 m, 10 s
+                    return Sym(self.units.symbol(unit).name)
                 return Sym(name)
         raise self.unexpected(self.i - 1)
 
@@ -449,6 +455,19 @@ def _starts_with_digit(tex: str) -> bool:
     return tex[:1].isdigit() or tex.startswith("-")
 
 
+def _unit(node) -> bool:
+    """a unit (m), a unit to a power (m²) or over others (m/s)"""
+    if isinstance(node, Sym):
+        return node.name.startswith("unit_")
+    if isinstance(node, Pow):
+        return _unit(node.base)
+    if isinstance(node, Div):
+        return _unit(node.num)
+    if isinstance(node, Mul):
+        return all(_unit(f) for f in node.factors)
+    return False
+
+
 class LatexWriter:
     def write(self, node: Node) -> str:
         return self.w(node)
@@ -461,6 +480,8 @@ class LatexWriter:
         if isinstance(node, Num):
             return node.text
         if isinstance(node, Sym):
+            if node.name.startswith("unit_"):  # a unit, upright: \mathrm{m}
+                return f"\\mathrm{{{node.name[5:]}}}"
             base, _, sub = node.name.partition("_")
             if len(base) > 1:
                 base = f"\\mathrm{{{base}}}"
@@ -496,6 +517,8 @@ class LatexWriter:
                 elif _starts_with_digit(text) or (out[-1:].isdigit() and _number_fraction(f)):
                     # 2·3 must keep its dot — and 2·⅓ too, or it reads as 2⅓
                     out += " \\cdot " + text
+                elif _unit(f) and not _unit(node.factors[k - 1]):  # a number and its unit: 5 m, 5 m/s
+                    out += "\\," + text
                 else:  # implicit, or a code language's * — written the way it's read
                     sep = " " if re.search(r"\\[A-Za-z]+$", out) else ""
                     out += sep + text

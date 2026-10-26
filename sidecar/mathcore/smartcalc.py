@@ -23,6 +23,7 @@ import dataclasses
 from .lang.ast import Const, Group, Mul, Num, Sym
 from .calculator import _fmt_decimal, op_calc
 from .parsing import MathInputError, build_scope, parse, step, tex
+from . import units
 from .arith import arithmetic_steps
 from .solve import interval_tex, op_solve, set_relational_tex, set_to_segments
 from .transform import op_transform
@@ -92,7 +93,7 @@ def _calls(text: str, functions) -> str:
 
 def _names(text: str) -> list[str]:
     """Every name a line uses — letters, variables and functions."""
-    return sorted(set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text)) - _WORDS)
+    return sorted({n for n in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text) if not n.startswith("unit_")} - _WORDS)
 
 
 def _function_def(node):
@@ -109,6 +110,24 @@ def _function_def(node):
     return None
 
 
+def _unit_steps(node, vars_: dict) -> list[dict] | None:
+    """Numbers with units worked by hand — the values put in (d = r·t →
+    5 m/s · 10 s), the numbers multiplied, the units cancelled."""
+    used = [n for n in _names(lang.write(node, "plain", PLAIN)) if n in vars_]
+    try:
+        if used:
+            # a value with units as it's written: 5 m/s, not (5 m)/s
+            values = {n: lang.parse(tex(sympy.sympify(vars_[n])), "latex") for n in used}
+            node = _fill_in(node, values)
+        worked = units.steps(lang.to_sympy(node, evaluate=False), lambda n: tex(n, keep_order=True))
+    except Exception:  # noqa: BLE001 — then just the answer
+        return None
+    if not worked:
+        return None
+    start = [step("Put in the values", lang.latex(node))] if used else [step("Start", lang.latex(node))]
+    return start + worked
+
+
 def _plain(latex: str) -> str:
     return lang.write(lang.parse(latex, "latex"), "plain", PLAIN)
 
@@ -122,7 +141,7 @@ def _letters(text: str, vars_: dict | None = None, names: list | None = None) ->
     # x < -2 or x > 5: the words split the parts too
     for side in re.split(r"<=|>=|<|>|=|\bor\b|\band\b", text):
         if side.strip():
-            names |= {str(s) for s in parse(side, scope).free_symbols}
+            names |= {str(s) for s in units.without_units(parse(side, scope).free_symbols)}
     return sorted(names, key=lambda n: (n not in ("x", "y"), n != "x", n))
 
 
@@ -182,7 +201,7 @@ def resolve_variables(items: list[dict], context: dict | None = None) -> dict:
                 out[name] = {"error": "can't read this value yet"}
                 del pending[name]
                 continue
-            free = {str(s) for s in value.free_symbols} - set(params)
+            free = {str(s) for s in units.without_units(value.free_symbols)} - set(params)
             del pending[name]
             progress = True
             if free:
@@ -193,6 +212,15 @@ def resolve_variables(items: list[dict], context: dict | None = None) -> dict:
                 body = sympy.simplify(value)
                 known[f"{name}({','.join(params)})"] = str(body)
                 out[name] = {"plain": str(body), "latex": tex(body), "decimal": None, "params": params}
+                continue
+            if units.has_units(value):  # 5 m/s: a value with its units
+                try:
+                    q = op_calc({"expr": str(value)})
+                except MathInputError as exc:
+                    out[name] = {"error": str(exc)}
+                    continue
+                known[name] = q["exact_plain"]
+                out[name] = {"plain": q["exact_plain"], "latex": q["exact_latex"], "decimal": q["decimal"] if q["exact_differs"] else None}
                 continue
             exact = sympy.nsimplify(value) if value.is_Float else sympy.simplify(value)
             numeric = complex(sympy.N(exact, 15))
@@ -274,7 +302,9 @@ def op_smart(req: dict) -> dict:
         right = lang.write(node.parts[1], "plain", PLAIN)
         if name not in _letters(right) and not _letters(right, vars_):
             value = op_calc({"expr": right, "angle": req.get("angle", "deg"), "vars": vars_})
+            worked = _unit_steps(node.parts[1], vars_) if units.has_units(sympy.sympify(value["exact_plain"])) else None
             return {
+                **({"steps": worked} if worked else {}),
                 **base,
                 "kind": "assign",
                 "name": name,
@@ -298,6 +328,13 @@ def op_smart(req: dict) -> dict:
             truth = bool(check(sympy.simplify(sides[0] - sides[1]), 0))
             return {**base, "kind": "truth", "result_latex": "\\text{true}" if truth else "\\text{false}"}
         value = op_calc({"expr": text, "angle": req.get("angle", "deg"), "vars": vars_})
+        if units.has_units(sympy.sympify(value["exact_plain"])):
+            # numbers with units: the numbers, then the units (cancelling)
+            out = {**base, "kind": "value", "result_latex": value["exact_latex"], "decimal": value["decimal"] if value["exact_differs"] else None, "ans": value["exact_latex"]}
+            worked = _unit_steps(node, vars_)
+            if worked:
+                out["steps"] = worked
+            return out
         out = {
             **base,
             "kind": "value",

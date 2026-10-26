@@ -4699,6 +4699,10 @@ math-field {
   padding: 0 6px;
 }
 
+.smart-assign-steps {
+  flex-basis: 100%;
+}
+
 /* a saved variable on the tape: one slim line */
 .smart-entry.is-assign {
   flex-direction: row;

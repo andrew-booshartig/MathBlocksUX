@@ -335,6 +335,10 @@ def tex(expr, *, keep_order: bool = False) -> str:
     for unevaluated step-by-step expressions."""
     if isinstance(expr, (list, tuple)):
         return ", ".join(tex(e, keep_order=keep_order) for e in expr)
+    from . import units  # here: units uses this module
+
+    if units.has_units(expr):
+        return units.latex(expr, number_tex=lambda n: tex(n, keep_order=keep_order))
     if keep_order:
         text = sympy.latex(expr, order="none")
         # subtracting/adding a negative reads as "- (-4)", not "- -4"
