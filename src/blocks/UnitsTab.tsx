@@ -10,6 +10,7 @@ import type { UnitsWork } from "../store";
 import { useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { RichText, Tex } from "../ui";
+import UnitAsk from "./UnitAsk";
 import UnitMap from "./UnitMap";
 
 interface Line {
@@ -97,17 +98,23 @@ export default function UnitsTab({ work, update }: { work: UnitsWork; update: (p
     return work.from ?? "";
   };
 
-  const view = work.view ?? "map";
+  const view = work.view ?? "ask";
   const views = (
     <div className="units-views" role="tablist">
-      {(["map", "practice"] as const).map((v) => (
+      {(["ask", "map", "practice"] as const).map((v) => (
         <button key={v} role="tab" className={`smart-graph-mode${view === v ? " is-on" : ""}`} onClick={() => update({ view: v })}>
-          {v === "map" ? "Map" : "Practice"}
+          {{ ask: "Ask", map: "Map", practice: "Practice" }[v]}
         </button>
       ))}
-      <span className="units-views-hint">{view === "map" ? "look up · convert · see the path" : "convert it yourself — each step checked"}</span>
     </div>
   );
+  if (view === "ask")
+    return (
+      <div className="units-tab is-ask">
+        {views}
+        <UnitAsk work={work} update={update} />
+      </div>
+    );
   if (view === "map")
     return (
       <div className="units-tab">

@@ -39,3 +39,37 @@ def test_the_map():
     kinds = {k["kind"]: k for k in handle({"op": "unitmap"})["kinds"]}
     assert kinds["length"]["chains"][0] == {"units": ["km", "m", "cm", "mm"], "links": ["1000", "100", "10"]}
     assert {"a": "in", "b": "cm", "n": "2.54"} in kinds["length"]["bridges"]
+
+
+def ask(text, **req):
+    return handle({"op": "unitask", "text": text, **req})
+
+
+def test_ask_in_plain_words_with_the_amount_after_every_step():
+    r = ask("9 km/h to m/s")
+    assert [w["latex"] for w in r["walk"]] == [
+        r"9\,\frac{\mathrm{km}}{\mathrm{h}}",
+        r"9000\,\frac{\mathrm{m}}{\mathrm{h}}",
+        r"150\,\frac{\mathrm{m}}{\mathrm{min}}",
+        r"2.5\,\frac{\mathrm{m}}{\mathrm{s}}",
+    ]
+    assert "on the bottom" in r["walk"][2]["note"]
+    assert ask("3 3/8 in to mm")["from_latex"] == r"3\frac{3}{8}\,\mathrm{in}"  # as typed
+    assert ask("3 3/8 in in mm")["result_latex"] == r"85.725\,\mathrm{mm}"  # "in" is inches, then the word
+    assert ask("mm in a mile")["result_latex"] == r"1609344\,\mathrm{mm}"
+    assert ask("how many seconds in 10 weeks")["result_latex"] == r"6048000\,\mathrm{s}"
+    assert ask("9 kilometers per hour to meters per second")["result_latex"] == r"2.5\,\frac{\mathrm{m}}{\mathrm{s}}"
+    assert "isn't one fixed length" in ask("seconds in 10 years")["note"]
+
+
+def test_ask_defines_your_own_unit():
+    r = ask("1 k = 1000 m")
+    assert r["kind"] == "define" and r["symbol"] == "k" and r["equals"] == r"1000\,m"
+
+
+def test_the_linter_names_what_it_sees():
+    lint = handle({"op": "unitlint", "text": "9 km/h to kg"})
+    assert [(p["unit"], p["name"]) for p in lint["pieces"]] == [("km", "kilometer"), ("h", "hour"), ("kg", "kilogram")]
+    assert lint["from_kind"] == "speed" and lint["to_kind"] == "mass" and lint["fits"] is False
+    assert handle({"op": "unitlint", "text": "9 kmh to m/s"})["pieces"][0] == {"text": "kmh", "unknown": True}
+    assert handle({"op": "unitlint", "text": "9 km/h to"})["from_kind"] == "speed"  # still typing

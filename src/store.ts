@@ -322,8 +322,10 @@ export interface WorkHistoryEntry {
  *  practice (converting it yourself, a line at a time, each checked) — and
  *  units of your own. */
 export interface UnitsWork {
-  /** the map, or practice */
-  view?: "map" | "practice";
+  /** ask (questions in plain words, with steps), the map, or practice */
+  view?: "ask" | "map" | "practice";
+  /** Ask's questions and their answers, oldest first */
+  asks?: { id: string; text: string; answer?: unknown; error?: string }[];
   /** the amount, as typed (LaTeX): 9\,\frac{km}{h} */
   from?: string;
   /** the units it's going into: \frac{m}{s} */

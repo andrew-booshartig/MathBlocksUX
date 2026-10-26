@@ -62,6 +62,8 @@ LIBRARY = [
     _u("h", "hour", "hours", "time", "3600"),
     _u("day", "day", "days", "time", "86400"),
     _u("wk", "week", "weeks", "time", "604800"),
+    # a year is 365 or 366 days; this is the average, 365.25 (science's year)
+    _u("yr", "year", "years", "time", "31557600"),
     _u("mg", "milligram", "milligrams", "mass", "1/1000000"),
     _u("g", "gram", "grams", "mass", "1/1000"),
     _u("kg", "kilogram", "kilograms", "mass", "1"),
@@ -79,7 +81,7 @@ LIBRARY = [
 ]
 UNITS = {u.symbol: u for u in LIBRARY}
 # more ways to write a few
-ALIASES = {"sec": "s", "hr": "h", "hrs": "h", "lbs": "lb", "days": "day"}
+ALIASES = {"sec": "s", "hr": "h", "hrs": "h", "lbs": "lb", "days": "day", "y": "yr", "ml": "mL", "l": "L"}
 
 _PREFIX = "unit_"
 

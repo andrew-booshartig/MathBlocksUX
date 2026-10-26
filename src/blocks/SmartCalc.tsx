@@ -538,7 +538,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   }
 
   return (
-    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" ? " is-assignment" : ""}`} ref={root}>
+    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" ? " is-assignment" : tab === "units" && (data.smartUnits?.view ?? "ask") === "ask" ? " is-units-ask" : ""}`} ref={root}>
       {tabs}
 
       {tab === "graph" && (
