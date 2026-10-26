@@ -16,7 +16,10 @@ const SAVE = "__calculator__";
 const SETTINGS = "__settings__";
 const CALC_ID = "calculator";
 /** a named workspace's file (any name works — km/h to m/s too) */
-const wsFile = (name: string | null) => (name === null ? SAVE : `ws-${encodeURIComponent(name)}`);
+const wsFile = (name: string | null) => (name === null ? SAVE : `ws-${encodeName(name)}`);
+/** every character a filename could trip on, as %XX — the apostrophe in
+ * Dante's too (encodeURIComponent leaves ' ! ( ) * as they are) */
+const encodeName = (name: string) => encodeURIComponent(name).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 
 export interface ThemeProblem {
   file: string;
