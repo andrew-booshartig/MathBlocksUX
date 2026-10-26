@@ -318,6 +318,27 @@ export interface WorkHistoryEntry {
   note?: Note;
 }
 
+/** The Units tab: converting an amount — 9 km/h into m/s — your way, a
+ *  line at a time (each checked), and units of your own. */
+export interface UnitsWork {
+  /** the amount, as typed (LaTeX): 9\,\frac{km}{h} */
+  from?: string;
+  /** the units it's going into: \frac{m}{s} */
+  to?: string;
+  lines?: string[];
+  /** your own units — 1 bag = 50 lb — used everywhere in the calculator */
+  mine?: MyUnit[];
+}
+
+export interface MyUnit {
+  id: string;
+  /** what it's written as: bag */
+  symbol: string;
+  name?: string;
+  /** how much one is, with a library unit (LaTeX): 50\,lb */
+  equals: string;
+}
+
 /** A note on an assignment, and how it looks printed. */
 export interface Note {
   text: string;
@@ -422,7 +443,7 @@ export interface CalculatorBlockData extends BlockBase {
   /** the smart calculator's history (pretty math in, answers out) */
   smart?: SmartEntry[];
   /** which of its sections is showing */
-  smartTab?: "calc" | "work" | "graph" | "assignment";
+  smartTab?: "calc" | "work" | "graph" | "assignment" | "units";
   /** its own scratch values ("r = 4" on the line; LaTeX, as typed) — only
    * this calculator sees them, and AC / Next problem wipe them. With
    * `params` it's a function: f(x) = x² + 1 */
@@ -432,6 +453,8 @@ export interface CalculatorBlockData extends BlockBase {
   smartPlot?: { mode?: "numberline" | "xy" | "xyz"; drawn?: NumberLineGraph };
   /** its Work section: the same data as a Show-your-work block */
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
+  /** its Units tab: a conversion worked a line at a time, and your own units */
+  smartUnits?: UnitsWork;
   ti?: TIState;
   /** the TI layout's extra-keys strip (fractions, powers…); on unless turned off */
   tiExtras?: boolean;

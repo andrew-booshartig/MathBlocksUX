@@ -17,6 +17,7 @@ import {
 } from "../store";
 import { WorkPad } from "./WorkBlockNode";
 import AssignmentTab from "./AssignmentTab";
+import UnitsTab from "./UnitsTab";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { NumberLine, StepList, Tex } from "../ui";
@@ -78,6 +79,7 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "work", label: "Work" },
   { value: "graph", label: "Graph" },
   { value: "assignment", label: "Assignment" },
+  { value: "units", label: "Units" },
 ];
 
 /** the same drawing (by what it shows — saved canvases come back as copies) */
@@ -146,7 +148,9 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     .map(([key, value]) => ({ ...splitKey(key), value }))
     .filter((g) => !variables.some((v) => v.name === g.name));
   const items = [...globalItems, ...localItems];
-  const { result: resolved } = useLiveMath<{ values: Record<string, VarValue> }>(items.length ? { op: "smartvars", vars: items } : null, 150);
+  /** your own units (the Units tab's: 1 bag = 50 lb) — they work everywhere here */
+  const myUnits = useMemo(() => (data.smartUnits?.mine ?? []).map(({ symbol, name, equals }) => ({ symbol, name, equals })), [data.smartUnits?.mine]);
+  const { result: resolved } = useLiveMath<{ values: Record<string, VarValue> }>(items.length ? { op: "smartvars", vars: items, units: myUnits } : null, 150);
   const values = useMemo(() => resolved?.values ?? {}, [resolved]);
   /** what the engines get: r → its value, and f(x) → its body */
   const vars = useMemo(() => {
@@ -233,7 +237,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   };
 
   // a quiet preview of the answer while typing
-  const { result: preview } = useLiveMath<SmartResult>(draft.trim() ? { op: "smart", latex: draft, angle: data.angle, ans, vars } : null, 250);
+  const { result: preview } = useLiveMath<SmartResult>(draft.trim() ? { op: "smart", latex: draft, angle: data.angle, ans, vars, units: myUnits } : null, 250);
 
   useEffect(() => {
     tape.current?.scrollTo({ top: tape.current.scrollHeight });
@@ -276,7 +280,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   /** Work out a line — or redo an earlier one (another action, or because a
    * variable it uses changed). */
   const run = (latex: string, action?: SmartAction, replace?: string, useVars = vars) =>
-    mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, action, vars: useVars }).then(
+    mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, action, vars: useVars, units: myUnits }).then(
       (result) => {
         setError(null);
         const list = current()?.smart ?? [];
@@ -632,6 +636,10 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
             setTimeout(() => graphField.current?.focus(), 60);
           }}
         />
+      )}
+
+      {tab === "units" && (
+        <UnitsTab work={data.smartUnits ?? {}} update={(patch) => updateBlock(data.id, { smartUnits: { ...(current()?.smartUnits ?? {}), ...patch } })} />
       )}
 
       {tab === "assignment" && (

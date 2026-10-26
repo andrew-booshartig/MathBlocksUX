@@ -134,6 +134,9 @@ def mark(latex: str) -> str:
             return f"\\,\\frac{{\\mathrm{{{found[0].symbol}}}}}{{\\mathrm{{{found[1].symbol}}}}}"
         return f"\\,\\mathrm{{{found[0].symbol}}}"
 
+    # the math field turns the letters min and sec into the functions \min
+    # and \sec (minimum, secant) — as units (no brackets after) they're letters
+    latex = re.sub(r"\\(min|sec)(?![A-Za-z])(?!\s*(?:\(|\\left))", r"\1", latex)
     return _AFTER_NUMBER.sub(swap, latex)
 
 
@@ -421,3 +424,113 @@ def steps(raw, number_tex) -> list[dict] | None:
     # the answer itself (worked out on its own, so this always agrees)
     out.append(step("So", latex(normalize(sympy.simplify(raw)), number_tex)))
     return out
+
+
+def crossed_tex(raw) -> str | None:
+    """A line that multiplies by conversion fractions, with what cancels
+    crossed out: 9000 · 1/60 · m·h/(h·min). None when nothing cancels."""
+    pairs = _factors(raw)
+    found = [(f, p) for f, p in pairs if is_unit(f)]
+    crossed = {b for b, _ in found if any(p > 0 for bb, p in found if bb == b) and any(p < 0 for bb, p in found if bb == b)}
+    if not crossed:
+        return None
+    from .parsing import tex  # here: parsing reads units
+
+    numbers = [(f, p) for f, p in pairs if not is_unit(f) and sympy.simplify(f) != 1]
+    shown = " \\cdot ".join(tex(f) if p == 1 else f"\\frac{{1}}{{{tex(f)}}}" for f, p in numbers)
+    return f"{shown} \\cdot {_unit_tex(found, crossed)}" if shown else _unit_tex(found, crossed)
+
+
+# ------------------------------------------------------------- relationships
+
+# the facts conversions are built from: (bigger, smaller) — each "1 bigger =
+# n smaller", n from the library's sizes (so they're exact)
+RELATIONS = [
+    ("km", "m"), ("m", "cm"), ("cm", "mm"), ("in", "cm"), ("ft", "in"), ("yd", "ft"), ("mi", "ft"), ("mi", "km"),
+    ("min", "s"), ("h", "min"), ("h", "s"), ("day", "h"), ("wk", "day"),
+    ("kg", "g"), ("g", "mg"), ("lb", "oz"), ("lb", "kg"),
+    ("L", "mL"), ("gal", "qt"), ("qt", "pt"), ("pt", "cup"), ("cup", "tbsp"), ("tbsp", "tsp"), ("gal", "L"),
+]
+
+
+def relations() -> list[dict]:
+    out = []
+    pairs = list(RELATIONS) + [(u.symbol, u.defined_by) for u in LIBRARY if getattr(u, "defined_by", None)]
+    for a, b in pairs:
+        if a not in UNITS or b not in UNITS:
+            continue
+        ratio = sympy.nsimplify(UNITS[a].size / UNITS[b].size)
+        from .parsing import tex as _tex  # here: parsing reads units
+
+        # a short decimal stays one (2.54, not 127/50) — no thousands
+        # commas: these go into lines as typed math
+        def tex(r, _tex=_tex):
+            nice = _nice(r)
+            return _tex(r) if nice.startswith("≈") else nice.replace(",", "")
+
+        out.append(
+            {
+                "a": a,
+                "b": b,
+                "kind": UNITS[a].kind,
+                "n_latex": tex(ratio),
+                # the two fractions, each worth 1
+                "over_a": f"\\frac{{{tex(ratio)}\\,\\mathrm{{{b}}}}}{{1\\,\\mathrm{{{a}}}}}",
+                "over_b": f"\\frac{{1\\,\\mathrm{{{a}}}}}{{{tex(ratio)}\\,\\mathrm{{{b}}}}}",
+                "fact": f"1\\,\\mathrm{{{a}}} = {tex(ratio)}\\,\\mathrm{{{b}}}",
+                "custom": bool(getattr(UNITS[a], "defined_by", None)),
+            }
+        )
+    return out
+
+
+# ------------------------------------------------------------- your own units
+
+
+@dataclass(frozen=True)
+class CustomUnit(Unit):
+    #: the unit it's defined by (1 bag = 50 lb → lb)
+    defined_by: str = ""
+
+
+class extra:
+    """Your own units for one request: [{symbol, name?, plural?, equals}]
+    — 1 bag = 50 lb is {symbol: "bag", equals: "50\\,lb"}. Each is a size of
+    a library unit, so it converts and cancels like the rest."""
+
+    def __init__(self, defs):
+        self.defs = defs or []
+        self.added: list[str] = []
+
+    def __enter__(self):
+        from . import lang  # here: lang reads units
+
+        for d in self.defs:
+            sym = str(d.get("symbol") or "").strip()
+            if not sym or not sym.isalpha() or sym in UNITS:
+                continue
+            try:
+                value = sympy.simplify(lang.to_sympy(lang.parse(str(d.get("equals") or ""), "latex")))
+            except Exception:  # noqa: BLE001 — a definition that doesn't read is skipped
+                continue
+            number, unit_part = split(value)
+            if unit_part == 1 or not number.is_number or number <= 0:
+                continue
+            base = _first(unit_part)
+            dim = dimension(unit_part)
+            kind = next((k for k, (dd, _) in _KINDS.items() if dd == dim), None)
+            if kind is None:
+                continue
+            name = str(d.get("name") or sym).strip()
+            unit = CustomUnit(sym, name, str(d.get("plural") or name + "s").strip(), kind, dim, sympy.nsimplify(number) * size(unit_part), base)
+            UNITS[sym] = unit
+            LIBRARY.append(unit)
+            self.added.append(sym)
+        return self
+
+    def __exit__(self, *_):
+        for sym in self.added:
+            unit = UNITS.pop(sym, None)
+            if unit in LIBRARY:
+                LIBRARY.remove(unit)
+        return False
