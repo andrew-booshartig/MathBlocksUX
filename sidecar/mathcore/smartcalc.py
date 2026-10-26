@@ -512,13 +512,16 @@ def op_numberline(req: dict) -> dict:
         "interval_latex": interval_tex(solutions),
         "segments": segments,
     }
-    # an "and" whose parts never meet (x < 3 and x > 6; 5 < x < 1): there's
-    # no answer to shade, so the parts themselves are drawn — both on the
-    # one line, the way it's done in class — with "no solution" beside them
-    if line.alts and line.joiner == "and" and not segments:
-        out["parts"] = [
-            {"label": _readable(part.node), "latex": lang.latex(part.node), "segments": set_to_segments(part.solution_set(v))} for part in line.alts
-        ]
+    # a compound whose answer hides its parts — an "or" whose parts overlap
+    # (x ≤ 4 or x > 9/4 is every number: where did 4 and 9/4 go?), an "and"
+    # whose parts never meet (no solution): each part is drawn too, on its
+    # own row above the line, as it's done on paper (staggered)
+    if line.alts:
+        parts = [(part, set_to_segments(part.solution_set(v))) for part in line.alts]
+        ends = lambda segs: {e for s in segs for e in (s["lo"], s["hi"]) if e is not None}  # noqa: E731
+        hidden = set().union(*(ends(segs) for _, segs in parts)) - ends(segments)
+        if not segments or hidden:
+            out["parts"] = [{"label": _readable(part.node), "latex": lang.latex(part.node), "segments": segs} for part, segs in parts]
     return out
 
 

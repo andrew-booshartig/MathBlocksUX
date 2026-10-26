@@ -5,7 +5,9 @@
  * one where it is (≤ ≥); an arrowhead where the shading goes on forever;
  * and each endpoint's value written once, exactly (4/3, not 1.33), under
  * the line at its place. No solution is the line with nothing shaded,
- * labeled ∅. One drawing for the app, printed pages and LaTeX (TikZ). */
+ * labeled ∅. A compound whose answer hides its parts gets them drawn too,
+ * staggered above the line. One drawing for the app, printed pages and
+ * LaTeX (TikZ). */
 import type { NumberLineSegment } from "./mathSidecar";
 
 export interface NumberLinePalette {
@@ -17,8 +19,8 @@ export interface NumberLinePalette {
   value: string;
   /** the solution set: one color */
   shade: string;
-  /** an "and" whose parts never meet: the parts, faint and dashed (they're
-   * the reason there's no solution, not an answer) */
+  /** a compound's parts, drawn in their own rows above the line (they
+   * explain the answer; they aren't it) */
   work: string;
   /** inside an open circle (the page) */
   hole: string;
@@ -78,8 +80,8 @@ export interface NumberLinePart {
 }
 
 export interface NumberLineExtras {
-  /** an "and" whose parts never meet: drawn faint and dashed on the empty
-   * line, so you can see they don't */
+  /** a compound whose answer hides its parts (an "or" whose parts overlap,
+   * an "and" with no solution): each part, staggered above the line */
   parts?: NumberLinePart[];
 }
 
@@ -160,20 +162,27 @@ function valueText(x: number, y: number, text: string, color: string, strong: bo
 }
 
 /** The number line as SVG markup (only numbers and the engine's value
- * labels go in, escaped, so it's safe to inline). */
+ * labels go in, escaped, so it's safe to inline). A compound whose answer
+ * hides its parts (an "or" whose parts overlap, an "and" with no solution)
+ * has each part drawn too — staggered, a thin row each above the line, as
+ * on paper — and the answer on the line itself. */
 export function numberLineSvg(given: NumberLineSegment[], width = 300, palette: NumberLinePalette = APP_PALETTE, extras: NumberLineExtras = {}): string {
   const segments = union(given);
   const parts = extras.parts ?? [];
-  const work = segments.length ? [] : parts.flatMap((p) => p.segments);
-  const marked = endpoints([...segments, ...work]);
+  const answerEnds = new Set(endpoints(segments).map((e) => e.at));
+  const marked = endpoints([...segments, ...parts.flatMap((p) => p.segments)]);
   const { lo, hi, ticks } = layout(marked.map((e) => e.at));
   const pad = 16;
   const sx = (v: number) => pad + ((v - lo) / (hi - lo)) * (width - pad * 2);
   const empty = !segments.length;
-  const y = empty ? 34 : 22; // room above for "no solution (∅)"
+  // the parts' rows, then the line (room at the top for "no solution (∅)")
+  const ROW = 17;
+  const top = empty ? 28 : 11;
+  const rowY = (i: number) => top + i * ROW;
+  const y = parts.length ? rowY(parts.length - 1) + 19 : empty ? 34 : 22;
   const labelsAt = y + 18;
   const height = labelsAt + (marked.some((e) => isFraction(e.text)) ? 16 : 6);
-  const { axis, label, shade, hole } = palette;
+  const { axis, label, shade, hole, work } = palette;
   const out: string[] = [];
 
   // the line: arrows at both ends (it goes on forever), ticks, their numbers
@@ -193,38 +202,58 @@ export function numberLineSvg(given: NumberLineSegment[], width = 300, palette: 
     // an endpoint's own value goes here instead (or a neighbor's is too close)
     if (!crowded(t)) out.push(`<text x="${sx(t)}" y="${labelsAt}" font-size="9" text-anchor="middle" style="fill:${label}" ${FONT}>${String(t).replace(/-/g, "−")}</text>`);
   }
-  // each endpoint: a tick at its place (it may fall between) and its value
+  // each endpoint: a tick at its place (it may fall between) and its value —
+  // the answer's stand out; a part's that the answer hides are plain
   for (const e of marked) {
     if (!ticks.includes(e.at)) out.push(`<line x1="${sx(e.at)}" x2="${sx(e.at)}" y1="${y - 5}" y2="${y + 5}" style="stroke:${axis}"/>`);
-    out.push(valueText(sx(e.at), labelsAt, e.text, empty ? label : palette.value, !empty));
+    const answer = !empty && answerEnds.has(e.at);
+    out.push(valueText(sx(e.at), labelsAt, e.text, answer ? palette.value : label, answer));
   }
 
-  const ray = (left: boolean, color: string, size: number) =>
+  const ray = (left: boolean, at: number, color: string, size: number) =>
     left
-      ? `<polygon points="1,${y} ${1 + size * 1.7},${y - size} ${1 + size * 1.7},${y + size}" style="fill:${color}"/>`
-      : `<polygon points="${width - 1},${y} ${width - 1 - size * 1.7},${y - size} ${width - 1 - size * 1.7},${y + size}" style="fill:${color}"/>`;
-  const dot = (v: number, closed: boolean, color: string, r: number) =>
-    `<circle cx="${sx(v)}" cy="${y}" r="${r}" style="fill:${closed ? color : hole};stroke:${color}" stroke-width="2"/>`;
-  const draw = (segs: NumberLineSegment[], color: string, faint: boolean) => {
+      ? `<polygon points="1,${at} ${1 + size * 1.7},${at - size} ${1 + size * 1.7},${at + size}" style="fill:${color}"/>`
+      : `<polygon points="${width - 1},${at} ${width - 1 - size * 1.7},${at - size} ${width - 1 - size * 1.7},${at + size}" style="fill:${color}"/>`;
+  const dot = (v: number, at: number, closed: boolean, color: string, r: number) =>
+    `<circle cx="${sx(v)}" cy="${at}" r="${r}" style="fill:${closed ? color : hole};stroke:${color}" stroke-width="2"/>`;
+  const draw = (segs: NumberLineSegment[], at: number, color: string, thin: boolean) => {
     for (const s of segs) {
       if (s.lo !== null && s.lo === s.hi) continue; // a single value: just its dot
       const x1 = s.lo === null ? 6 : sx(s.lo);
       const x2 = s.hi === null ? width - 6 : sx(s.hi);
-      out.push(`<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" style="stroke:${color}" stroke-width="${faint ? 3 : 5}"${faint ? ` stroke-dasharray="6 4"` : ""}/>`);
-      if (s.lo === null) out.push(ray(true, color, faint ? 4 : 6));
-      if (s.hi === null) out.push(ray(false, color, faint ? 4 : 6));
+      out.push(`<line x1="${x1}" x2="${x2}" y1="${at}" y2="${at}" style="stroke:${color}" stroke-width="${thin ? 2.5 : 5}"/>`);
+      if (s.lo === null) out.push(ray(true, at, color, thin ? 4 : 6));
+      if (s.hi === null) out.push(ray(false, at, color, thin ? 4 : 6));
     }
     // the circles on top (an open one stays open)
     for (const s of segs) {
-      if (s.lo !== null && s.lo === s.hi) out.push(dot(s.lo, true, color, faint ? 4 : 5));
+      const r = thin ? 3.5 : 5;
+      if (s.lo !== null && s.lo === s.hi) out.push(dot(s.lo, at, true, color, r));
       else {
-        if (s.lo !== null) out.push(dot(s.lo, s.loClosed, color, faint ? 4 : 5));
-        if (s.hi !== null) out.push(dot(s.hi, s.hiClosed, color, faint ? 4 : 5));
+        if (s.lo !== null) out.push(dot(s.lo, at, s.loClosed, color, r));
+        if (s.hi !== null) out.push(dot(s.hi, at, s.hiClosed, color, r));
       }
     }
   };
-  draw(work, palette.work, true);
-  draw(segments, shade, false);
+
+  // the parts, a row each: its ends dropped (dotted) to their places on
+  // the line, and what it is written beside it, on its open side
+  parts.forEach((part, i) => {
+    const at = rowY(i);
+    const ends = part.segments.flatMap((s) => [s.lo, s.hi]).filter((v): v is number => v !== null);
+    for (const v of new Set(ends)) out.push(`<line x1="${sx(v)}" x2="${sx(v)}" y1="${at + 4}" y2="${y - 6}" style="stroke:${work}" stroke-width="1" stroke-dasharray="1.5 2.5" opacity="0.7"/>`);
+    draw(part.segments, at, work, true);
+    if (!ends.length) return;
+    const text = escapeXml(part.label.replace(/-/g, "−"));
+    const w = text.length * 5.6;
+    const goesRight = part.segments.some((s) => s.hi === null && s.lo !== null);
+    let x = goesRight ? sx(Math.min(...ends)) - 8 : sx(Math.max(...ends)) + 8;
+    let anchor = goesRight ? "end" : "start";
+    if (anchor === "start" && x + w > width - 4) [x, anchor] = [sx(Math.min(...ends)) - 8, "end"];
+    else if (anchor === "end" && x - w < 4) [x, anchor] = [sx(Math.max(...ends)) + 8, "start"];
+    out.push(`<text x="${x}" y="${at + 3.5}" font-size="10" text-anchor="${anchor}" style="fill:${work};stroke:${hole};stroke-width:3px;paint-order:stroke" ${FONT}>${text}</text>`);
+  });
+  draw(segments, y, shade, false);
   if (empty) out.push(`<text x="${width / 2}" y="13" font-size="11" text-anchor="middle" style="fill:${label}" ${FONT}>no solution (∅)</text>`);
   return `<svg class="number-line" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${out.join("")}</svg>`;
 }
@@ -241,8 +270,8 @@ function valueTex(text: string): string {
 export function numberLineTikz(given: NumberLineSegment[], extras: NumberLineExtras = {}): string {
   const segments = union(given);
   const parts = extras.parts ?? [];
-  const work = segments.length ? [] : parts.flatMap((p) => p.segments);
-  const marked = endpoints([...segments, ...work]);
+  const answerEnds = new Set(endpoints(segments).map((e) => e.at));
+  const marked = endpoints([...segments, ...parts.flatMap((p) => p.segments)]);
   const { lo, hi, ticks } = layout(marked.map((e) => e.at));
   const scale = Math.min(1, 12 / (hi - lo)); // about 12 cm wide
   const hex = (c: string) => c.replace("#", "").toUpperCase();
@@ -251,19 +280,19 @@ export function numberLineTikz(given: NumberLineSegment[], extras: NumberLineExt
   const crowded = (t: number) => marked.some((e) => Math.abs(e.at - t) * scale < 0.45);
   for (const t of ticks) out.push(`\\draw[gray] (${t},0.12) -- (${t},-0.12)${crowded(t) ? "" : ` node[below, font=\\scriptsize] {$${t}$}`};`);
   for (const e of marked) {
-    const value = segments.length ? `\\boldsymbol{${valueTex(e.text)}}` : valueTex(e.text);
+    const value = segments.length && answerEnds.has(e.at) ? `\\boldsymbol{${valueTex(e.text)}}` : valueTex(e.text);
     out.push(`\\draw[gray] (${e.at},0.12) -- (${e.at},-0.12) node[below, font=\\scriptsize] {$${value}$};`);
   }
-  const draw = (segs: NumberLineSegment[], color: string, faint: boolean) => {
+  const draw = (segs: NumberLineSegment[], at: number, color: string, thin: boolean) => {
     for (const s of segs) {
       if (s.lo !== null && s.lo === s.hi) continue;
       const arrows = s.lo === null && s.hi === null ? "<->" : s.lo === null ? "<-" : s.hi === null ? "->" : "-";
-      out.push(`\\draw[line width=${faint ? "1.2pt, dashed" : "2.2pt"}, ${color}, ${arrows}] (${s.lo ?? lo - 0.4},0) -- (${s.hi ?? hi + 0.4},0);`);
+      out.push(`\\draw[line width=${thin ? "1.2pt" : "2.2pt"}, ${color}, ${arrows}] (${s.lo ?? lo - 0.4},${at}) -- (${s.hi ?? hi + 0.4},${at});`);
     }
     // the circles after the shading (an open circle stays open)
     for (const s of segs) {
-      const r = faint ? "2.4pt" : "3pt";
-      const dot = (x: number, closed: boolean) => out.push(closed ? `\\fill[${color}] (${x},0) circle (${r});` : `\\draw[thick, ${color}, fill=white] (${x},0) circle (${r});`);
+      const r = thin ? "2.2pt" : "3pt";
+      const dot = (x: number, closed: boolean) => out.push(closed ? `\\fill[${color}] (${x},${at}) circle (${r});` : `\\draw[thick, ${color}, fill=white] (${x},${at}) circle (${r});`);
       if (s.lo !== null && s.lo === s.hi) dot(s.lo, true);
       else {
         if (s.lo !== null) dot(s.lo, s.loClosed);
@@ -271,9 +300,19 @@ export function numberLineTikz(given: NumberLineSegment[], extras: NumberLineExt
       }
     }
   };
-  draw(work, "gray!60", true);
-  draw(segments, "nlShade", false);
-  if (!segments.length) out.push(`\\node[above, font=\\small] at (${(lo + hi) / 2},0.25) {no solution ($\\varnothing$)};`);
+  // the parts, staggered above the line, each labeled on its open side
+  parts.forEach((part, i) => {
+    const at = 0.5 * (parts.length - i);
+    const ends = part.segments.flatMap((s) => [s.lo, s.hi]).filter((v): v is number => v !== null);
+    for (const v of new Set(ends)) out.push(`\\draw[gray!50, densely dotted] (${v},${at - 0.1}) -- (${v},0.15);`);
+    draw(part.segments, at, "gray!70", true);
+    if (!ends.length) return;
+    const goesRight = part.segments.some((s) => s.hi === null && s.lo !== null);
+    const where = goesRight ? `left] at (${Math.min(...ends) - 0.15},${at})` : `right] at (${Math.max(...ends) + 0.15},${at})`;
+    out.push(`\\node[${where} {\\scriptsize\\color{gray}$${part.latex ?? part.label}$};`);
+  });
+  draw(segments, 0, "nlShade", false);
+  if (!segments.length) out.push(`\\node[above, font=\\small] at (${(lo + hi) / 2},${0.5 * parts.length + 0.3}) {no solution ($\\varnothing$)};`);
   out.push("\\end{tikzpicture}");
   return out.join("\n");
 }

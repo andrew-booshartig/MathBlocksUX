@@ -215,3 +215,16 @@ def test_number_line_ends_are_exact_and_come_in_interval_notation():
     assert handle({"op": "numberline", "latex": "x^2<2"})["segments"][0]["hiLabel"] == "√2"
     assert "\\cup" in handle({"op": "numberline", "latex": "x<1\\text{ or }x>5"})["interval_latex"]
     assert handle({"op": "numberline", "latex": "x<1\\text{ and }x>5"})["interval_latex"] == "\\varnothing"
+
+
+def test_a_compound_whose_answer_hides_its_parts_sends_them():
+    """Drawn staggered above the line, as on paper: an "or" whose parts
+    overlap (its answer swallows their ends), an "and" with no solution."""
+    from engine import handle
+
+    labels = lambda latex: [p["label"] for p in handle({"op": "numberline", "latex": latex}).get("parts", [])]  # noqa: E731
+    assert labels("x\\le4\\text{ or }x>\\frac{9}{4}") == ["x ≤ 4", "x > 9/4"]
+    assert labels("x<1\\text{ and }x>5") == ["x < 1", "x > 5"]
+    assert labels("x>\\frac{4}{3}\\text{ and }x>2") == ["x > 4/3", "x > 2"]
+    # the answer shows every part's ends: nothing to add
+    assert labels("x<1\\text{ or }x>5") == [] and labels("-2\\le x<3") == [] and labels("x>-4\\text{ and }x<2") == []
