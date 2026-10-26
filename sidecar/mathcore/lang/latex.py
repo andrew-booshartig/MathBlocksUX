@@ -16,6 +16,39 @@ _REL = {"=": "=", "<": "<", ">": ">", "le": "<=", "leq": "<=", "leqslant": "<=",
 _FUNCS = {"sin": "sin", "cos": "cos", "tan": "tan", "arcsin": "asin", "arccos": "acos", "arctan": "atan", "ln": "ln", "log": "log", "exp": "exp"}
 _OPERATORNAME = {"abs": "abs", "sqrt": "sqrt", **_FUNCS}
 
+# Formatting that isn't math, in LaTeX pasted from a website: Khan Academy's
+# colors (\maroonC{…}, \blueD{…}), \textcolor, \boxed, \cancel, bold.
+# What's inside is kept, as it looks: 2\blueD{x+1} reads 2x + 1.
+_WRAPPER = re.compile(
+    r"\\(?:(?:blue|teal|green|gold|red|maroon|purple|mint|gray|pink)[A-I]|ka(?:Blue|Green)|boxed|[bx]?cancel|mathbf|boldsymbol|bold"
+    r"|underline|(?:textcolor|colorbox|class|htmlClass)\{[^{}]*\})(?![A-Za-z])\s*\{"
+)
+_DELIMITERS = re.compile(r"^\s*(?:\$\$?|\\\(|\\\[)|(?:\$\$?|\\\)|\\\])\s*$")
+
+
+def clean(text: str) -> str:
+    """LaTeX as a website writes it, as plain math: no $…$ around it, no
+    colors, boxes or spacing commands. (Running it twice changes nothing.)"""
+    text = _DELIMITERS.sub("", text)
+    while m := _WRAPPER.search(text):
+        depth, j = 0, m.end() - 1
+        while j < len(text):
+            if text[j] == "{" and text[j - 1] != "\\":
+                depth += 1
+            elif text[j] == "}" and text[j - 1] != "\\":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        inner = text[m.end() : j]
+        # a power or a subscript after it applies to all of it
+        if text[j + 1 : j + 2] in ("^", "_"):
+            inner = "{" + inner + "}"
+        text = text[: m.start()] + inner + text[j + 1 :]
+    text = re.sub(r"\\color\{[^{}]*\}|\\hspace\*?\{[^{}]*\}", "", text)
+    text = re.sub(r"\{\s*(\\text\{[^{}]*\})\s*\}", r"\1", text)
+    return text.replace("~", " ")
+
 
 def _tokens(text: str) -> list[tuple[str, str]]:
     out, i = [], 0
@@ -52,6 +85,7 @@ def _tokens(text: str) -> list[tuple[str, str]]:
 
 class LatexReader:
     def __init__(self, text: str):
+        text = clean(text)
         if "\\placeholder" in text:
             raise Incomplete("there's an empty box ▢ to fill in")
         self.toks = _tokens(text)

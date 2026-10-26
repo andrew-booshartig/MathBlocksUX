@@ -10,6 +10,7 @@ and new ones (built in, or defined by a teacher as data) just plug in.
 
 from .ast import Alts, Node, Rel, expand_pm
 from .latex import LatexReader, LatexWriter
+from .latex import clean as clean_latex
 from .specs import BUILTIN, describe, resolve
 from .text import Incomplete, TextReader, TextWriter
 from .tosympy import to_sympy

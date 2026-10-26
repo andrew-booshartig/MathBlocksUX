@@ -7,6 +7,7 @@
  * stack of these behaves like lines in a notebook. */
 import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { MathfieldElement } from "mathlive";
+import { cleanPastedLatex } from "./cleanLatex";
 
 // Fonts ship with the app (public/mathlive/fonts) so it works offline;
 // no keypress sounds.
@@ -188,6 +189,26 @@ export default function MathInput({
       "pointerdown",
       () => {
         if (document.activeElement !== mf) HTMLElement.prototype.focus.call(mf, { preventScroll: true });
+      },
+      { capture: true },
+    );
+    // pasted from a website (Khan Academy, a textbook): its formatting —
+    // colors, \boxed, $…$, "\quad AND \quad" — comes off, so the line shows
+    // and reads as plain math. A copy from one of these fields carries
+    // MathLive's own JSON: that's left to MathLive.
+    mf.addEventListener(
+      "paste",
+      (event) => {
+        const data = event.clipboardData;
+        if (!data || data.types.includes("application/json") || data.types.includes("application/json+mathlive")) return;
+        const text = data.getData("application/x-latex") || data.getData("text/plain");
+        const cleaned = cleanPastedLatex(text);
+        if (!text || cleaned === text) return;
+        event.preventDefault();
+        event.stopPropagation();
+        mf.insert(cleaned, { format: "latex", selectionMode: "after" });
+        if (mf.mode === "text") mf.mode = "math";
+        handlers.current.onChange(mf.value);
       },
       { capture: true },
     );

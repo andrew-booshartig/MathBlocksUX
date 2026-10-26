@@ -188,3 +188,22 @@ def test_text_languages_get_the_same_messages():
         with pytest.raises(MathInputError) as err:
             parse(typed, "python")
         assert says in str(err.value), typed
+
+
+@pytest.mark.parametrize(
+    "pasted, reads_as",
+    [
+        # Khan Academy: its colors around the word, \quad around it
+        (r"-6x+14< -28 \quad \maroonC{\text{  AND}} \quad 3x+28\leq25", r"-6x+14<-28\text{ and }3x+28\le25"),
+        (r"$\blueD{x}+2=5$", "x+2=5"),
+        (r"\textcolor{red}{x}+2=5", "x+2=5"),
+        (r"\color{red}{x}+2=5", "x+2=5"),
+        (r"\boxed{x=4}", "x=4"),
+        (r"\(2x=6\)", "2x=6"),
+        (r"3x~+~1=7", "3x+1=7"),
+        # a power after a colored part applies to all of it
+        (r"2\blueD{x+1}^2=8", r"2\left(x+1\right)^2=8"),
+    ],
+)
+def test_pasted_formatting_is_read_through(pasted, reads_as):
+    assert write(parse(pasted, "latex"), "python") == write(parse(reads_as, "latex"), "python")

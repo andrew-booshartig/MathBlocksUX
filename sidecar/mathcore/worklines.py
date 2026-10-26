@@ -62,6 +62,8 @@ class Line:
     def __init__(self, raw: str = "", language: str = "latex", custom: list | None = None, _node=None):
         self.language = language
         self.raw = _INSTRUCTION.sub("", raw).strip()
+        if language == "latex":  # pasted from a website: shown without its colors and boxes
+            self.raw = lang.clean_latex(self.raw)
         self.node = _node if _node is not None else lang.parse(self.raw, language, custom)
         expanded = lang.expand_pm(self.node)  # x = ±4 is two answers
         self.alts: list[Line] = []
