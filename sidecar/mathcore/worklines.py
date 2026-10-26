@@ -17,6 +17,7 @@ Lines are read in the block's chosen language (LaTeX from the Visual
 editor, Python, Lua, Haskell, or one a teacher defined) through the
 shared language layer in mathcore/lang."""
 
+import itertools
 import random
 import re
 
@@ -179,8 +180,35 @@ def _sets_equal(a, b) -> bool:
     return a == b
 
 
+def _same_shape(a: "Line", b: "Line") -> bool:
+    """Both "… and …" (or both "… or …") with as many parts."""
+    return bool(a.alts and b.alts) and a.joiner == b.joiner and len(a.alts) == len(b.alts)
+
+
+def _parts_follow(a: "Line", b: "Line") -> bool | None:
+    """A compound worked part by part ("5x − 4 ≥ 12 and 12x + 5 ≤ −4" →
+    "5x ≥ 16 and 12x ≤ −9"): each part has to follow from its own part, in
+    any order. The whole answers can match while a part is wrong — two
+    "and"s with no overlap both have no solution — so they aren't enough.
+    None when it isn't that kind of step, or a part can't be checked."""
+    if not _same_shape(a, b):
+        return None
+    follows = [[equivalent(p, q) for q in b.alts] for p in a.alts]
+    orders = itertools.permutations(range(len(b.alts))) if len(b.alts) <= 4 else [range(len(b.alts))]
+    unsure = False
+    for order in orders:
+        marks = [follows[i][j] for i, j in enumerate(order)]
+        if all(m is True for m in marks):
+            return True
+        unsure = unsure or all(m is not False for m in marks)
+    return None if unsure else False
+
+
 def _same_solutions(a: "Line", b: "Line") -> bool | None:
     """Same solution set? None when we can't tell."""
+    by_parts = _parts_follow(a, b)
+    if by_parts is not None:
+        return by_parts
     syms = sorted(set(a.symbols) | set(b.symbols), key=str)
     if len(syms) == 1 or a.alts or b.alts:
         # one letter: compare the actual solution sets on the number line
@@ -241,20 +269,20 @@ def diagnose(prev: Line, line: Line) -> str:
                 return "This has **extra** solutions the line above doesn't — plug them back in to check."
         except Exception:
             pass
+    if _same_shape(prev, line):
+        # worked part by part: say which part went wrong (in order)
+        for i, (p, q) in enumerate(zip(prev.alts, line.alts)):
+            if equivalent(p, q) is False:
+                which = ("first", "second", "third", "fourth")[i] if i < 4 else f"#{i + 1}"
+                slip = _slip(p, q)
+                if slip:
+                    return f"In the {which} part, {slip[0].lower()}{slip[1:]}"
+                return f"The {which} part doesn't follow from ${p.latex()}$ — work it on its own."
     if line.alts:
         return "These answers don't match the solutions of the line above — check each one by plugging it back in."
-    # forgot to flip (or flipped when it shouldn't have)
-    if line.rel in _FLIP:
-        flipped = line.with_sides(line.sides)
-        flipped.rel = _FLIP[line.rel]
-        if equivalent(prev, flipped):
-            return "Check the direction of the inequality sign — it flips when you multiply or divide both sides by a **negative** number (and only then)."
-    # a sign slip: flipping one term's sign would have made it right
-    for k, t in _terms(line):
-        sides = list(line.sides)
-        sides[k] = sides[k] - 2 * t
-        if equivalent(prev, line.with_sides(sides)):
-            return f"Look at the sign of ${tex(t)}$ — did it change when it shouldn't have (or not change when it should)?"
+    slip = _slip(prev, line)
+    if slip:
+        return slip
     if line.kind == "expression":
         syms = line.symbols or prev.symbols
         point = {s: v for s, v in zip(syms, [2, 3, 5, 7, 11])}
@@ -264,6 +292,24 @@ def diagnose(prev: Line, line: Line) -> str:
             return f"Test it: with ${where}$ the line above is ${tex(sympy.nsimplify(va))}$ but this line is ${tex(sympy.nsimplify(vb))}$ — equal expressions always match."
         return "This isn't equal to the line above."
     return "This doesn't have the same solutions as the line above — find the step that changed it."
+
+
+def _slip(prev: Line, line: Line) -> str | None:
+    """A one-sign mistake: the inequality not flipped (or flipped when it
+    shouldn't be), or one term's sign changed."""
+    if line.alts:
+        return None
+    if line.rel in _FLIP:
+        flipped = line.with_sides(line.sides)
+        flipped.rel = _FLIP[line.rel]
+        if equivalent(prev, flipped):
+            return "Check the direction of the inequality sign — it flips when you multiply or divide both sides by a **negative** number (and only then)."
+    for k, t in _terms(line):
+        sides = list(line.sides)
+        sides[k] = sides[k] - 2 * t
+        if equivalent(prev, line.with_sides(sides)):
+            return f"Look at the sign of ${tex(t)}$ — did it change when it shouldn't have (or not change when it should)?"
+    return None
 
 
 # "no solution" / "all real numbers" typed as a line — in any language, with

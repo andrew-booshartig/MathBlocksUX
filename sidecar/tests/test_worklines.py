@@ -157,3 +157,23 @@ def test_a_solved_inequality_comes_with_a_number_line():
     assert r["lines"][1]["numberline"] == [{"lo": -2.0, "hi": 3.0, "loClosed": False, "hiClosed": False}]
     r = handle({"op": "worklines", "problem": r"x<1\text{ or }x>-5", "lines": [r"\text{all real numbers}"], "syntax": "latex"})
     assert r["lines"][0]["numberline"] == [{"lo": None, "hi": None, "loClosed": False, "hiClosed": False}]
+
+
+def test_compound_parts_are_checked_one_by_one():
+    # both sides have no solution (the parts don't overlap) — a wrong part
+    # mustn't pass just because "no solution" = "no solution"
+    problem = r"5x-4\ge12\text{ and }12x+5\le-4"
+    s = statuses(problem, [r"5x\ge16\text{ and }12x\le9"])
+    assert s[0][0] == "wrong" and "second part" in s[0][2] and "sign of $9$" in s[0][2]
+    assert statuses(problem, [r"5x\ge16\text{ and }12x\le-9"])[0][0] == "ok"
+    # in either order
+    assert statuses(problem, [r"12x\le-9\text{ and }5x\ge16"])[0][0] == "ok"
+    # "all real numbers" both ways: a wrong part still shows
+    s = statuses(r"x+1<4\text{ or }x-2>-5", [r"x<3\text{ or }x>-7"])
+    assert s[0][0] == "wrong" and "second part" in s[0][2]
+    assert statuses(r"x+1<4\text{ or }x-2>-5", [r"x<3\text{ or }x>-3"])[0][0] == "ok"
+    # a flip forgotten in one part
+    s = statuses(r"-2x<6\text{ and }x+1<5", [r"x<-3\text{ and }x<4"])
+    assert s[0][0] == "wrong" and "first part" in s[0][2] and "direction" in s[0][2]
+    # merging parts is still checked as a whole
+    assert statuses(r"x>2\text{ and }x>5", [r"x>5"])[0][0] == "ok"
