@@ -10,6 +10,7 @@ import {
   type SmartAction,
   type SmartEntry,
   type SmartResult,
+  type UnitsWork,
   type WorkBlockData,
   newId,
   useStore,
@@ -18,9 +19,10 @@ import {
 import { WorkPad } from "./WorkBlockNode";
 import AssignmentTab from "./AssignmentTab";
 import UnitAsk from "./UnitAsk";
+import UnitBlocks from "./UnitBlocks";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
-import { NumberLine, StepList, Tex } from "../ui";
+import { NumberLine, Segmented, StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
 import { plainMath, sameWritten } from "../numberLine";
 
@@ -148,6 +150,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     .map(([key, value]) => ({ ...splitKey(key), value }))
     .filter((g) => !variables.some((v) => v.name === g.name));
   const items = [...globalItems, ...localItems];
+  const updateUnits = (patch: UnitsWork) => updateBlock(data.id, { smartUnits: { ...(current()?.smartUnits ?? {}), ...patch } });
   /** your own units (the Units tab's: 1 bag = 50 lb) — they work everywhere here */
   const myUnits = useMemo(() => (data.smartUnits?.mine ?? []).map(({ symbol, name, equals }) => ({ symbol, name, equals })), [data.smartUnits?.mine]);
   const { result: resolved } = useLiveMath<{ values: Record<string, VarValue> }>(items.length ? { op: "smartvars", vars: items, units: myUnits } : null, 150);
@@ -639,7 +642,24 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       )}
 
       {tab === "units" && (
-        <UnitAsk work={data.smartUnits ?? {}} update={(patch) => updateBlock(data.id, { smartUnits: { ...(current()?.smartUnits ?? {}), ...patch } })} />
+        <div className="units-tab">
+          {/* Blocks: relationships you lock in and link up · Ask: the line */}
+          <div className="units-views">
+            <Segmented
+              value={data.smartUnits?.view ?? "blocks"}
+              options={[
+                { value: "blocks", label: "Blocks", title: "Relationships you lock in and link — change any number, the rest follow" },
+                { value: "ask", label: "Ask", title: "Type a question: 9 km/h -> m/s" },
+              ]}
+              onChange={(view) => updateUnits({ view })}
+            />
+          </div>
+          {(data.smartUnits?.view ?? "blocks") === "blocks" ? (
+            <UnitBlocks work={data.smartUnits ?? {}} update={updateUnits} units={myUnits} />
+          ) : (
+            <UnitAsk work={data.smartUnits ?? {}} update={updateUnits} />
+          )}
+        </div>
       )}
 
       {tab === "assignment" && (

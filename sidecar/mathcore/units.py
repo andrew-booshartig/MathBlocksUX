@@ -309,6 +309,8 @@ def library() -> list[dict]:
                         "name": u.name,
                         "plural": u.plural,
                         "size_decimal": float(u.size),
+                        # exact, in the kind's base unit (for Blocks: 1 km = 1000 m checks)
+                        "size": str(Rational(u.size)),
                         "in_reference": None if u.symbol == ref or ref_size is None else _nice(u.size / ref_size),
                         # one of yours (1 bag = 50 lb)
                         "mine": bool(getattr(u, "defined_by", None)),

@@ -325,6 +325,36 @@ export interface UnitsWork {
   asks?: { id: string; text: string; answer?: unknown; error?: string }[];
   /** your own units — 1 bag = 50 lb — used everywhere in the calculator */
   mine?: MyUnit[];
+  /** which view: Ask (the line) or Blocks */
+  view?: "ask" | "blocks";
+  /** Blocks: relationships (1 km = 1000 m) — locked ones link up by the
+   *  units they share, and changing any number moves the rest */
+  blocks?: UnitBlock[];
+  /** the numbers you've set in locked blocks, newest first (unit → amount) —
+   *  each linked group follows its newest */
+  seeds?: BlockSeed[];
+}
+
+export interface BlockSide {
+  /** as typed: 1, 1000, 3 3/8, 0.25 */
+  amount: string;
+  /** a unit (km, kilometers) or any word of your own (boxes) */
+  unit: string;
+}
+
+export interface UnitBlock {
+  id: string;
+  label?: string;
+  a: BlockSide;
+  b: BlockSide;
+  /** locked: the relationship is set, and it links to the others */
+  locked?: boolean;
+}
+
+export interface BlockSeed {
+  /** the unit's key (km — kilometers is km too) */
+  unit: string;
+  amount: string;
 }
 
 export interface MyUnit {

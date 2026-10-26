@@ -5031,6 +5031,288 @@ math-field {
   min-height: 0;
 }
 
+/* the Units tab: Blocks · Ask */
+.units-tab {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.units-views {
+  align-self: flex-start;
+  width: 150px;
+}
+
+/* Blocks: relationships, locked in and linked */
+.ublocks {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-right: 2px;
+}
+
+.ublocks-empty {
+  margin: auto 0;
+  text-align: center;
+  color: var(--t-muted, #74748a);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ublocks-empty b {
+  color: var(--t-text, #e8e8f0);
+}
+
+.ublock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--t-bg2, #17171f);
+  border: 1px dashed var(--t-line, #2e2e3a);
+}
+
+.ublock.is-locked {
+  border-style: solid;
+  border-color: transparent;
+}
+
+.ublock.is-off {
+  border-color: var(--t-red, #e06c75);
+}
+
+.ublock-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ublock-label {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  padding: 0;
+  color: var(--t-subtle, #a9a9bd);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ublock-label::placeholder {
+  color: var(--t-faint, #55606e);
+  font-weight: 500;
+}
+
+.ublock-rule {
+  font-size: 11.5px;
+  color: var(--t-muted, #74748a);
+  white-space: nowrap;
+}
+
+.ublock-lock,
+.ublock-remove,
+.ublock-fix {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--t-muted, #74748a);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.ublock-lock:not(.is-locked) {
+  color: var(--t-teal, #55d6be);
+  border: 1px solid var(--t-teal, #55d6be);
+  font-weight: 600;
+}
+
+.ublock-lock:hover,
+.ublock-remove:hover {
+  background: var(--t-bg4, #26262f);
+  color: var(--t-text, #e8e8f0);
+}
+
+.ublock-fix {
+  color: var(--t-teal, #55d6be);
+  border: 1px solid currentColor;
+  margin-left: 6px;
+}
+
+.ublock-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ublock-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ublock-amount,
+.ublock-unit-input {
+  font: inherit;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  color: var(--t-text, #e8e8f0);
+  background: var(--t-bg1, #0e0e12);
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 7px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.ublock-amount {
+  max-width: 100%;
+  text-align: right;
+}
+
+.ublock-unit-input {
+  width: 72px;
+}
+
+.ublock-amount:focus,
+.ublock-unit-input:focus {
+  border-color: var(--t-teal, #55d6be);
+}
+
+/* the number you set — everything linked follows it */
+.ublock-side.is-source .ublock-amount {
+  border-color: var(--t-orange, #e5a05b);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-orange, #e5a05b) 22%, transparent);
+}
+
+.ublock-approx {
+  color: var(--t-muted, #74748a);
+  font-size: 14px;
+  margin-right: -2px;
+}
+
+.ublock-unit {
+  --unit: var(--t-blue, #61afef);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 9px;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--unit);
+  background: color-mix(in srgb, var(--unit) 15%, transparent);
+}
+
+button.ublock-unit {
+  cursor: pointer;
+}
+
+button.ublock-unit.is-on {
+  box-shadow: inset 0 0 0 1.5px var(--unit);
+}
+
+.ublock-link {
+  font-size: 10px;
+}
+
+.ublock-eq {
+  color: var(--t-muted, #74748a);
+  font-size: 18px;
+}
+
+.ublock-work {
+  font-size: 13px;
+  color: var(--t-subtle, #a9a9bd);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.ublock-check {
+  font-size: 11.5px;
+  color: var(--t-muted, #74748a);
+}
+
+.ublock-check.is-real {
+  color: var(--t-green, #98c379);
+}
+
+.ublock-check.is-off {
+  color: var(--t-orange, #e5a05b);
+}
+
+/* two blocks in a row that share a unit: the link between them */
+.ublock-join {
+  --unit: var(--t-blue, #61afef);
+  align-self: center;
+  margin: 2px 0;
+  padding: 1px 8px;
+  border-left: 2px solid var(--unit);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--unit);
+}
+
+.ublock-gap {
+  height: 8px;
+}
+
+.ublocks-chain {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--t-line, #2e2e3a);
+}
+
+.ublocks-chain-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-blue, #61afef);
+}
+
+.ublocks-chain-units {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.ublocks-chain-work {
+  margin-top: 8px;
+  font-size: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.ublocks-chain-from {
+  font-size: 11.5px;
+  color: var(--t-muted, #74748a);
+  margin-bottom: 4px;
+}
+
+.ublocks-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.ublocks-hint {
+  font-size: 11.5px;
+  color: var(--t-muted, #74748a);
+}
+
 /* your variables on the left, the line on the right */
 .uask-wrap {
   flex: 1 1 auto;
