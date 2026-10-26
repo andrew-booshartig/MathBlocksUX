@@ -115,6 +115,9 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const root = useRef<HTMLDivElement>(null);
   const recall = useRef<{ index: number; text: string } | null>(null);
   const ans = [...entries].reverse().find((e) => e.result.ans)?.result.ans ?? undefined;
+  /** the operator that just started a line from Ans ("+5" → Ans + 5) —
+   * Backspace right after takes the Ans back off */
+  const fromAns = useRef<string | null>(null);
 
   /** the latest copy of this block — callbacks fire after renders */
   const current = () => useStore.getState().blocks[data.id] as CalculatorBlockData | undefined;
@@ -382,6 +385,35 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     focusOn.current = "work";
     updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), problem: latex, lines: [""], reasons: [""] }, smartTab: "work" });
   };
+
+  /** An operator first, on an empty line, carries on from the last answer —
+   * + 5 is Ans + 5, as on a TI — and it's put in the line ("Ans +"), so
+   * it's never a surprise. Backspace right after takes the Ans back off:
+   * a − stays (−8 on its own), anything else clears. */
+  function continueFromAns(e: React.KeyboardEvent) {
+    const mf = field.current;
+    if (!mf || e.metaKey || e.ctrlKey || e.altKey) return;
+    const started = fromAns.current;
+    fromAns.current = null;
+    if (e.key === "Backspace" && started) {
+      e.preventDefault();
+      e.stopPropagation();
+      mf.setValue(started === "-" ? "-" : "");
+      return;
+    }
+    const START: Record<string, string> = {
+      "+": "\\mathrm{Ans}+",
+      "-": "\\mathrm{Ans}-",
+      "*": "\\mathrm{Ans}\\cdot",
+      "/": "\\frac{\\mathrm{Ans}}{#?}",
+      "^": "\\mathrm{Ans}^{#?}",
+    };
+    if (!ans || !START[e.key] || mf.getValue().trim()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    mf.insert(START[e.key]);
+    fromAns.current = e.key;
+  }
 
   const previewText = isClearCommand(draft)
     ? "\\text{Enter clears all — answers and this calculator's variables}"
@@ -721,7 +753,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
             })}
           </div>
 
-          <div className="smart-line">
+          <div className="smart-line" onKeyDownCapture={continueFromAns}>
             <MathInput
               ref={field}
               className="smart-field"
