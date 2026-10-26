@@ -5182,6 +5182,56 @@ math-field {
   position: relative;
 }
 
+/* the work as you type: a draft of the next entry */
+.uask-entry.is-live {
+  border: 1px dashed var(--t-line, #2e2e3a);
+  background: none;
+}
+
+.uask-live-label {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-muted, #74748a);
+}
+
+/* your units, like variables in scope — drag one into the line */
+.uask-vars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.uask-var {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 8px;
+  background: var(--t-bg2, #17171f);
+  cursor: grab;
+}
+
+.uask-var-use {
+  border: none;
+  background: none;
+  padding: 3px 4px 3px 9px;
+  color: var(--t-text, #e8e8f0);
+  font-size: 13px;
+  cursor: inherit;
+}
+
+.uask-var-remove {
+  border: none;
+  background: none;
+  padding: 0 7px;
+  color: var(--t-muted, #74748a);
+  cursor: pointer;
+}
+
+.uask-var-remove:hover {
+  color: var(--t-red, #e06c75);
+}
+
 .uask-browse {
   flex: 0 0 auto;
   border: 1px solid transparent;

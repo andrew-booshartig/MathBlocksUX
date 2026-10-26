@@ -303,19 +303,25 @@ def op_unitask(req: dict) -> dict:
     text = " ".join((req.get("text") or "").split())
     if not text:
         raise MathInputError("")
-    # your own unit: 1 k = 1000 m
-    define = re.fullmatch(r"1\s*([A-Za-z]+)\s*=\s*(.+)", text)
+    # your own unit, like a variable: k = 1000 m · k = km · 1 k = 1000 m
+    define = re.fullmatch(r"(?:1\s*)?([A-Za-z]+)\s*=\s*(.+)", text)
     if define:
-        symbol, amount = define.group(1), define.group(2)
-        if units.find(symbol):
-            raise MathInputError(f"{symbol} is already a unit ({units.find(symbol).name}) — pick another name")
-        value = _amount_text(amount)
+        symbol, amount = define.group(1), define.group(2).strip()
+        found = units.find(symbol)
+        if found and not getattr(found, "defined_by", None):  # yours can be redefined
+            raise MathInputError(f"{symbol} is already a unit ({found.name}) — pick another name")
+        # k = km: one of them (no number: 1)
+        numbered = re.match(r"\s*(?:-?\d|-?\.\d)", amount)
+        value = _amount_text(amount) if numbered else _unit_text(amount)
         number, unit_part = units.split(value)
+        if not unit_part.is_Symbol:
+            raise MathInputError("one unit on the right — like k = 1000 m (or k = km)")
         return {
             "kind": "define",
             "symbol": symbol,
-            "equals": f"{_amount_tex(number)}\\,{units.of(unit_part).symbol}" if unit_part.is_Symbol else None,
-            "latex": f"1\\,\\mathrm{{{symbol}}} = {units.latex(value)}",
+            "equals": f"{_amount_tex(number)}\\,{units.of(unit_part).symbol}",
+            "latex": f"\\mathrm{{{symbol}}} = {_amount_tex(number)}\\,{units.latex(unit_part)}",
+            "kind_of": units.kind_name(unit_part),
         }
     # how many X in Y · X in Y (X with no number: the units wanted)
     asking = re.fullmatch(r"(?:how\s+many\s+)?(.+?)\s+(?:are\s+)?in\s+(.+?)\??", text, re.I)
@@ -345,7 +351,7 @@ def op_unitlint(req: dict) -> dict:
     its name), words it doesn't know, and what kind of amount it is → what
     it's going into. Nothing here raises — half a question is fine."""
     text = " ".join((req.get("text") or "").split())
-    define = re.fullmatch(r"1\s*([A-Za-z]+)\s*=\s*(.*)", text)
+    define = re.fullmatch(r"(?:1\s*)?([A-Za-z]+)\s*=\s*(.*)", text)
     pieces = []
     seen: set = set()
     tokens = re.findall(r"[A-Za-z]+(?:\^\{?-?\d+\}?|[²³])?|\d+(?:\.\d+)?(?:/\d+)?|[=→?]|->", text)
@@ -357,7 +363,7 @@ def op_unitlint(req: dict) -> dict:
         # "in" right after a number is inches (3 3/8 in); elsewhere it's the word
         if word.lower() in _WORDS and not (word == "in" and after_number):
             continue
-        if define and i == 1:  # 1 k = …: the unit being made
+        if define and word == define.group(1) and i == (1 if text.startswith("1") else 0):  # k = …: the unit being made
             pieces.append({"text": word, "new": True})
             continue
         unit = _lookup(word)
@@ -370,7 +376,8 @@ def op_unitlint(req: dict) -> dict:
     out: dict = {"pieces": pieces}
     if define:
         try:
-            amount = _amount_text(define.group(2))
+            rest = define.group(2)
+            amount = _amount_text(rest) if re.match(r"\s*(?:-?\d|-?\.\d)", rest) else _unit_text(rest)
             out["define"] = {"name": define.group(1), "latex": units.latex(amount), "kind": units.kind_name(units.split(amount)[1])}
         except Exception:  # noqa: BLE001 — not there yet
             pass

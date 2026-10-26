@@ -1,12 +1,13 @@
-/** Ask — the Units tab's first view: one line, like a terminal. Type a
- * question in plain words and press Enter:
+/** Ask — the Units tab: one line, like Python. Type in plain words; the work
+ * shows as you type (the answer and its steps, live), Enter keeps it:
  *
+ *   k = 1000 m        a unit of your own, like a variable (or k = km)
+ *   9k to m           9k → 9000 m — every step shown
  *   9 km/h to m/s · 3 3/8 in to mm · mm in a mile · seconds in 10 weeks
- *   1 k = 1000 m   (a unit of your own)
  *
- * The answer comes back with its steps — the amount after every move
- * (9 km/h → 9000 m/h → 150 m/min → 2.5 m/s), each with the fact it used.
- * Earlier questions stay above; ↑ brings one back to the line. */
+ * Your units sit by the line as chips (k = 1000 m) — drag one into the line,
+ * or any unit from Units ▾; typing a word opens the units it could be.
+ * Under the line a linter names what it sees (km kilometer · a speed). */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type MyUnit, type UnitsWork, newId } from "../store";
 import { mathRequest, useLiveMath } from "../mathSidecar";
@@ -29,6 +30,7 @@ interface Answer {
   symbol?: string;
   equals?: string | null;
   latex?: string;
+  kind_of?: string;
 }
 /** what the line says so far (the linter) */
 interface Lint {
@@ -47,7 +49,7 @@ interface LibraryUnit {
   name: string;
   plural: string;
   kind: string;
-  /** one of yours (1 k = 1000 m) */
+  /** one of yours (k = 1000 m) */
   mine?: boolean;
 }
 
@@ -69,14 +71,66 @@ export interface Asked {
   error?: string;
 }
 
-const EXAMPLES = ["9 km/h to m/s", "3 3/8 in to mm", "mm in a mile", "seconds in 10 weeks", "1 k = 1000 m"];
+const EXAMPLES = ["k = 1000 m", "9k to m", "9 km/h to m/s", "3 3/8 in to mm", "mm in a mile"];
+
+/** dragging a unit: its symbol, to drop into the line */
+const dragUnit = (symbol: string) => (e: React.DragEvent) => {
+  e.dataTransfer.setData("text/plain", symbol);
+  e.dataTransfer.effectAllowed = "copy";
+};
+
+/** an answer: the result (exact, or ≈ with the exact one under it), and
+ * its steps — the amount after every move */
+function AnswerView({ answer, steps, extra }: { answer: Answer; steps: boolean; extra?: React.ReactNode }) {
+  if (answer.kind === "define")
+    return (
+      <div className="uask-answer">
+        <Tex math={answer.latex ?? ""} />
+        {answer.kind_of && <span className="uask-badge">{a(answer.kind_of)}</span>}
+        {extra}
+      </div>
+    );
+  return (
+    <>
+      <div className="uask-answer">
+        {answer.exact || !answer.decimal ? (
+          <>
+            <Tex math={`${answer.from_latex} = ${answer.result_latex}`} />
+            {answer.exact && <span className="uask-badge is-exact">exact</span>}
+          </>
+        ) : (
+          <>
+            <Tex math={`${answer.from_latex} \\approx ${Number(answer.decimal).toPrecision(6).replace(/\.?0+$/, "")}\\,${answer.to_latex}`} />
+            <span className="uask-about">
+              exactly <Tex math={answer.result_latex ?? ""} />
+            </span>
+          </>
+        )}
+        {extra}
+      </div>
+      {steps && answer.walk && (
+        <ol className="uask-steps">
+          {answer.walk.map((w, k) => (
+            <li key={k}>
+              <span className="uask-step-what">{w.note}</span>
+              <span className="uask-step-amount">
+                <Tex math={w.latex} />
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {steps && answer.note && <div className="uask-note">{answer.note}</div>}
+    </>
+  );
+}
 
 export default function UnitAsk({ work, update }: { work: UnitsWork; update: (patch: UnitsWork) => void }) {
   const asked = (work.asks ?? []) as Asked[];
   const mine = work.mine ?? [];
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  /** which earlier answers have their steps open (the newest always does) */
+  /** which earlier answers have their steps open */
   const [open, setOpen] = useState<Set<string>>(new Set());
   const recall = useRef<number | null>(null);
   const tape = useRef<HTMLDivElement>(null);
@@ -84,9 +138,10 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
   useEffect(() => {
     tape.current?.scrollTo({ top: tape.current.scrollHeight });
   }, [asked.length]);
-  // the linter: as you type, the units it sees (and their names), words it
-  // doesn't know, and what kind of amount → what it's going into
-  const units = mine.map(({ symbol, name, equals }) => ({ symbol, name, equals }));
+  const units = useMemo(() => mine.map(({ symbol, name, equals }) => ({ symbol, name, equals })), [mine]);
+  // as you type: the answer and its steps, live (Enter keeps it) — and the
+  // linter (the units it sees, words it doesn't know, kind → kind)
+  const { result: live } = useLiveMath<Answer>(text.trim() ? { op: "unitask", text, units } : null, 200);
   const { result: lint } = useLiveMath<Lint>(text.trim() ? { op: "unitlint", text, units } : null, 120);
 
   // the dropdowns: units matching the word being typed — and the whole
@@ -104,20 +159,20 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
         .map((u) => ({ u, r: rank(u, word) }))
         .filter((m) => m.r < 99)
         .sort((x, y) => x.r - y.r || x.u.symbol.length - y.u.symbol.length)
-        .slice(0, 8)
+        .slice(0, 6)
         .map((m) => m.u)
     : [];
-  // a word that's already exactly one unit doesn't need a list
-  const suggest = !dismissed && matches.length > 0 && !(matches.length === 1 && matches[0].symbol === word) ? matches : [];
+  // a word that's already a unit (m, mi, in) needs no list — it would only
+  // cover the work above; the list is for words that aren't one yet (kilo)
+  const suggest = !dismissed && matches.length > 0 && !matches.some((m) => m.symbol === word) ? matches : [];
 
   /** a unit onto the line: in place of the word being typed, or at the caret */
-  const put = (u: LibraryUnit) => {
+  const put = (symbol: string) => {
     const start = word ? caret - word.length : caret;
     const before = text.slice(0, start);
     const after = text.slice(caret);
-    const lead = !word && before && !/\s$/.test(before) ? " " : "";
-    const next = before + lead + u.symbol + after;
-    const at = (before + lead + u.symbol).length;
+    const next = before + symbol + after;
+    const at = (before + symbol).length;
     setText(next);
     setCaret(at);
     setActive(-1);
@@ -141,7 +196,7 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
     }
     setBusy(false);
     const patch: UnitsWork = { asks: [...asked, entry].slice(-60) };
-    // a unit of your own: it joins the library (and the map)
+    // a unit of your own: it joins the library, like a variable
     if (entry.answer?.kind === "define" && entry.answer.symbol && entry.answer.equals) {
       patch.mine = [...mine.filter((u) => u.symbol !== entry.answer!.symbol), { id: newId("unit"), symbol: entry.answer.symbol, equals: entry.answer.equals } as MyUnit];
     }
@@ -153,9 +208,9 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
   return (
     <div className="uask">
       <div className="uask-tape" ref={tape}>
-        {!asked.length && (
+        {!asked.length && !text.trim() && (
           <div className="uask-empty">
-            Ask in plain words, then Enter. Try one:
+            Type in plain words — the work shows as you type, Enter keeps it. Try one:
             <div className="uask-examples">
               {EXAMPLES.map((e) => (
                 <button key={e} className="chip" onClick={() => ask(e)}>
@@ -165,72 +220,63 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
             </div>
           </div>
         )}
-        {asked.map((a, i) => {
-          const newest = i === asked.length - 1;
-          const showSteps = newest || open.has(a.id);
-          const answer = a.answer;
+        {asked.map((entry) => {
+          const steps = open.has(entry.id);
           return (
-            <div key={a.id} className="uask-entry">
-              <button className="uask-q" title="Put it back on the line" onClick={() => setText(a.text)}>
-                <span className="uask-prompt">›</span> {a.text}
+            <div key={entry.id} className="uask-entry">
+              <button className="uask-q" title="Put it back on the line" onClick={() => setText(entry.text)}>
+                <span className="uask-prompt">›</span> {entry.text}
               </button>
-              {a.error && <div className="uask-error">{a.error}</div>}
-              {answer?.kind === "define" && (
-                <div className="uask-answer">
-                  <Tex math={answer.latex ?? ""} />
-                  <span className="uask-badge">added — use it anywhere</span>
-                </div>
-              )}
-              {answer?.kind === "convert" && (
-                <>
-                  <div className="uask-answer">
-                    {/* exact: the answer; not (a long fraction): about, to a few places — the fraction under it */}
-                    {answer.exact || !answer.decimal ? (
-                      <>
-                        <Tex math={`${answer.from_latex} = ${answer.result_latex}`} />
-                        {answer.exact && <span className="uask-badge is-exact">exact</span>}
-                      </>
-                    ) : (
-                      <>
-                        <Tex math={`${answer.from_latex} \\approx ${Number(answer.decimal).toPrecision(6).replace(/\.?0+$/, "")}\\,${answer.to_latex}`} />
-                        <span className="uask-about">
-                          exactly <Tex math={answer.result_latex ?? ""} />
-                        </span>
-                      </>
-                    )}
-                    {!newest && (
+              {entry.error && <div className="uask-error">{entry.error}</div>}
+              {entry.answer && (
+                <AnswerView
+                  answer={entry.answer}
+                  steps={steps}
+                  extra={
+                    entry.answer.kind === "convert" ? (
                       <button
                         className="uask-toggle"
                         onClick={() => {
                           const next = new Set(open);
-                          if (next.has(a.id)) next.delete(a.id);
-                          else next.add(a.id);
+                          if (next.has(entry.id)) next.delete(entry.id);
+                          else next.add(entry.id);
                           setOpen(next);
                         }}
                       >
-                        {showSteps ? "hide steps" : "steps"}
+                        {steps ? "hide steps" : "steps"}
                       </button>
-                    )}
-                  </div>
-                  {showSteps && answer.walk && (
-                    <ol className="uask-steps">
-                      {answer.walk.map((w, k) => (
-                        <li key={k}>
-                          <span className="uask-step-what">{w.note}</span>
-                          <span className="uask-step-amount">
-                            <Tex math={w.latex} />
-                          </span>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                  {showSteps && answer.note && <div className="uask-note">{answer.note}</div>}
-                </>
+                    ) : null
+                  }
+                />
               )}
             </div>
           );
         })}
+        {/* the work, as you type — Enter keeps it */}
+        {text.trim() && live && (
+          <div className="uask-entry is-live">
+            <div className="uask-live-label">as you type — Enter keeps it</div>
+            <AnswerView answer={live} steps />
+          </div>
+        )}
       </div>
+
+      {/* your units, like variables in scope: drag one into the line, or click */}
+      {mine.length > 0 && (
+        <div className="uask-vars">
+          {mine.map((u) => (
+            <span key={u.id} className="uask-var" draggable onDragStart={dragUnit(u.symbol)} title={`Drag ${u.symbol} into the line, or click`}>
+              <button className="uask-var-use" onClick={() => put(u.symbol)}>
+                <Tex math={`\\mathrm{${u.symbol}} = ${u.equals.replace(/\\,([A-Za-z]+)$/, "\\,\\mathrm{$1}")}`} />
+              </button>
+              <button className="uask-var-remove" title={`Remove ${u.symbol}`} onClick={() => update({ mine: mine.filter((m) => m.id !== u.id) })}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="uask-line">
         <span className="uask-prompt">›</span>
         <input
@@ -239,7 +285,7 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
           value={text}
           autoFocus
           spellCheck={false}
-          placeholder="9 km/h to m/s"
+          placeholder="9k to m   ·   k = 1000 m"
           onChange={(e) => {
             setText(e.target.value);
             setCaret(e.target.selectionStart ?? e.target.value.length);
@@ -247,6 +293,29 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
             setActive(-1);
           }}
           onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+          // a unit dragged in (a chip, or from Units ▾): onto the line where
+          // the cursor is (or at the end)
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("text/plain")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+            }
+          }}
+          onDrop={(e) => {
+            const symbol = e.dataTransfer.getData("text/plain").trim();
+            if (!/^[A-Za-z]+$/.test(symbol)) return;
+            e.preventDefault();
+            const at = document.activeElement === line.current ? caret : text.length;
+            const before = text.slice(0, at);
+            const next = before + symbol + text.slice(at);
+            setText(next);
+            setCaret(at + symbol.length);
+            setDismissed(true);
+            requestAnimationFrame(() => {
+              line.current?.focus();
+              line.current?.setSelectionRange(at + symbol.length, at + symbol.length);
+            });
+          }}
           onKeyDown={(e) => {
             // the dropdown, when it's open: ↑ ↓ to move, Tab (or Enter on a
             // highlighted one) to pick, Esc to close
@@ -254,12 +323,12 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
                 const n = suggest.length;
-                setActive((i) => (e.key === "ArrowDown" ? (i + 1) % n : (i <= 0 ? n - 1 : i - 1)));
+                setActive((i) => (e.key === "ArrowDown" ? (i + 1) % n : i <= 0 ? n - 1 : i - 1));
                 return;
               }
               if (e.key === "Tab" || (e.key === "Enter" && active >= 0)) {
                 e.preventDefault();
-                put(suggest[Math.max(0, active)]);
+                put(suggest[Math.max(0, active)].symbol);
                 return;
               }
               if (e.key === "Escape") {
@@ -279,11 +348,11 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
             }
           }}
         />
-        <button className={`uask-browse${browsing ? " is-on" : ""}`} title="Every unit, by kind — click one to put it on the line" onPointerDown={(e) => e.preventDefault()} onClick={() => setBrowsing(!browsing)}>
+        <button className={`uask-browse${browsing ? " is-on" : ""}`} title="Every unit, by kind — click one or drag it into the line" onPointerDown={(e) => e.preventDefault()} onClick={() => setBrowsing(!browsing)}>
           Units ▾
         </button>
         {asked.length > 0 && (
-          <button className="smart-vars-action" title="Clear the questions (your own units stay)" onClick={() => update({ asks: [] })}>
+          <button className="smart-vars-action" title="Clear the questions (your units stay)" onClick={() => update({ asks: [] })}>
             Clear
           </button>
         )}
@@ -295,9 +364,11 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
                 role="option"
                 aria-selected={i === active}
                 className={`uask-option${i === active ? " is-on" : ""}`}
+                draggable
+                onDragStart={dragUnit(u.symbol)}
                 onPointerDown={(e) => e.preventDefault()}
                 onMouseEnter={() => setActive(i)}
-                onClick={() => put(u)}
+                onClick={() => put(u.symbol)}
               >
                 <b>{u.symbol}</b>
                 <span className="uask-option-name">{u.name}</span>
@@ -314,7 +385,7 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
                 <div className="uask-suggest-kind">{k.kind}</div>
                 {k.units.map((u) => (
                   <div key={u.symbol} className="uask-option-row">
-                    <button role="option" className="uask-option" onPointerDown={(e) => e.preventDefault()} onClick={() => put({ ...u, kind: k.kind })}>
+                    <button role="option" className="uask-option" draggable onDragStart={dragUnit(u.symbol)} onClick={() => put(u.symbol)}>
                       <b>{u.symbol}</b>
                       <span className="uask-option-name">{u.name}</span>
                       {u.mine && <span className="uask-option-kind">yours</span>}
@@ -336,7 +407,7 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
           {lint.pieces.map((p, i) =>
             // a word still being typed, with units in the dropdown for it, isn't "unknown" yet
             p.unknown && suggest.length > 0 && p.text === word ? null : p.unknown ? (
-              <span key={i} className="lint-unknown" title="Not a unit I know — the Map lists them, or make it: 1 name = 50 lb">
+              <span key={i} className="lint-unknown" title="Not a unit I know — Units ▾ lists them, or make it: name = 50 lb">
                 “{p.text}” isn't a unit
               </span>
             ) : p.new ? (
@@ -345,13 +416,13 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
               </span>
             ) : (
               <span key={i} className={`lint-unit${p.mine ? " is-mine" : ""}`} title={p.kind}>
-                <b>{p.unit}</b> {p.name}
+                <b>{p.unit}</b> {p.mine ? "yours" : p.name}
               </span>
             ),
           )}
           {lint.define && (
             <span className="lint-kinds">
-              1 {lint.define.name} = <Tex math={lint.define.latex} /> — {a(lint.define.kind)}
+              {lint.define.name} = <Tex math={lint.define.latex} /> — {a(lint.define.kind)}
             </span>
           )}
           {lint.from_kind && (
@@ -364,7 +435,7 @@ export default function UnitAsk({ work, update }: { work: UnitsWork; update: (pa
           )}
         </div>
       ) : (
-        <div className="uask-hint">Plain words: 3 3/8 in to mm · mm in a mile · seconds in 10 weeks · your own unit: 1 k = 1000 m</div>
+        <div className="uask-hint">Plain words: 9k to m · 3 3/8 in to mm · mm in a mile · your own unit, like a variable: k = 1000 m</div>
       )}
     </div>
   );

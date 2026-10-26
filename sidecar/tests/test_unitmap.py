@@ -73,3 +73,22 @@ def test_the_linter_names_what_it_sees():
     assert lint["from_kind"] == "speed" and lint["to_kind"] == "mass" and lint["fits"] is False
     assert handle({"op": "unitlint", "text": "9 kmh to m/s"})["pieces"][0] == {"text": "kmh", "unknown": True}
     assert handle({"op": "unitlint", "text": "9 km/h to"})["from_kind"] == "speed"  # still typing
+
+
+def test_your_units_like_variables():
+    """k = 1000 m (or k = km, or 1 k = 1000 m), then 9k to m — no space needed."""
+    for line in ("k = 1000 m", "1 k = 1000 m"):
+        r = ask(line)
+        assert r["kind"] == "define" and r["symbol"] == "k" and r["equals"] == r"1000\,m"
+    assert ask("k = km")["equals"] == r"1\,km"
+    mine = [{"symbol": "k", "equals": r"1000\,m"}]
+    r = ask("9k to m", units=mine)
+    assert r["result_latex"] == r"9000\,\mathrm{m}" and "1 k = 1000 m" in r["walk"][1]["note"]
+    assert ask("k = 2000 m", units=mine)["equals"] == r"2000\,m"  # yours can be redefined
+    import pytest
+    from mathcore.parsing import MathInputError
+
+    with pytest.raises(MathInputError, match="already a unit"):
+        ask("m = 5 ft")  # a library unit can't be
+    lint = handle({"op": "unitlint", "text": "k = 1000 m"})
+    assert lint["pieces"][0] == {"text": "k", "new": True} and lint["define"]["kind"] == "length"
