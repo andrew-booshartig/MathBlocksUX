@@ -2958,6 +2958,31 @@ math-field {
   color: var(--t-subtle, #b8b8cc);
 }
 
+/* a step onto the calculator's Calculate line: quiet until the line is hovered */
+.work-to-calc {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-faint, #55606e);
+  font: 600 15px/1 -apple-system, Helvetica, sans-serif;
+  cursor: pointer;
+}
+
+.work-line:hover .work-to-calc,
+.work-line:focus-within .work-to-calc {
+  color: var(--t-subtle, #a9a9bd);
+}
+
+.work-to-calc:hover {
+  border-color: var(--t-line, #2e2e3a);
+  background: var(--t-bg3, #1c1c24);
+  color: var(--t-text, #e8e8f0) !important;
+}
+
 .work-mark {
   width: 18px;
   text-align: center;

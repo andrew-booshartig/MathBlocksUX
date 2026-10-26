@@ -99,6 +99,7 @@ export function WorkPad({
   onStatus,
   onReset,
   onGraph,
+  onCalculate,
   autoFocus,
 }: {
   data: WorkBlockData;
@@ -110,6 +111,8 @@ export function WorkPad({
   onReset?: () => void;
   /** a solved line, sent to be graphed (the calculator's Graph tab) */
   onGraph?: (latex: string) => void;
+  /** a step, sent to be worked out (the calculator's Calculate tab) */
+  onCalculate?: (latex: string) => void;
   /** opened on purpose (its tab clicked): the cursor goes where you'd type next */
   autoFocus?: boolean;
 }) {
@@ -786,6 +789,16 @@ export function WorkPad({
                             update({ reasons: next });
                           }}
                         />
+                      )}
+                      {onCalculate && (visual ? text : c?.latex)?.trim() && (
+                        <button
+                          className="work-to-calc"
+                          title="Calculate this step — it goes on the Calculate tab's line"
+                          onPointerDown={(e) => e.preventDefault()}
+                          onClick={() => onCalculate((visual ? text : c?.latex) ?? "")}
+                        >
+                          =
+                        </button>
                       )}
                       <span className="work-mark" title={MARK[status].title}>
                         {MARK[status].icon}

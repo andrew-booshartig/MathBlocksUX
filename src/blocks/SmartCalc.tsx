@@ -613,6 +613,13 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
           frame={tabFrame("smart-tab-work")}
           autoFocus={focusOn.current === "work"}
           onReset={clearOwnVariables}
+          onCalculate={(latex) => {
+            // onto the Calculate line (in place of anything half-typed there)
+            const typed = draft.trim();
+            setDraft(latex);
+            setTab("calc");
+            if (typed && typed !== latex.trim()) setNote("Put in place of what was on the line");
+          }}
           onGraph={(latex) => {
             // into the Graph tab's line — drawn when Graph is pressed
             setGraphLine(latex);
