@@ -3,13 +3,14 @@
  * same amount, in other units?) with the exact slip named when it isn't;
  * the units shown as they are now against the units wanted; and the
  * relationships conversions are made of (1 km = 1000 m) as fraction cards —
- * tap one to put it on your line, tap again to flip it. Units of your own
- * (1 bag = 50 lb) join the library everywhere in the calculator. */
+ * tap one to put it on your line, tap again to flip it. That's Practice;
+ * the main view is the unit map (UnitMap.tsx). */
 import { useMemo, useRef, useState } from "react";
-import { type MyUnit, type UnitsWork, newId } from "../store";
+import type { UnitsWork } from "../store";
 import { useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { RichText, Tex } from "../ui";
+import UnitMap from "./UnitMap";
 
 interface Line {
   status: "ok" | "wrong" | "error" | "empty";
@@ -56,7 +57,6 @@ export default function UnitsTab({ work, update }: { work: UnitsWork; update: (p
   /** the card just put on a line — tapping it again flips it */
   const lastTap = useRef<{ key: string; line: number; text: string; flipped: boolean } | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [adding, setAdding] = useState<{ symbol: string; equals: string } | null>(null);
 
   const setLines = (next: string[]) => update({ lines: next.length ? next : [""] });
   const setLine = (i: number, latex: string) => {
@@ -97,17 +97,28 @@ export default function UnitsTab({ work, update }: { work: UnitsWork; update: (p
     return work.from ?? "";
   };
 
-  const addMine = () => {
-    if (!adding) return;
-    const symbol = adding.symbol.trim();
-    const equals = adding.equals.trim().replace(/^(\d[\d.,/]*)\s+/, "$1\\,");
-    if (!/^[A-Za-z]+$/.test(symbol) || !equals) return;
-    update({ mine: [...mine.filter((u) => u.symbol !== symbol), { id: newId("unit"), symbol, equals } as MyUnit] });
-    setAdding(null);
-  };
+  const view = work.view ?? "map";
+  const views = (
+    <div className="units-views" role="tablist">
+      {(["map", "practice"] as const).map((v) => (
+        <button key={v} role="tab" className={`smart-graph-mode${view === v ? " is-on" : ""}`} onClick={() => update({ view: v })}>
+          {v === "map" ? "Map" : "Practice"}
+        </button>
+      ))}
+      <span className="units-views-hint">{view === "map" ? "look up · convert · see the path" : "convert it yourself — each step checked"}</span>
+    </div>
+  );
+  if (view === "map")
+    return (
+      <div className="units-tab">
+        {views}
+        <UnitMap work={work} update={update} />
+      </div>
+    );
 
   return (
     <div className="units-tab">
+      {views}
       <section className="units-convert">
         <div className="units-label">Convert</div>
         <div className="units-problem">
@@ -219,39 +230,6 @@ export default function UnitsTab({ work, update }: { work: UnitsWork; update: (p
           </button>
         )}
 
-        <div className="units-label">Your own units</div>
-        {mine.map((u) => (
-          <div key={u.id} className="units-mine">
-            <Tex math={`1\\,\\mathrm{${u.symbol}} = ${u.equals.replace(/\\,([A-Za-z]+)/, "\\,\\mathrm{$1}")}`} />
-            <button className="units-mine-remove" title={`Remove ${u.symbol}`} onClick={() => update({ mine: mine.filter((m) => m.id !== u.id) })}>
-              ×
-            </button>
-          </div>
-        ))}
-        {adding ? (
-          <div className="units-add">
-            <span>1</span>
-            <input autoFocus className="units-add-symbol" placeholder="bag" value={adding.symbol} onChange={(e) => setAdding({ ...adding, symbol: e.target.value })} />
-            <span>=</span>
-            <input
-              className="units-add-equals"
-              placeholder="50 lb"
-              value={adding.equals}
-              onChange={(e) => setAdding({ ...adding, equals: e.target.value })}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") addMine();
-                if (e.key === "Escape") setAdding(null);
-              }}
-            />
-            <button className="action-btn is-primary" onClick={addMine}>
-              Add
-            </button>
-          </div>
-        ) : (
-          <button className="units-more" onClick={() => setAdding({ symbol: "", equals: "" })}>
-            + a unit of your own (1 bag = 50 lb)
-          </button>
-        )}
       </section>
     </div>
   );

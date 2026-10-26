@@ -318,9 +318,12 @@ export interface WorkHistoryEntry {
   note?: Note;
 }
 
-/** The Units tab: converting an amount — 9 km/h into m/s — your way, a
- *  line at a time (each checked), and units of your own. */
+/** The Units tab: the unit map (look up and convert, the path shown) and
+ *  practice (converting it yourself, a line at a time, each checked) — and
+ *  units of your own. */
 export interface UnitsWork {
+  /** the map, or practice */
+  view?: "map" | "practice";
   /** the amount, as typed (LaTeX): 9\,\frac{km}{h} */
   from?: string;
   /** the units it's going into: \frac{m}{s} */
