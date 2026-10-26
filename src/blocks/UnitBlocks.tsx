@@ -11,7 +11,7 @@ import { useMemo, useState } from "react";
 import { type BlockSide, type UnitBlock, type UnitsWork, newId } from "../store";
 import { useLiveMath } from "../mathSidecar";
 import { Tex } from "../ui";
-import { type KnownUnit, chainTex, check, keyOf, parse, show, solve, stepTex, tex, unitTex, unready } from "./blockMath";
+import { type KnownUnit, chainTex, check, keyOf, parse, per, show, solve, stepTex, tex, unitTex, unready } from "./blockMath";
 
 const EXAMPLE: Omit<UnitBlock, "id">[] = [
   { label: "km to m", a: { amount: "1", unit: "km" }, b: { amount: "1000", unit: "m" }, locked: true },
@@ -184,6 +184,20 @@ export default function UnitBlocks({ work, update, units }: { work: UnitsWork; u
 
   // units you can follow the chain to: linked, and reached from yours
   const reachable = [...order.keys()].filter((k) => solved.parent.has(k));
+  // the question: m per s = ? (any two linked units)
+  const linkedUnits = [...order.keys()].filter((k) => (solved.uses.get(k) ?? 0) > 0);
+  const question = work.question ?? { top: "", per: "" };
+  const answer = per(question.top, question.per, blocks, known);
+  const unitSelect = (value: string, onChange: (k: string) => void, placeholder: string) => (
+    <select className="ublock-pick" value={value} onChange={(e) => onChange(e.target.value)} style={{ "--unit": value ? colorOf(value) : "var(--t-muted, #74748a)" } as React.CSSProperties}>
+      <option value="">{placeholder}</option>
+      {linkedUnits.map((k) => (
+        <option key={k} value={k}>
+          {order.get(k)}
+        </option>
+      ))}
+    </select>
+  );
   const chain = follow && solved.parent.has(follow) ? chainTex(follow, solved, known) : null;
 
   return (
@@ -208,6 +222,42 @@ export default function UnitBlocks({ work, update, units }: { work: UnitsWork; u
               + Block
             </button>
           </div>
+        </div>
+      )}
+      {linkedUnits.length > 1 && (
+        <div className="ublocks-ask">
+          <div className="ublocks-ask-line">
+            {unitSelect(question.top, (top) => update({ question: { ...question, top } }), "unit…")}
+            <span className="ublocks-ask-per">per</span>
+            {unitSelect(question.per, (p) => update({ question: { ...question, per: p } }), "unit…")}
+            <span className="ublock-eq">=</span>
+            {answer && typeof answer === "object" ? (
+              <span className="ublocks-ask-answer">
+                {!show(answer.value).exact && "≈ "}
+                {show(answer.value).text} <Tex math={`${unitTex(order.get(question.top) ?? "")}/${unitTex(order.get(question.per) ?? "")}`} />
+              </span>
+            ) : (
+              <span className="ublocks-ask-answer is-empty">?</span>
+            )}
+          </div>
+          {answer === "unlinked" && <div className="ublock-check is-off">Those two aren't linked — add a block that joins them</div>}
+          {answer && typeof answer === "object" && (
+            <div className="ublocks-chain-work">
+              <div className="ublocks-chain-from">
+                start with 1 {order.get(question.per)} and go through every block to {order.get(question.top)}:
+              </div>
+              <Tex math={answer.latex} />
+              <div className="ublocks-chain-from">
+                so every 1 {order.get(question.per)} goes with {show(answer.value).exact ? "" : "about "}
+                {show(answer.value).text} {order.get(question.top)}
+                {!show(answer.value).exact && (
+                  <>
+                    {" "}— exactly <Tex math={tex(answer.value)} />
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
       {blocks.map((b, i) => {

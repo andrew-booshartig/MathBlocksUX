@@ -5262,6 +5262,50 @@ button.ublock-unit.is-on {
   color: var(--unit);
 }
 
+/* the question: m per s = ? */
+.ublocks-ask {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--t-teal, #55d6be);
+}
+
+.ublocks-ask-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ublock-pick {
+  --unit: var(--t-blue, #61afef);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--unit);
+  background: color-mix(in srgb, var(--unit) 15%, transparent);
+  border: none;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ublocks-ask-per {
+  color: var(--t-subtle, #a9a9bd);
+  font-size: 15px;
+}
+
+.ublocks-ask-answer {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--t-green, #98c379);
+  font-variant-numeric: tabular-nums;
+}
+
+.ublocks-ask-answer.is-empty {
+  color: var(--t-muted, #74748a);
+}
+
 .ublock-gap {
   height: 8px;
 }

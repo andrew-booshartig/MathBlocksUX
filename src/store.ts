@@ -333,6 +333,8 @@ export interface UnitsWork {
   /** the numbers you've set in locked blocks, newest first (unit → amount) —
    *  each linked group follows its newest */
   seeds?: BlockSeed[];
+  /** the question over the blocks: top per per (m per s = ?), unit keys */
+  question?: { top: string; per: string };
 }
 
 export interface BlockSide {

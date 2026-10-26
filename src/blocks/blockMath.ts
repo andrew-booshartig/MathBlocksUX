@@ -300,3 +300,15 @@ export function chainTex(target: string, solved: Solved, known: KnownUnit[]): { 
   latex += ` = ${tex(solved.values.get(target)!)}\\,${unitTex(end.unit)}`;
   return { latex, from: start.unit.trim() };
 }
+
+/** "m per s = ?" — how many of one unit go with 1 of the other: start at
+ * 1 s and walk the links to m (it doesn't matter what numbers are in the
+ * blocks right now — 1 s always goes with the same distance) */
+export function per(top: string, bottom: string, blocks: UnitBlock[], known: KnownUnit[]): { value: Q; latex: string } | "unlinked" | null {
+  if (!top || !bottom || top === bottom) return null;
+  const solved = solve(blocks, [{ unit: bottom, amount: "1" }], known);
+  if (!solved.values.has(top) || !solved.values.has(bottom)) return "unlinked";
+  if (!solved.sources.has(bottom) || !solved.parent.has(top)) return "unlinked";
+  const chain = chainTex(top, solved, known);
+  return chain ? { value: solved.values.get(top)!, latex: chain.latex } : "unlinked";
+}
