@@ -23,6 +23,7 @@ import dataclasses
 from .lang.ast import Const, Group, Mul, Num, Sym
 from .calculator import _fmt_decimal, op_calc
 from .parsing import MathInputError, build_scope, parse, step, tex
+from . import units
 from .arith import arithmetic_steps
 from .solve import interval_tex, op_solve, set_relational_tex, set_to_segments
 from .transform import op_transform
@@ -138,6 +139,24 @@ def _function_def(node):
     return None
 
 
+def _unit_steps(node, vars_: dict) -> list[dict] | None:
+    """Numbers with units worked by hand — the values put in (d = r·t →
+    5 m/s · 10 s), the numbers multiplied, the units cancelled."""
+    used = [n for n in _names(lang.write(node, "plain", PLAIN)) if n in vars_]
+    try:
+        if used:
+            # a value with units as it's written: 5 m/s, not (5 m)/s
+            values = {n: lang.parse(tex(sympy.sympify(vars_[n])), "latex") for n in used}
+            node = _fill_in(node, values)
+        worked = units.steps(lang.to_sympy(node, evaluate=False), lambda n: tex(n, keep_order=True))
+    except Exception:  # noqa: BLE001 — then just the answer
+        return None
+    if not worked:
+        return None
+    start = [step("Put in the values", lang.latex(node))] if used else [step("Start", lang.latex(node))]
+    return start + worked
+
+
 def _plain(latex: str) -> str:
     return lang.write(lang.parse(latex, "latex"), "plain", PLAIN)
 
@@ -151,7 +170,7 @@ def _letters(text: str, vars_: dict | None = None, names: list | None = None) ->
     # x < -2 or x > 5: the words split the parts too
     for side in re.split(r"<=|>=|<|>|=|\bor\b|\band\b", text):
         if side.strip():
-            names |= {str(s) for s in parse(side, scope).free_symbols}
+            names |= {str(s) for s in units.without_units(parse(side, scope).free_symbols)}
     return sorted(names, key=lambda n: (n not in ("x", "y"), n != "x", n))
 
 
@@ -211,7 +230,7 @@ def resolve_variables(items: list[dict], context: dict | None = None) -> dict:
                 out[name] = {"error": "can't read this value yet"}
                 del pending[name]
                 continue
-            free = {str(s) for s in value.free_symbols} - set(params)
+            free = {str(s) for s in units.without_units(value.free_symbols)} - set(params)
             del pending[name]
             progress = True
             if free:
@@ -222,6 +241,15 @@ def resolve_variables(items: list[dict], context: dict | None = None) -> dict:
                 body = sympy.simplify(value)
                 known[f"{name}({','.join(params)})"] = str(body)
                 out[name] = {"plain": str(body), "latex": tex(body), "decimal": None, "params": params}
+                continue
+            if units.has_units(value):  # 5 m/s: a value with its units
+                try:
+                    q = op_calc({"expr": str(value)})
+                except MathInputError as exc:
+                    out[name] = {"error": str(exc)}
+                    continue
+                known[name] = q["exact_plain"]
+                out[name] = {"plain": q["exact_plain"], "latex": q["exact_latex"], "decimal": q["decimal"] if q["exact_differs"] else None}
                 continue
             exact = sympy.nsimplify(value) if value.is_Float else sympy.simplify(value)
             numeric = complex(sympy.N(exact, 15))
@@ -246,6 +274,73 @@ def resolve_variables(items: list[dict], context: dict | None = None) -> dict:
     return out
 
 
+_ARROW = re.compile(r"\\(?:longrightarrow|rightarrow|to)(?![A-Za-z])|->|→")
+
+
+def _units_text(latex: str) -> str:
+    """the units after → as plain text: \\frac{cm^{3}}{cm^{2}} → cm^3/cm^2"""
+    t = re.sub(r"\\(?:mathrm|operatorname|text|textrm)\{([^{}]*)\}", r"\1", latex)
+    t = re.sub(r"\^\{(\d)\}", r"^\1", t)
+    for _ in range(3):
+        t = re.sub(r"\\[dt]?frac\{([^{}]*)\}\{([^{}]*)\}", r"\1/\2", t)
+    t = re.sub(r"\\left|\\right|\\cdot|\\times", lambda m: "*" if m.group(0) in ("\\cdot", "\\times") else "", t)
+    t = re.sub(r"\\[,;: ]|~", " ", t)
+    return re.sub(r"[{}()]", "", t).strip()
+
+
+def _units_latex(us: list[tuple[str, int]]) -> str:
+    """units as written, top over bottom — cm³/cm² stays that (sympy would
+    make it cm)"""
+
+    def one(s, p):
+        return f"\\mathrm{{{s}}}" + (f"^{{{abs(p)}}}" if abs(p) != 1 else "")
+
+    top = "\\,".join(one(s, p) for s, p in us if p > 0) or "1"
+    bottom = "\\,".join(one(s, p) for s, p in us if p < 0)
+    return f"\\frac{{{top}}}{{{bottom}}}" if bottom else top
+
+
+def _convert_line(req: dict, left: str, right: str) -> dict:
+    """amount → units: the amount worked out as usual, then converted one
+    fact at a time (the Reference sheet's way) — each step's amount shown"""
+    from .reference import _number, op_refconvert, read_units
+
+    worked = op_smart({**req, "latex": left, "ans": None})
+    if worked.get("kind") != "value":
+        raise MathInputError("→ converts an amount — like 50 mm³ → cm³")
+    vars_ = req.get("vars") or {}
+    text = lang.write(lang.parse(_mark_names(left, list(vars_)), "latex"), "plain", PLAIN)
+    value = sympy.sympify(op_calc({"expr": text, "vars": vars_})["exact_plain"])
+    if not units.has_units(value):
+        raise MathInputError("that's a plain number — give it units (900 km) to convert")
+    number, unit_part = units.split(value)
+    target_text = _units_text(right)
+    target = sympy.Mul(*[units.symbol(units.UNITS[s]) ** p for s, p in read_units(target_text)])  # for its plain text
+    exact = number.is_Rational
+    out = op_refconvert({"amount": str(number) if exact else "1", "from": units.plain(unit_part), "to": target_text})
+    factor = sympy.Rational(out["to"]["amount"]["text"].replace("/", "/")) if exact else None
+    result = sympy.nsimplify(factor) if exact else number * sympy.Rational(sympy.nsimplify(out["factor"]["text"]))
+    def shown(n, us) -> str:
+        # exact: 0.05 when it ends, 25/6 when it doesn't
+        number_tex = _number(n)["latex"] if n.is_Rational else tex(n)
+        return f"{number_tex}\\,{_units_latex(read_units(us))}"
+
+    steps = [step("Start", worked["result_latex"])]
+    if exact:
+        steps += [step(line["why"], shown(sympy.Rational(line["result"]["text"]), line["units"])) for line in out["lines"]]
+    result_latex = shown(result, target_text)
+    decimal = None if (result.is_Rational and out["to"]["amount"].get("approx") is None) else f"{float(result):.6g} {units.plain(target)}"
+    return {
+        "input_latex": f"{worked['input_latex']} \\to {_units_latex(read_units(target_text))}",
+        "names": worked.get("names", []),
+        "kind": "value",
+        "result_latex": result_latex,
+        "decimal": decimal,
+        "ans": result_latex,
+        "steps": steps if len(steps) > 1 else None,
+    }
+
+
 def op_smart_vars(req: dict) -> dict:
     return {"values": resolve_variables(req.get("vars") or [], req.get("context") or {})}
 
@@ -262,6 +357,12 @@ def op_smart(req: dict) -> dict:
         if not ans:
             raise MathInputError("there's no answer yet to use as Ans")
         latex = _ANS.sub(lambda _: f"\\left({ans}\\right)", latex)
+    # 50 mm³/cm² → cm³/cm²: worked out, then put in the new units
+    arrow = _ARROW.split(latex)
+    if len(arrow) > 2:
+        raise MathInputError("one → per line")
+    if len(arrow) == 2:
+        return _convert_line(req, arrow[0], arrow[1])
     vars_ = req.get("vars") or {}
     functions = [k.split("(")[0] for k in vars_ if "(" in k]
     saving = _NEW_NAME.match(latex)
@@ -303,7 +404,9 @@ def op_smart(req: dict) -> dict:
         right = lang.write(node.parts[1], "plain", PLAIN)
         if name not in _letters(right) and not _letters(right, vars_):
             value = op_calc({"expr": right, "angle": req.get("angle", "deg"), "vars": vars_})
+            worked = _unit_steps(node.parts[1], vars_) if units.has_units(sympy.sympify(value["exact_plain"])) else None
             return {
+                **({"steps": worked} if worked else {}),
                 **base,
                 "kind": "assign",
                 "name": name,
@@ -329,6 +432,13 @@ def op_smart(req: dict) -> dict:
             truth = bool(check(sympy.simplify(sides[0] - sides[1]), 0))
             return {**base, "kind": "truth", "result_latex": "\\text{true}" if truth else "\\text{false}"}
         value = op_calc({"expr": text, "angle": req.get("angle", "deg"), "vars": vars_})
+        if units.has_units(sympy.sympify(value["exact_plain"])):
+            # numbers with units: the numbers, then the units (cancelling)
+            out = {**base, "kind": "value", "result_latex": value["exact_latex"], "decimal": value["decimal"] if value["exact_differs"] else None, "ans": value["exact_latex"]}
+            worked = _unit_steps(node, vars_)
+            if worked:
+                out["steps"] = worked
+            return out
         out = {
             **base,
             "kind": "value",

@@ -24,11 +24,12 @@ import { NumberLine, StepList, Tex } from "../ui";
 import { nameTex, signature, splitKey } from "../varNames";
 import { plainMath, sameWritten } from "../numberLine";
 import { nameOf } from "../calcNames";
+import UnitPicker from "./UnitPicker";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
   | { command: string }
-  | { run: "enter" | "clear" }
+  | { run: "enter" | "clear" | "units" }
 );
 
 /** Just the commands a keyboard doesn't have — numbers, + − × ( ), ⌫ and
@@ -49,6 +50,8 @@ const KEYS: Key[] = [
   { label: "or", title: "Either one: x < −2 or x > 5 (or type or)", insert: "\\text{ or }" },
   { label: "and", title: "Both at once: x > −4 and x < 2 (or type and)", insert: "\\text{ and }" },
   { label: "Ans", title: "The last answer", insert: "\\mathrm{Ans}" },
+  { label: "unit", title: "A unit, from the list — or type one after a number with a space: 900 km", run: "units" },
+  { label: "\\to", tex: true, title: "Convert to — 50 mm³/cm² → cm³/cm² (or type ->)", insert: "\\to " },
   { label: "⏎", title: "Work it out (or press Enter)", run: "enter" },
 ];
 
@@ -123,6 +126,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const tape = useRef<HTMLDivElement>(null);
   /** the variables list is open (it folds away — type a name to see its value) */
   const [varsOpen, setVarsOpen] = useState(false);
+  /** the unit key's list */
+  const [unitsOpen, setUnitsOpen] = useState(false);
   const varsPanel = useRef<HTMLDivElement>(null);
   /** the history is scrolled down: older answers are up above (it fades there) */
   const [tapeScrolled, setTapeScrolled] = useState(false);
@@ -336,7 +341,9 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   }
   /** an answer's name, following the math: d/f → kilometers per liter,
    * trip/r → liters, 9k → meters */
-  const answerName = (r?: SmartResult | null) => (r ? nameOf(r.dims, variableNames) : null);
+  const answerName = (r?: SmartResult | null) =>
+    // an answer with real units (72 L) says them already
+    r && !/\\mathrm\{/.test(r.result_latex ?? "") ? nameOf(r.dims, variableNames) : null;
 
   /** 🔒 / 🔓 on a history line: locked lines stay through Clear all */
   const lockButton = (entry: SmartEntry) => {
@@ -472,7 +479,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   };
 
   const press = (key: Key) => {
-    if ("run" in key) {
+    if ("run" in key && key.run === "units") setUnitsOpen((open) => !open);
+    else if ("run" in key) {
       if (key.run === "enter") enter();
       else {
         // AC: just the line — the answers and variables stay for what's next
@@ -955,6 +963,17 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
             </div>
           </div>
 
+          {unitsOpen && (
+            <UnitPicker
+              onPick={(symbol) => {
+                // a thin space first: 900 km reads as 900 of a unit
+                field.current?.insert(`\\,\\mathrm{${symbol}}`);
+                setUnitsOpen(false);
+                field.current?.focus();
+              }}
+              onClose={() => setUnitsOpen(false)}
+            />
+          )}
           <div className="smart-keys">
             {KEYS.map((key) => (
               <button

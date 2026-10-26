@@ -4800,7 +4800,7 @@ math-field {
 
 .smart-keys {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   gap: 4px;
 }
 
@@ -6039,5 +6039,70 @@ math-field {
 }
 
 .ref-fact:hover {
+  border-color: var(--t-teal, #55d6be);
+}
+
+/* the unit key's list, just above the keypad */
+.unit-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--t-bg3, #1c1c24);
+  border: 1px solid var(--t-line, #2e2e3a);
+  font-family: -apple-system, "Inter", Helvetica, sans-serif;
+}
+
+.unit-picker-search {
+  font: inherit;
+  font-size: 13px;
+  color: var(--t-text, #e8e8f0);
+  background: var(--t-bg1, #0e0e12);
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 7px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.unit-picker-search:focus {
+  border-color: var(--t-teal, #55d6be);
+}
+
+.unit-picker-list {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.unit-picker-kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.unit-picker-name {
+  width: 52px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: var(--t-subtle, #a9a9bd);
+}
+
+.unit-picker-unit {
+  border: 1px solid var(--t-line, #2e2e3a);
+  background: var(--t-bg2, #17171f);
+  color: var(--t-text, #e8e8f0);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.unit-picker-unit:hover {
   border-color: var(--t-teal, #55d6be);
 }

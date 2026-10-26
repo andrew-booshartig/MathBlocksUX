@@ -11,7 +11,6 @@ the calculator's history, labels and all. Exact throughout: 250 ÷ 60 is
 25/6, not 4.1666667."""
 
 from collections import deque
-from dataclasses import dataclass
 
 import re
 
@@ -21,51 +20,9 @@ from sympy import Rational
 from .parsing import MathInputError
 
 
-@dataclass(frozen=True)
-class Unit:
-    symbol: str
-    name: str
-    plural: str
-    kind: str
-    #: its size in the kind's base unit (km: 1000, in meters)
-    size: Rational
+# the calculator's own units — one library for both
+from .units import LIBRARY, UNITS  # noqa: E402
 
-
-def _u(symbol, name, plural, kind, size):
-    return Unit(symbol, name, plural, kind, Rational(size))
-
-
-LIBRARY = [
-    _u("mm", "millimeter", "millimeters", "length", "1/1000"),
-    _u("cm", "centimeter", "centimeters", "length", "1/100"),
-    _u("m", "meter", "meters", "length", "1"),
-    _u("km", "kilometer", "kilometers", "length", "1000"),
-    _u("in", "inch", "inches", "length", "0.0254"),
-    _u("ft", "foot", "feet", "length", "0.3048"),
-    _u("yd", "yard", "yards", "length", "0.9144"),
-    _u("mi", "mile", "miles", "length", "1609.344"),
-    _u("s", "second", "seconds", "time", "1"),
-    _u("min", "minute", "minutes", "time", "60"),
-    _u("h", "hour", "hours", "time", "3600"),
-    _u("day", "day", "days", "time", "86400"),
-    _u("wk", "week", "weeks", "time", "604800"),
-    # a year is 365 or 366 days; this is the average, 365.25 (science's year)
-    _u("yr", "year", "years", "time", "31557600"),
-    _u("mg", "milligram", "milligrams", "mass", "1/1000000"),
-    _u("g", "gram", "grams", "mass", "1/1000"),
-    _u("kg", "kilogram", "kilograms", "mass", "1"),
-    _u("oz", "ounce", "ounces", "mass", "0.028349523125"),
-    _u("lb", "pound", "pounds", "mass", "0.45359237"),
-    _u("mL", "milliliter", "milliliters", "volume", "1/1000000"),
-    _u("L", "liter", "liters", "volume", "1/1000"),
-    _u("tsp", "teaspoon", "teaspoons", "volume", "0.00000492892159375"),
-    _u("tbsp", "tablespoon", "tablespoons", "volume", "0.00001478676478125"),
-    _u("cup", "cup", "cups", "volume", "0.0002365882365"),
-    _u("pt", "pint", "pints", "volume", "0.000473176473"),
-    _u("qt", "quart", "quarts", "volume", "0.000946352946"),
-    _u("gal", "gallon", "gallons", "volume", "0.003785411784"),
-]
-UNITS = {u.symbol: u for u in LIBRARY}
 # more ways to write a few (and units that are others put together)
 ALIASES = {"sec": "s", "secs": "s", "hr": "h", "hrs": "h", "lbs": "lb", "metre": "m", "metres": "m", "ml": "mL", "l": "L"}
 COMBINED = {"mph": [("mi", 1), ("h", -1)], "kph": [("km", 1), ("h", -1)]}
@@ -148,7 +105,7 @@ def _number(value) -> dict:
     return {"latex": f"{sign}\\frac{{{abs(value.p)}}}{{{value.q}}}", "text": f"{value.p}/{value.q}", "approx": f"{float(value):.6g}"}
 
 
-def _lookup(word: str) -> Unit:
+def _lookup(word: str):
     w = word.strip()
     if w in UNITS:
         return UNITS[w]
@@ -167,11 +124,12 @@ _SUP = {"²": 2, "³": 3}
 
 
 def read_units(text: str) -> list[tuple[str, int]]:
-    """km/h, kilometers per hour, mph, ft^2, m² → [(km, 1), (h, -1)]"""
+    """km/h, kilometers per hour, mph, ft^2, m² → [(km, 1), (h, -1)]. Top
+    and bottom stay apart: cm³/cm² is cm³ per cm², not cm."""
     text = re.sub(r"\s+per\s+", "/", text.strip(), flags=re.I)
     if not text:
         raise MathInputError("which units?")
-    out: dict[str, int] = {}
+    out: dict[tuple[str, int], int] = {}
     for k, piece in enumerate(text.split("/")):
         sign = 1 if k == 0 else -1
         for token in re.split(r"[*·×\s]+", piece.strip()):
@@ -181,11 +139,12 @@ def read_units(text: str) -> list[tuple[str, int]]:
             word, power = m.group(1), int(m.group(2) or _SUP.get(m.group(3) or "", 1))
             if word.lower() in COMBINED:
                 for sym, p in COMBINED[word.lower()]:
-                    out[sym] = out.get(sym, 0) + sign * p * power
+                    side = sign * (1 if p > 0 else -1)
+                    out[(sym, side)] = out.get((sym, side), 0) + sign * p * power
                 continue
             sym = _lookup(word).symbol
-            out[sym] = out.get(sym, 0) + sign * power
-    return [(s, p) for s, p in out.items() if p]
+            out[(sym, sign)] = out.get((sym, sign), 0) + sign * power
+    return [(s, p) for (s, _), p in out.items() if p]
 
 
 _POWER_WORD = {2: "square ", 3: "cubic "}
@@ -243,16 +202,25 @@ def op_refconvert(req: dict) -> dict:
     power = lambda pairs: sum(p for _, p in pairs)  # noqa: E731
     if {k: power(v) for k, v in have.items() if power(v)} != {k: power(v) for k, v in want.items() if power(v)}:
         raise MathInputError(f"{_symbols(start)} is {describe(start)}, {_symbols(goal)} is {describe(goal)} — they measure different things")
-    for k in have:
-        if len(have[k]) > 1 or len(want.get(k, [])) > 1:
-            raise MathInputError("one unit of each kind for now — like km/h, not km·m")
+    # each unit and the one it becomes: same kind, same power — mm³ → cm³
+    # and cm² → cm², even with two lengths in one rate
+    partner: dict[int, str] = {}
+    left = list(goal)
+    for i, (sym, p) in enumerate(start):
+        match = next(((s2, p2) for s2, p2 in left if UNITS[s2].kind == UNITS[sym].kind and p2 == p), None)
+        if match is None:
+            raise MathInputError(f"write the new units the same shape as the old — {_symbols(start)} has {UNITS[sym].plural}{_SUPS.get(abs(p), '')} {'on top' if p > 0 else 'below'}")
+        left.remove(match)
+        partner[i] = match[0]
 
-    current = dict(start)
+    current = [list(sp) for sp in start]
     value = amount
     lines = []
     # the top units first (km → m), then the bottom ones (per h → per s)
-    for sym, p in sorted(start, key=lambda sp: -sp[1]):
-        target = want[UNITS[sym].kind][0][0]
+    for i, (sym, p) in sorted(enumerate(start), key=lambda e: -e[1][1]):
+        target = partner[i]
+        if target == sym:
+            continue
         path = _path(sym, target)
         for here, there in zip(path, path[1:]):
             n = _how_many(here, there)  # there's in one here
@@ -264,15 +232,15 @@ def op_refconvert(req: dict) -> dict:
             else:
                 op, shown = "÷", 1 / by
             value = value * by
-            current[there] = current.pop(here)
-            us = sorted(current.items(), key=lambda sp: -sp[1])
+            current[i][0] = there
+            us = sorted(((u, q) for u, q in current), key=lambda sp: -sp[1])
             # 1 km = 1000 m: kilometers → meters, × 1000
             # 1 h = 60 min: per hour → per minute, ÷ 60
             big, small = _fact(here, there)
             fact = f"1 {big} = {_number(_how_many(big, small))['text']} {small}"
             if abs(p) > 1:
                 fact += f", so 1 {big}{_SUPS[abs(p)]} = {_number(_how_many(big, small) ** abs(p))['text']} {small}{_SUPS[abs(p)]}"
-            change = f"{describe([(here, abs(p))])} → {describe([(there, abs(p))])}" if p > 0 else f"per {describe([(here, 1)], 1)} → per {describe([(there, 1)], 1)}"
+            change = f"{describe([(here, p)])} → {describe([(there, p)])}" if p > 0 else f"per {describe([(here, -p)], 1)} → per {describe([(there, -p)], 1)}"
             why = f"{fact}: {change}, {op} {_number(shown)['text']}"
             left = _number(amount)["latex"] if not lines else "\\mathrm{Ans}"
             lines.append(
@@ -286,7 +254,6 @@ def op_refconvert(req: dict) -> dict:
                     "why": why,
                 }
             )
-            current = dict(us)
     one_line = _number(amount)["latex"] + "".join(f" {_TEX[line['op']]} {_number(Rational(line['by']))['latex']}" for line in lines)
     return {
         "from": {"amount": _number(amount), "label": describe(start, amount), "units": _symbols(start)},

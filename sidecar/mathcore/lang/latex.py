@@ -85,7 +85,10 @@ def _tokens(text: str) -> list[tuple[str, str]]:
 
 class LatexReader:
     def __init__(self, text: str):
-        text = clean(text)
+        from .. import units  # here: units reads through parsing, which lang uses too
+
+        self.units = units
+        text = units.mark(clean(text))
         if "\\placeholder" in text:
             raise Incomplete("there's an empty box ▢ to fill in")
         self.toks = _tokens(text)
@@ -405,6 +408,9 @@ class LatexReader:
                     return self.function(_OPERATORNAME[name])
                 if name == "e":
                     return Const("e")
+                unit = self.units.find(name)
+                if t == "mathrm" and unit:  # a unit: 5 m, 10 s
+                    return Sym(self.units.symbol(unit).name)
                 return Sym(name)
         raise self.unexpected(self.i - 1)
 
