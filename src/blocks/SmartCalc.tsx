@@ -52,7 +52,7 @@ const KEYS: Key[] = [
   { label: "Ans", title: "The last answer", insert: "\\mathrm{Ans}" },
   { label: "unit", title: "A unit, from the list — or type one after a number with a space: 900 km", run: "units" },
   { label: "\\to", tex: true, title: "Convert to — 50 mm³/cm² → cm³/cm² (or type ->)", insert: "\\to " },
-  { label: "a/b", title: "Fractions on one line (3/4) or stacked — / types whichever is on", run: "linear" },
+  { label: "a/b", title: "Fractions on one line (3/4) or stacked — / types whichever is on (⌘/ is always ÷)", run: "linear" },
   { label: "⏎", title: "Work it out (or press Enter)", run: "enter", wide: true },
 ];
 

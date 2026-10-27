@@ -252,6 +252,12 @@ export default function MathInput({
           event.preventDefault();
           event.stopPropagation();
           handlers.current.onChange(mf.value);
+        } else if (event.key === "/" && (event.metaKey || event.ctrlKey) && !event.altKey) {
+          // ⌘/ is a division sign (÷), to mix with fractions: ¾ ÷ 2
+          event.preventDefault();
+          event.stopPropagation();
+          mf.insert("\\div", { format: "latex" });
+          handlers.current.onChange(mf.value);
         } else if (event.key === "/" && handlers.current.linear && !event.metaKey && !event.ctrlKey) {
           // a/b mode: the slash stays a slash, on the line
           event.preventDefault();
