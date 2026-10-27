@@ -141,3 +141,8 @@ def test_a_unit_alone_over_the_bar_is_still_a_unit():
 )
 def test_more_kinds_of_units(latex, result):
     assert smart(latex)["result_latex"] == result
+
+
+def test_a_unit_against_its_number_says_to_add_a_space():
+    with pytest.raises(MathInputError, match="put a space"):
+        smart(r"3kg\to g")

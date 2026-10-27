@@ -307,6 +307,10 @@ def _convert_line(req: dict, left: str, right: str) -> dict:
 
     worked = op_smart({**req, "latex": left, "ans": None})
     if worked.get("kind") != "value":
+        # 3kg: a unit written right against its number reads as letters
+        stuck = next((m for m in re.finditer(r"(\d)([A-Za-z]+)", left) if units.find(m.group(2))), None)
+        if stuck:
+            raise MathInputError(f"put a space between the number and the unit: {stuck.group(1)} {stuck.group(2)} (without it, {stuck.group(0)} is letters multiplied)")
         raise MathInputError("→ converts an amount — like 50 mm³ → cm³")
     vars_ = req.get("vars") or {}
     text = lang.write(lang.parse(_mark_names(left, list(vars_)), "latex"), "plain", PLAIN)
