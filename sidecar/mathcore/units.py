@@ -289,7 +289,7 @@ _RUN = r"[A-Za-z]+"
 # unit: m · m^2 · m/s · \frac{m}{s}
 _POW = r"(?:\^\{?\d\}?)?"
 _AFTER_NUMBER = re.compile(
-    rf"(?:(?<=[\d}}])|(?<=\\pi))(\s*\\,\s*|\s+)(?:\\frac\{{({_RUN}){_POW}\}}\{{({_RUN})({_POW})\}}|({_RUN})(?:\s*/\s*({_RUN}))?)"
+    rf"(?:(?<=[\d}}])|(?<=\\pi))(\s*\\,\s*|\s+)(?:\\frac\{{({_RUN}){_POW}\}}\{{({_RUN})({_POW})\}}|({_RUN})({_POW})(?:\s*/\s*({_RUN})({_POW}))?)"
 )
 
 
@@ -300,16 +300,20 @@ def mark(latex: str) -> str:
 
     def swap(m: re.Match) -> str:
         typed_frac = m.group(2) is not None
-        top, bottom = (m.group(2), m.group(3)) if typed_frac else (m.group(5), m.group(6))
+        # kg/m^3 typed with a slash: each side keeps its power
+        top, bottom = (m.group(2), m.group(3)) if typed_frac else (m.group(5), m.group(7))
         found = [find(top), find(bottom) if bottom else None]
         if not found[0] or (bottom and not found[1]):
             return m.group(0)
         if bottom:
             # A over dm²: the powers stay where they were typed
-            top_pow = re.search(r"\^\{?\d\}?", m.group(0)[: m.group(0).index("}{")]) if typed_frac else None
-            bottom_pow = m.group(4) if typed_frac else ""
-            return f"\\,\\frac{{\\mathrm{{{found[0].symbol}}}{top_pow.group(0) if top_pow else ''}}}{{\\mathrm{{{found[1].symbol}}}{bottom_pow}}}"
-        return f"\\,\\mathrm{{{found[0].symbol}}}"
+            if typed_frac:
+                found_top = re.search(r"\^\{?\d\}?", m.group(0)[: m.group(0).index("}{")])
+                top_pow, bottom_pow = (found_top.group(0) if found_top else ""), m.group(4)
+            else:
+                top_pow, bottom_pow = m.group(6) or "", m.group(8) or ""
+            return f"\\,\\frac{{\\mathrm{{{found[0].symbol}}}{top_pow}}}{{\\mathrm{{{found[1].symbol}}}{bottom_pow}}}"
+        return f"\\,\\mathrm{{{found[0].symbol}}}{m.group(6) or ''}"
 
     # the math field turns the letters min and sec into the functions \min
     # and \sec (minimum, secant) — as units (no brackets after) they're letters

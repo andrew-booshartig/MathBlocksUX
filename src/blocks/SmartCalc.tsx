@@ -29,7 +29,7 @@ import UnitPicker from "./UnitPicker";
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
   | { command: string }
-  | { run: "enter" | "clear" | "units" }
+  | { run: "enter" | "clear" | "units" | "linear" }
 );
 
 /** Just the commands a keyboard doesn't have — numbers, + − × ( ), ⌫ and
@@ -52,7 +52,8 @@ const KEYS: Key[] = [
   { label: "Ans", title: "The last answer", insert: "\\mathrm{Ans}" },
   { label: "unit", title: "A unit, from the list — or type one after a number with a space: 900 km", run: "units" },
   { label: "\\to", tex: true, title: "Convert to — 50 mm³/cm² → cm³/cm² (or type ->)", insert: "\\to " },
-  { label: "⏎", title: "Work it out (or press Enter)", run: "enter" },
+  { label: "a/b", title: "Fractions on one line (3/4) or stacked — / types whichever is on", run: "linear" },
+  { label: "⏎", title: "Work it out (or press Enter)", run: "enter", wide: true },
 ];
 
 /** More than one term at the top level? (A + inside a fraction or a root
@@ -72,6 +73,38 @@ function numberIn(latex: string, shown: string) {
   const seen = /^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)(?![\d.])(.*)$/.exec(shown);
   if (!typed || !seen) return null;
   return { name: typed[1], number: typed[2], rest: typed[3], restShown: seen[3] };
+}
+
+/** a/b mode: stacked fractions written on one line — \frac{3}{4} → 3/4,
+ * with brackets where the line needs them ((x+1)/2, 6/(2·3)) */
+export function linearize(latex: string): string {
+  const group = (s: string, at: number) => {
+    // the {…} starting at `at`: its inside, and where it ends
+    let depth = 0;
+    for (let i = at; i < s.length; i++) {
+      if (s[i] === "{") depth++;
+      else if (s[i] === "}" && --depth === 0) return { inside: s.slice(at + 1, i), end: i + 1 };
+    }
+    return null;
+  };
+  const simple = (s: string) => /^\s*-?(?:\d+(?:\.\d+)?|[A-Za-z]|\\mathrm\{[^{}]*\}(?:\^\{?\d\}?)?|\\pi)\s*$/.test(s);
+  let out = latex;
+  for (let guard = 0; guard < 50; guard++) {
+    const at = out.search(/\\[dt]?frac\{/);
+    if (at < 0) break;
+    const open = out.indexOf("{", at);
+    const top = group(out, open);
+    const bottom = top && out[top.end] === "{" ? group(out, top.end) : null;
+    if (!top || !bottom) break;
+    const a = linearize(top.inside);
+    const b = linearize(bottom.inside);
+    // a/b/c reads left to right, so a top that's itself a division needs nothing
+    const topOk = simple(a) || !/[+\-]|\s/.test(a.replace(/^-/, "")) || /^[^+\-\s]*\/[^+\-\s]*$/.test(a);
+    const left = topOk ? a : `\\left(${a}\\right)`;
+    const right = simple(b) ? b : `\\left(${b}\\right)`;
+    out = `${out.slice(0, at)}${left}/${right}${out.slice(bottom.end)}`;
+  }
+  return out;
 }
 
 /** locked 🔒: Clear all keeps it */
@@ -135,6 +168,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const tape = useRef<HTMLDivElement>(null);
   /** the variables list is open (it folds away — type a name to see its value) */
   const [varsOpen, setVarsOpen] = useState(false);
+  /** a/b mode: everything shown with its fractions on one line */
+  const asLine = (latex: string) => (data.smartLinear ? linearize(latex) : latex);
   /** a unit from the Reference sheet, on its way into the Work tab's line */
   const [workInsert, setWorkInsert] = useState<{ latex: string; n: number } | null>(null);
   /** writing the note at the top */
@@ -580,6 +615,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
 
   const press = (key: Key) => {
     if ("run" in key && key.run === "units") setUnitsOpen((open) => !open);
+    else if ("run" in key && key.run === "linear") updateBlock(data.id, { smartLinear: !data.smartLinear });
     else if ("run" in key) {
       if (key.run === "enter") enter();
       else {
@@ -1025,7 +1061,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                       numberField(entry, numberIn(entry.latex, r.input_latex)!)
                     ) : (
                       <button className="smart-in" title="Put this in the line (at the cursor)" onPointerDown={(e) => e.preventDefault()} onClick={() => reuse(entry.latex)}>
-                        <Tex math={r.input_latex} />
+                        <Tex math={asLine(r.input_latex)} />
                       </button>
                     )}
                     {worked && <Tex math={`\\Rightarrow ${worked}`} />}
@@ -1074,7 +1110,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                     onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
                     onClick={() => reuse(entry.latex)}
                   >
-                    <Tex math={r.input_latex} />
+                    <Tex math={asLine(r.input_latex)} />
                   </button>
                   {ansFrom.get(entry.id) && (
                     <span className="smart-ans-from" title="What Ans was on this line — the named answer before it">
@@ -1099,7 +1135,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                         onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
                         onClick={() => r.result_latex && reuse(r.action?.kind === "solve" ? r.result_latex.replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)}
                       >
-                        <Tex math={r.result_latex ?? ""} />
+                        <Tex math={asLine(r.result_latex ?? "")} />
                         {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
                         {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
@@ -1144,11 +1180,12 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
               }}
               onEnter={enter}
               onArrow={cycle}
+              linear={!!data.smartLinear}
             />
             <div className={`smart-preview${error ? " is-error" : ""}`}>
               {error ? error : note ? <span className="smart-note">{note}</span> : previewText ? (
                 <>
-                  <Tex math={previewText} />
+                  <Tex math={asLine(previewText)} />
                   {preview?.kind !== "assign" && answerName(preview) && <span className="smart-unit-word">{answerName(preview)}</span>}
                 </>
               ) : null}
@@ -1170,7 +1207,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
             {KEYS.map((key) => (
               <button
                 key={key.label}
-                className={`smart-key${"run" in key && key.run === "enter" ? " is-enter" : ""}${key.wide ? " is-wide" : ""}${"command" in key || ("run" in key && key.run === "clear") ? " is-tool" : ""}`}
+                className={`smart-key${"run" in key && key.run === "enter" ? " is-enter" : ""}${"run" in key && key.run === "linear" && data.smartLinear ? " is-on" : ""}${key.wide ? " is-wide" : ""}${"command" in key || ("run" in key && key.run === "clear") ? " is-tool" : ""}`}
                 title={key.title}
                 // act on press, like a real calculator (and keep the line focused)
                 onPointerDown={(e) => {

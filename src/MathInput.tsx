@@ -128,6 +128,7 @@ export default function MathInput({
   onFocus,
   onBlur,
   onArrow,
+  linear,
   className,
   ref,
 }: {
@@ -142,14 +143,16 @@ export default function MathInput({
   onBlur?: () => void;
   /** ↑/↓ — return true to take the key (e.g. to cycle through history) */
   onArrow?: (direction: "up" | "down") => boolean;
+  /** / types a slash (3/4 on one line), not a stacked fraction */
+  linear?: boolean;
   className?: string;
   ref?: Ref<MathInputHandle>;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const field = useRef<MathfieldElement | null>(null);
   // the latest callbacks, without re-creating the field on every render
-  const handlers = useRef({ onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow });
-  handlers.current = { onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow };
+  const handlers = useRef({ onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow, linear });
+  handlers.current = { onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow, linear };
 
   useEffect(() => {
     const mf = new MathfieldElement();
@@ -248,6 +251,12 @@ export default function MathInput({
         } else if ((event.key === "r" || event.key === "d") && !event.metaKey && !event.ctrlKey && !event.altKey && typeWord(mf, event.key === "r" ? "or" : "and")) {
           event.preventDefault();
           event.stopPropagation();
+          handlers.current.onChange(mf.value);
+        } else if (event.key === "/" && handlers.current.linear && !event.metaKey && !event.ctrlKey) {
+          // a/b mode: the slash stays a slash, on the line
+          event.preventDefault();
+          event.stopPropagation();
+          mf.insert("/", { format: "latex" });
           handlers.current.onChange(mf.value);
         } else if (event.key === "|" && !event.metaKey && !event.ctrlKey) {
           // | shares the backslash key, which MathLive takes as "type a raw

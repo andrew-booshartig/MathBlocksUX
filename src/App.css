@@ -4800,7 +4800,7 @@ math-field {
 
 .smart-keys {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(9, 1fr);
   gap: 4px;
 }
 
@@ -4833,6 +4833,12 @@ math-field {
 
 .smart-key.is-wide {
   grid-column: span 2;
+}
+
+/* a/b on: fractions on one line */
+.smart-key.is-on {
+  color: var(--t-teal, #55d6be);
+  box-shadow: inset 0 0 0 1px var(--t-teal, #55d6be);
 }
 
 .smart-key.is-tool {

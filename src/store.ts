@@ -436,6 +436,8 @@ export interface CalculatorBlockData extends BlockBase {
   smartTab?: "calc" | "work" | "graph" | "assignment" | "reference";
   /** a note at the top of Calculate: what this problem is, in plain words */
   smartNote?: string;
+  /** fractions typed and shown on one line (3/4), not stacked */
+  smartLinear?: boolean;
   /** variables linked to keep their ratio (c and a: c doubles, a doubles) */
   smartLinks?: { a: string; b: string }[];
   /** the Reference tab's lookup: 9 km/h → m/s */
