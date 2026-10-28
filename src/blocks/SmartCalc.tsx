@@ -594,6 +594,9 @@ export default function SmartCalc({
     save((current()?.smart ?? []).map((e) => (e.id === id ? { ...e, label: label.trim() || undefined } : e)));
 
   const reuse = (latex: string) => {
+    // ending on a unit (160.276 lb), a thin space after it — or what you type
+    // next lands inside the unit's upright text: lb·2
+    if (/\\mathrm\{[^}]*\}$/.test(latex)) latex += "\\,";
     const line = field.current?.getValue() ?? "";
     if (!line.trim()) field.current?.setValue(latex);
     else field.current?.insert(severalTerms(latex) ? `\\left(${latex}\\right)` : latex);
@@ -1639,7 +1642,15 @@ export default function SmartCalc({
                       >
                         <Tex math={asLine(r.result_latex ?? "")} />
                         {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
-                        {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
+                        {r.decimal && (
+                          <span
+                            className="smart-decimal is-grab"
+                            title="Put the decimal in the line instead"
+                            onClick={(e) => (e.stopPropagation(), reuse(r.decimal_latex ?? r.decimal!))}
+                          >
+                            ≈ {r.decimal}
+                          </span>
+                        )}
                       </button>
                       {r.kind !== "truth" && (
                         <div className="smart-more">

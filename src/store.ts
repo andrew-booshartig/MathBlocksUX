@@ -361,6 +361,8 @@ export interface SmartResult {
   /** an inequality's answer, to draw on a number line */
   numberline?: NumberLineSegment[] | null;
   decimal?: string | null;
+  /** the ≈ answer as math to calculate on: 160.276\,\mathrm{lb} */
+  decimal_latex?: string | null;
   steps?: { note: string; latex: string }[];
   action?: SmartAction;
   others?: SmartAction[];

@@ -134,7 +134,10 @@ def _path(a: str, b: str) -> list[str]:
 
 def _terminates(value) -> bool:
     """a fraction that's a finite decimal (its bottom only 2s and 5s)"""
-    value = sympy.nsimplify(value)
+    # an exact fraction stays one — nsimplify would turn 7270000000/45359237
+    # into 2^(72/119)·3^(96/119)… that just happens to land near it
+    if not isinstance(value, sympy.Rational):
+        value = sympy.nsimplify(value, rational=isinstance(value, (float, sympy.Float)))
     if not value.is_Rational:
         return False  # π/180 never ends
     q = Rational(value).q
@@ -158,7 +161,10 @@ def _decimal(value) -> str:
 def _number(value) -> dict:
     """{latex, text, exact, approx?}: exact (2.5, 25/6 as a fraction, 180/π)
     — ≈ when it doesn't end"""
-    value = sympy.nsimplify(value)
+    # an exact fraction stays one — nsimplify would turn 7270000000/45359237
+    # into 2^(72/119)·3^(96/119)… that just happens to land near it
+    if not isinstance(value, sympy.Rational):
+        value = sympy.nsimplify(value, rational=isinstance(value, (float, sympy.Float)))
     if not value.is_Rational:
         return {"latex": sympy.latex(value), "text": sympy.sstr(value).replace("pi", "π").replace("*", ""), "exact": str(value), "approx": f"{float(value):.6g}"}
     value = Rational(value)

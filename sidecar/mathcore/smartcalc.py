@@ -375,6 +375,8 @@ def _convert_line(req: dict, left: str, right: str) -> dict:
         "kind": "value",
         "result_latex": result_latex,
         "decimal": decimal,
+        # the ≈ answer, ready to calculate on with: 160.276 lb
+        "decimal_latex": decimal and f"{float(result):.6g}\\,{_units_latex(read_units(target_text))}",
         "ans": result_latex,
         "steps": steps if len(steps) > 1 else None,
     }

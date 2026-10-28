@@ -301,3 +301,11 @@ def test_a_typed_space_keeps_the_function():
     out = op_smart({"latex": r"\cos\,t=\frac{k}{f}", "vars": {"k": "1", "f": "2", "cost": "3"}})
     assert out.get("name") != "cost"
     assert op_smart({"latex": r"\cos\,t\cdot2", "vars": {"cost": "30"}})["result_latex"] != "60"
+
+
+def test_unit_answer_stays_a_decimal():
+    r = op_smart({"latex": r"72.7\,\mathrm{kg}\to\mathrm{lb}"})
+    assert r["result_latex"] == r"160.2760646\,\mathrm{lb}"  # not 2^(72/119)·3^(96/119)…
+    assert r["decimal_latex"] == r"160.276\,\mathrm{lb}"
+    again = op_smart({"latex": r["decimal_latex"] + r"\cdot 2"})
+    assert again["decimal"] == "320.552 lb"
