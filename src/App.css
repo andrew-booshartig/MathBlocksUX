@@ -4722,8 +4722,8 @@ math-field {
   background: transparent;
   border: none;
   /* room for the hover highlight, without moving anything */
-  padding: 3px 8px;
-  margin: -3px -8px;
+  padding: 6px 8px 9px;
+  margin: -6px -8px 0;
   border-radius: 8px;
   cursor: pointer;
   color: inherit;

@@ -184,6 +184,24 @@ export default function SmartCalc({
   const tape = useRef<HTMLDivElement>(null);
   /** a/b mode: everything shown with its fractions on one line */
   const asLine = (latex: string) => (data.smartLinear ? linearize(latex) : latex);
+  /** a history line at full size: every fraction as big as the numbers
+   * around it — 40069 over 50 over 900 isn't shrunk to a speck — except up
+   * in a power, where small is right */
+  const fullSize = (latex: string) => {
+    let out = "";
+    const braces: boolean[] = []; // each open {: inside a power?
+    for (let i = 0; i < latex.length; i++) {
+      if (latex.startsWith("\\frac", i) && !braces.includes(true)) {
+        out += "\\dfrac";
+        i += 4;
+        continue;
+      }
+      if (latex[i] === "{") braces.push(/[\^_]\s*$/.test(latex.slice(0, i)));
+      else if (latex[i] === "}") braces.pop();
+      out += latex[i];
+    }
+    return `\\displaystyle ${out}`;
+  };
   /** a unit from the Reference sheet, on its way into the Work tab's line */
   const [workInsert, setWorkInsert] = useState<{ latex: string; n: number } | null>(null);
   /** writing the note at the top */
@@ -1639,7 +1657,7 @@ export default function SmartCalc({
                     onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
                     onClick={() => reuse(entry.latex)}
                   >
-                    <Tex math={asLine(r.input_latex)} />
+                    <Tex math={fullSize(asLine(r.input_latex))} />
                   </button>
                   {ansFrom.get(entry.id) && (
                     <span className="smart-ans-from" title="What Ans was on this line — the named answer before it">
@@ -1667,7 +1685,7 @@ export default function SmartCalc({
                           reuse(decimalOf(r) && !e.altKey ? decimalOf(r)! : r.action?.kind === "solve" ? asStep(r).replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)
                         }
                       >
-                        <Tex math={decimalOnly(r) ? `\\approx ${decimalTex(r)}` : asLine(r.result_latex ?? "")} />
+                        <Tex math={fullSize(decimalOnly(r) ? `\\approx ${decimalTex(r)}` : asLine(r.result_latex ?? ""))} />
                         {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
                         {showsDecimal(r) && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
