@@ -71,8 +71,10 @@ const MAX_ENTRIES = 60;
 /** s = 9 km/h → its number, to edit right in the line (and the rest:
  * the units, as typed and as shown) — null when it isn't one number */
 function numberIn(latex: string, shown: string) {
-  const typed = /^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)(?![\d.])(.*)$/.exec(latex);
-  const seen = /^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)(?![\d.])(.*)$/.exec(shown);
+  // a word name, however it's written: "price", \mathrm{price}, \text{price}
+  const bare = (s: string) => s.replace(/^\s*(?:"([A-Za-z]\w*)"|\\(?:mathrm|text)\{([A-Za-z]\w*)\})/, (_, a, b) => a ?? b);
+  const typed = /^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)(?![\d.])(.*)$/.exec(bare(latex));
+  const seen = /^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(-?\d+(?:\.\d+)?)(?![\d.])(.*)$/.exec(bare(shown));
   if (!typed || !seen) return null;
   return { name: typed[1], number: typed[2], rest: typed[3], restShown: seen[3] };
 }
@@ -435,7 +437,7 @@ export default function SmartCalc({
       const parts = entry && numberIn(entry.latex, entry.result.input_latex);
       if (!entry || !parts) continue;
       const scaled = Number(((Number(parts.number) * to) / from).toPrecision(12)).toString();
-      retype(entry, `${parts.name}=${scaled}${parts.rest}`);
+      retype(entry, `${nameTex(parts.name)}=${scaled}${parts.rest}`);
     }
   };
   const [linking, setLinking] = useState<string | null>(null);
@@ -473,7 +475,7 @@ export default function SmartCalc({
             const next = e.target.value;
             setNumbers((n) => ({ ...n, [entry.id]: next }));
             if (/^-?\d+(\.\d+)?$/.test(next)) {
-              retype(entry, `${parts.name}=${next}${parts.rest}`);
+              retype(entry, `${nameTex(parts.name)}=${next}${parts.rest}`);
               followLinks(parts.name, parts.number, next);
             }
           }}
@@ -820,7 +822,7 @@ export default function SmartCalc({
    * a number — and it's worked out once every one has one */
   const loadEquation = async (eq: Equation) => {
     try {
-      const f = await mathRequest<{ target: string; letters: string[]; input_latex: string }>({ op: "formula", latex: eq.latex });
+      const f = await mathRequest<{ target: string; letters: string[]; input_latex: string }>({ op: "formula", latex: eq.latex, vars });
       const d = current();
       const have = new Set([...(d?.smartVars ?? []).map((v) => v.name), ...(d?.smartBlanks ?? []).map((b) => b.name)]);
       const fresh = f.letters.filter((l) => !have.has(l)).map((name) => ({ name, ...(eq.labels?.[name] ? { label: eq.labels[name] } : {}) }));
@@ -844,7 +846,7 @@ export default function SmartCalc({
     const latex = eqDraft.trim();
     if (!latex) return;
     try {
-      await mathRequest({ op: "formula", latex }); // one letter = the rest?
+      await mathRequest({ op: "formula", latex, vars }); // one letter = the rest?
     } catch (err) {
       return setEqError(String(err).replace(/^Error:\s*/, "") || "I can't read that yet");
     }
@@ -861,7 +863,7 @@ export default function SmartCalc({
   const labelOf = (letter: string) => entries.find((e) => e.result.kind === "assign" && e.result.name === letter)?.label ?? blanks.find((b) => b.name === letter)?.label;
   const saveEquation = async (latex: string) => {
     try {
-      const f = await mathRequest<{ target: string; letters: string[]; input_latex: string }>({ op: "formula", latex });
+      const f = await mathRequest<{ target: string; letters: string[]; input_latex: string }>({ op: "formula", latex, vars });
       if (isSaved(f.input_latex)) return setNote("Already in Equations");
       const labels: Record<string, string> = {};
       for (const l of [f.target, ...f.letters]) {
@@ -976,7 +978,7 @@ export default function SmartCalc({
       </div>
       <div className="quick-row is-cols">
         <span>what it is</span>
-        <span>letter</span>
+        <span>letter or word</span>
         <span>number (if you have it)</span>
       </div>
       {quick.map((row, i) => (
@@ -1084,6 +1086,38 @@ export default function SmartCalc({
     field.current?.focus();
   };
 
+  /** ✎ on a variable: its whole line, to rewrite — V = p·w·t → V = p·w·t·5,
+   * or a new name. Enter keeps it, Esc leaves it as it was */
+  const [editingVar, setEditingVar] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const editField = useRef<MathInputHandle>(null);
+  useEffect(() => {
+    if (editingVar) requestAnimationFrame(() => editField.current?.focus());
+  }, [editingVar]);
+  const startEdit = (entry: SmartEntry) => {
+    setEditDraft(entry.latex);
+    setEditError(null);
+    setEditingVar(entry.id);
+  };
+  const editVariable = async (entry: SmartEntry, latex: string) => {
+    try {
+      const result = await mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, vars });
+      if (result.kind !== "assign" || !result.name) return setEditError("keep it a variable: a name = …");
+      const d = current();
+      const was = entry.result.name;
+      updateBlock(data.id, {
+        // (a new name that was already a variable: this line is it now)
+        smart: (d?.smart ?? []).filter((e) => !(e.id !== entry.id && e.result.kind === "assign" && e.result.name === result.name)).map((e) => (e.id === entry.id ? { ...e, latex, result } : e)),
+        ...(was && was !== result.name ? { smartVars: (d?.smartVars ?? []).filter((v) => v.name !== was) } : {}),
+      });
+      if (result.value_latex) setVariable(result.name, result.value_latex, result.params);
+      setEditingVar(null);
+    } catch (err) {
+      setEditError(String(err).replace(/^Error:\s*/, "") || "I can't read that yet");
+    }
+  };
+
   /** a variable in the sidebar: its name, w = [40] to change right there,
    * and on hover — into the line, name, link, lock, copy, to Work, remove */
   const variableRow = (entry: SmartEntry) => {
@@ -1108,8 +1142,11 @@ export default function SmartCalc({
           <button className="smart-tape-tool" title="Copy it — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
             ⧉
           </button>
-          <button className="smart-tape-tool" title="Add it to the Work tab as your next step" onClick={() => answerToWork(r)}>
+          <button className="smart-tape-tool" title="Edit it — the whole line (Enter keeps it, Esc doesn't)" onClick={() => startEdit(entry)}>
             ✎
+          </button>
+          <button className="smart-tape-tool is-op" title="Add it to Show work (the Work tab) as your next step" onClick={() => answerToWork(r)}>
+            +
           </button>
           {!editable && (
             <button className="smart-tape-tool" title={isSaved(r.input_latex) ? "In your Equations" : "Save to Equations — with these letters' names"} onClick={() => saveEquation(r.input_latex)}>
@@ -1120,9 +1157,40 @@ export default function SmartCalc({
             ×
           </button>
         </span>
-        {labelView(entry)}
+        {/* its name (or room for the tools, which show over it on hover) */}
+        <span className="smart-side-top">
+          {labelView(entry) ?? (
+            <button className="smart-label is-empty" title="Name it — what it is (price per toy, height…)" onClick={() => setLabeling(entry.id)}>
+              + name
+            </button>
+          )}
+        </span>
+        {/* ✎: the whole line, to rewrite */}
+        {editingVar === entry.id && (
+          <span
+            className="smart-var-edit"
+            onKeyDownCapture={(e) => {
+              if (e.key !== "Escape") return;
+              e.preventDefault();
+              setEditingVar(null);
+            }}
+          >
+            <MathInput
+              ref={editField}
+              className="smart-var-edit-field"
+              value={editDraft}
+              onChange={(l) => {
+                setEditDraft(l);
+                setEditError(null);
+              }}
+              onEnter={() => editVariable(entry, editDraft)}
+            />
+            {editError && <span className="eq-error">{editError}</span>}
+            <span className="smart-var-edit-hint">Enter keeps it · Esc doesn't</span>
+          </span>
+        )}
         {/* s = [9] km/h: the number edits right here */}
-        <span className="smart-side-value">
+        {editingVar !== entry.id && <span className="smart-side-value">
           {editable ? (
             numberField(entry, editable)
           ) : (
@@ -1132,7 +1200,7 @@ export default function SmartCalc({
           )}
           {worked && <Tex math={`\\Rightarrow ${worked}`} />}
           {isLocked(entry) && lockButton(entry)}
-        </span>
+        </span>}
         {/* linked: c ↔ a (click to unlink) */}
         {links
           .filter((l) => l.a === r.name || l.b === r.name)

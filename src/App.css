@@ -6354,7 +6354,7 @@ math-field {
 }
 
 .smart-side .smart-tape-tools {
-  top: 4px;
+  top: 3px;
   right: 4px;
   z-index: 2;
 }
@@ -6714,4 +6714,47 @@ math-field {
   border-color: var(--t-teal, #55d6be);
   color: var(--t-bg1, #0e0e12);
   font-weight: 600;
+}
+
+/* ✎ a variable: its whole line, to rewrite */
+.smart-var-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+}
+
+.smart-var-edit-field {
+  border: 1px solid var(--t-teal, #55d6be);
+  border-radius: 6px;
+  padding: 0 6px;
+  font-size: 15px;
+}
+
+.smart-var-edit-hint {
+  font-size: 10.5px;
+  color: var(--t-muted, #74748a);
+}
+
+/* the top line of a variable: its name — and where the tools show on
+   hover, so they never cover the number */
+.smart-side-top {
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+}
+
+.smart-side .smart-entry.is-assign {
+  padding-top: 4px;
+}
+
+.smart-label.is-empty {
+  background: none;
+  color: var(--t-muted, #74748a);
+  opacity: 0.6;
+}
+
+.smart-label.is-empty:hover {
+  opacity: 1;
+  color: var(--t-blue, #61afef);
 }

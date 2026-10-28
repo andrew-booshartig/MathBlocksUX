@@ -51,6 +51,28 @@ def _typed(latex: str) -> str:
     return re.sub(r"\\[,;:! ]", " ", latex).strip()
 
 
+_QUOTED = re.compile(r'"([^"]*)"|\\text\{([^{}]*)\}')
+
+
+def _unquote(latex: str) -> tuple[str, list[str]]:
+    """A word in quotes is a name: "price" = 10 saves price (one name, not
+    p·r·i·c·e), and price is that name from then on. → the line without the
+    quotes, and the names that were quoted. (\\text{ or } stays a word.)"""
+    names: list[str] = []
+
+    def one(m: re.Match) -> str:
+        raw = m.group(1) if m.group(1) is not None else m.group(2)
+        if m.group(1) is None and raw.strip() in ("or", "and"):
+            return m.group(0)
+        word = re.sub(r"\\[,;:! ]|\s+", " ", raw).strip()
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", word):
+            raise MathInputError('a name is one word, starting with a letter: "price", "toyPrice"')
+        names.append(word)
+        return word
+
+    return _QUOTED.sub(one, latex), names
+
+
 def _mark_names(latex: str, names) -> str:
     """Typed math reads "rate" as r·a·t·e. A multi-letter name that's a
     variable (or being saved as one: "rate = 0.07") is one name — mark it."""
@@ -345,9 +367,11 @@ def _convert_line(req: dict, left: str, right: str) -> dict:
 def op_formula(req: dict) -> dict:
     """An equation to load (V = A·h/3): the letter it works out (V) and the
     letters it needs a number for (A, h), in the order they're written."""
-    latex = _typed(req.get("latex") or "")
+    latex, quoted = _unquote(_typed(req.get("latex") or ""))
     if not latex:
         raise MathInputError("")
+    # price · n: price is one name when it's a variable (or "quoted")
+    latex = _mark_names(latex, [*(k.split("(")[0] for k in req.get("vars") or {}), *quoted])
     node = lang.parse(latex, "latex")
     if not (isinstance(node, lang.Rel) and node.ops == ["="] and isinstance(node.parts[0], Sym)):
         raise MathInputError("an equation with one letter on the left: V = A·h/3")
@@ -368,7 +392,7 @@ def op_smart_vars(req: dict) -> dict:
 
 
 def op_smart(req: dict) -> dict:
-    latex = _typed(req.get("latex") or "")
+    latex, quoted = _unquote(_typed(req.get("latex") or ""))
     if not latex:
         raise MathInputError("")
     ans = req.get("ans")
@@ -385,7 +409,7 @@ def op_smart(req: dict) -> dict:
     vars_ = req.get("vars") or {}
     functions = [k.split("(")[0] for k in vars_ if "(" in k]
     saving = _NEW_NAME.match(latex)
-    latex = _mark_names(latex, [*(k.split("(")[0] for k in vars_), *([saving.group(1)] if saving else [])])
+    latex = _mark_names(latex, [*(k.split("(")[0] for k in vars_), *([saving.group(1)] if saving else []), *quoted])
     try:
         node = lang.parse(latex, "latex")
     except lang.Incomplete as unfinished:  # said only on Enter (the preview stays quiet)
@@ -430,7 +454,8 @@ def op_smart(req: dict) -> dict:
                 "kind": "assign",
                 "name": name,
                 "value_latex": lang.latex(node.parts[1]),
-                "result_latex": f"{tex(sympy.Symbol(name))} = {value['exact_latex']}",
+                # a word name upright, as one name (price, not p·r·i·c·e)
+                "result_latex": f"{rf'\mathrm{{{name}}}' if len(name) > 1 else tex(sympy.Symbol(name))} = {value['exact_latex']}",
                 "decimal": value["decimal"] if value["exact_differs"] else None,
                 "ans": value["exact_latex"],
                 # r = d/f: r is kilometers per liter, if d and f are named

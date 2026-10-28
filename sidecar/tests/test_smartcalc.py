@@ -258,3 +258,15 @@ def test_formula_letters():
         op_formula({"latex": "x+1=3"})
     with pytest.raises(Exception):
         op_formula({"latex": "x=x+1"})
+
+
+def test_quoted_names():
+    out = op_smart({"latex": '"price"=10'})
+    assert out["kind"] == "assign" and out["name"] == "price"
+    assert op_smart({"latex": '"ab"=3'})["name"] == "ab"  # two letters, still one name
+    assert op_smart({"latex": r"price\cdot2", "vars": {"price": "10"}})["result_latex"] == "20"
+    assert op_smart({"latex": r'"price"\cdot2', "vars": {"price": "10"}})["result_latex"] == "20"
+    with pytest.raises(Exception, match="one word"):
+        op_smart({"latex": '"toy price"=10'})
+    # or / and stay words
+    assert "or" in op_smart({"latex": r"x<2 \text{ or } x>5"})["result_latex"]
