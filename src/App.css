@@ -4761,13 +4761,52 @@ math-field {
   font-family: "KaTeX_Main", "Times New Roman", serif;
 }
 
-/* an answer whose click takes its decimal: the decimal lights, not the
-   exact answer beside it */
-.smart-out.carries-decimal:hover {
+/* exact and decimal side by side: two answers, each its own click and
+   its own highlight */
+.smart-out.is-split {
+  cursor: default;
+  padding: 0;
+  margin: -6px -8px 0; /* the parts' padding: text lines up with other answers */
+  gap: 0;
+  overflow: visible;
+}
+
+.smart-out.is-split:hover {
+  background: transparent;
   color: var(--t-text, #ffffff);
 }
 
-.smart-out.carries-decimal:hover .smart-decimal {
+.smart-part {
+  display: inline-flex;
+  align-items: baseline;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 6px 8px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow-x: auto;
+  transition: background 0.12s, color 0.12s;
+}
+
+.smart-part.smart-decimal {
+  font-size: 0.88em;
+}
+
+.smart-part.smart-decimal .katex {
+  color: var(--t-muted, #8c98ad);
+}
+
+.smart-part:hover {
+  background: rgba(255, 211, 145, 0.08);
+}
+
+/* the math itself lights too (KaTeX sets its own color) */
+.smart-in:hover .katex,
+.smart-out:not(.is-split):hover .katex,
+.smart-part:hover .katex,
+.smart-part:hover {
   color: var(--t-orange, #ffd391);
 }
 

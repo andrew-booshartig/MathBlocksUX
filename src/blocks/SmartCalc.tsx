@@ -1676,19 +1676,33 @@ export default function SmartCalc({
                     </div>
                   ) : (
                     <>
-                      <button
-                        className={`smart-out${showsDecimal(r) && decimalTex(r) ? " carries-decimal" : ""}`}
-                        title={decimalOf(r) ? "Put this answer in the line, as its decimal — ⌥-click for the exact one" : "Put this answer in the line (at the cursor)"}
-                        onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
-                        onClick={(e) =>
-                          r.result_latex &&
-                          reuse(decimalOf(r) && !e.altKey ? decimalOf(r)! : r.action?.kind === "solve" ? asStep(r).replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)
-                        }
-                      >
-                        <Tex math={fullSize(decimalOnly(r) ? `\\approx ${decimalTex(r)}` : asLine(r.result_latex ?? ""))} />
-                        {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
-                        {showsDecimal(r) && <span className="smart-decimal">≈ {r.decimal}</span>}
-                      </button>
+                      {(() => {
+                        const exact = r.action?.kind === "solve" ? asStep(r).replace(/^[a-zA-Z]\s*=\s*/, "") : asStep(r);
+                        // two answers side by side — the exact one and its decimal — each its own click
+                        const decimal = showsDecimal(r) || (r.kind === "result" && /\\approx/.test(r.result_latex ?? "")) ? decimalOf(r) : null;
+                        const keep = (e: React.PointerEvent) => e.preventDefault(); /* keep the cursor where it is */
+                        return decimal ? (
+                          <div className="smart-out is-split">
+                            <button className="smart-part" title="Put the exact answer in the line" onPointerDown={keep} onClick={() => reuse(exact)}>
+                              <Tex math={fullSize(asLine(asStep(r)))} />
+                              {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
+                            </button>
+                            <button className="smart-part smart-decimal" title="Put the decimal in the line" onPointerDown={keep} onClick={() => reuse(decimal)}>
+                              <Tex math={`\\approx ${decimal}`} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            className="smart-out"
+                            title="Put this answer in the line (at the cursor)"
+                            onPointerDown={keep}
+                            onClick={() => r.result_latex && reuse(decimalOnly(r) ? decimalTex(r)! : exact)}
+                          >
+                            <Tex math={fullSize(decimalOnly(r) ? `\\approx ${decimalTex(r)}` : asLine(r.result_latex ?? ""))} />
+                            {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
+                          </button>
+                        );
+                      })()}
                       {r.kind !== "truth" && (
                         <div className="smart-more">
                           {(r.others ?? []).map((o) => (
