@@ -653,8 +653,12 @@ export default function SmartCalc({
 
   // ---- an answer, as a clean step: no "≈ 3.5" tail
   const asStep = (r: SmartResult) => (r.result_latex ?? "").replace(/\s*\\approx\s*[^,]*$/, "").trim();
+  /** an answer to go on with: its decimal (801.38, 160.2760646 lb) — what
+   * everyone carries into the next calculation — else the answer itself */
+  const decimalOf = (r: SmartResult) => r.decimal_latex ?? r.result_latex?.match(/\\approx\s*([^,]*)$/)?.[1].trim() ?? null;
+  const carried = (r: SmartResult) => decimalOf(r) ?? asStep(r);
   const copyAnswer = (r: SmartResult) =>
-    navigator.clipboard?.writeText(asStep(r)).then(
+    navigator.clipboard?.writeText(carried(r)).then(
       () => setNote("Copied — ⌘V puts it in any line"),
       () => setNote("Couldn't copy"),
     );
@@ -1594,9 +1598,9 @@ export default function SmartCalc({
                       <button
                         key={op.label}
                         className="smart-tape-tool is-op"
-                        title={`${op.title} ${plainMath(r.ans!)} — onto the end of the line`}
+                        title={`${op.title} ${plainMath(r.decimal_latex ?? r.ans!)} — onto the end of the line`}
                         onPointerDown={(e) => e.preventDefault() /* keep the cursor in the line */}
-                        onClick={() => combine(op, r.ans!)}
+                        onClick={() => combine(op, r.decimal_latex ?? r.ans!)}
                       >
                         {op.label}
                       </button>
@@ -1619,7 +1623,7 @@ export default function SmartCalc({
                   </button>
                   {ansFrom.get(entry.id) && (
                     <span className="smart-ans-from" title="What Ans was on this line — the named answer before it">
-                      Ans = <Tex math={ansFrom.get(entry.id)!.result.ans ?? ""} /> {ansFrom.get(entry.id)!.label}
+                      Ans = <Tex math={ansFrom.get(entry.id)!.result.decimal_latex ?? ansFrom.get(entry.id)!.result.ans ?? ""} /> {ansFrom.get(entry.id)!.label}
                     </span>
                   )}
                   {r.kind === "choose" ? (
@@ -1636,21 +1640,16 @@ export default function SmartCalc({
                     <>
                       <button
                         className="smart-out"
-                        title="Put this answer in the line (at the cursor)"
+                        title={decimalOf(r) ? "Put this answer in the line, as its decimal — ⌥-click for the exact one" : "Put this answer in the line (at the cursor)"}
                         onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
-                        onClick={() => r.result_latex && reuse(r.action?.kind === "solve" ? r.result_latex.replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)}
+                        onClick={(e) =>
+                          r.result_latex &&
+                          reuse(decimalOf(r) && !e.altKey ? decimalOf(r)! : r.action?.kind === "solve" ? asStep(r).replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)
+                        }
                       >
                         <Tex math={asLine(r.result_latex ?? "")} />
                         {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
-                        {r.decimal && (
-                          <span
-                            className="smart-decimal is-grab"
-                            title="Put the decimal in the line instead"
-                            onClick={(e) => (e.stopPropagation(), reuse(r.decimal_latex ?? r.decimal!))}
-                          >
-                            ≈ {r.decimal}
-                          </span>
-                        )}
+                        {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
                       {r.kind !== "truth" && (
                         <div className="smart-more">

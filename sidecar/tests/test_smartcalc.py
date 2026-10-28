@@ -306,6 +306,14 @@ def test_a_typed_space_keeps_the_function():
 def test_unit_answer_stays_a_decimal():
     r = op_smart({"latex": r"72.7\,\mathrm{kg}\to\mathrm{lb}"})
     assert r["result_latex"] == r"160.2760646\,\mathrm{lb}"  # not 2^(72/119)·3^(96/119)…
-    assert r["decimal_latex"] == r"160.276\,\mathrm{lb}"
-    again = op_smart({"latex": r["decimal_latex"] + r"\cdot 2"})
-    assert again["decimal"] == "320.552 lb"
+    assert r["decimal_latex"] == r"160.2760646\,\mathrm{lb}"
+
+
+
+def test_ans_shows_as_its_decimal():
+    r = op_smart({"latex": r"160.276\cdot 5"})
+    assert r["decimal_latex"] == "801.38"
+    nxt = op_smart({"latex": r"\frac{\mathrm{Ans}}{900}", "ans": r["ans"]})
+    assert "40069" not in nxt["input_latex"] and "801.38" in nxt["input_latex"]
+    # but worked with exact: √8 squared is 8
+    assert op_smart({"latex": r"\mathrm{Ans}^{2}", "ans": op_smart({"latex": r"\sqrt{8}"})["ans"]})["result_latex"] == "8"

@@ -4754,20 +4754,6 @@ math-field {
   font-family: -apple-system, "Inter", Helvetica, sans-serif;
 }
 
-.smart-decimal.is-grab {
-  border-radius: 6px;
-  padding: 1px 4px;
-}
-
-.smart-out:hover .smart-decimal.is-grab:not(:hover) {
-  color: var(--t-muted, #7c8aa0);
-}
-
-.smart-decimal.is-grab:hover {
-  color: var(--t-orange, #ffd391);
-  background: rgba(255, 211, 145, 0.1);
-}
-
 .smart-choose {
   display: flex;
   flex-wrap: wrap;

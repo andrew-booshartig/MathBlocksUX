@@ -376,7 +376,7 @@ def _convert_line(req: dict, left: str, right: str) -> dict:
         "result_latex": result_latex,
         "decimal": decimal,
         # the ≈ answer, ready to calculate on with: 160.276 lb
-        "decimal_latex": decimal and f"{float(result):.6g}\\,{_units_latex(read_units(target_text))}",
+        "decimal_latex": decimal and f"{float(result):.10g}\\,{_units_latex(read_units(target_text))}",
         "ans": result_latex,
         "steps": steps if len(steps) > 1 else None,
     }
@@ -424,7 +424,43 @@ def op_smart_vars(req: dict) -> dict:
 # ---------------------------------------------------------------- a line
 
 
+_DECIMAL = re.compile(r"(-?[\d.]+(?: \\times 10\^\{-?\d+\})?)(?: (.+))?")
+
+
+def _decimal_latex(decimal: str) -> str | None:
+    """the ≈ answer as math to go on with: "320.552 lb" → 320.552\\,\\mathrm{lb}"""
+    m = _DECIMAL.fullmatch(decimal.strip())
+    if not m:
+        return None
+    if not m.group(2):
+        return m.group(1)
+    from .reference import read_units
+
+    try:
+        return f"{m.group(1)}\\,{_units_latex(read_units(m.group(2)))}"
+    except MathInputError:
+        return None
+
+
 def op_smart(req: dict) -> dict:
+    out = _smart(req)
+    if out.get("decimal") and not out.get("decimal_latex"):
+        out["decimal_latex"] = _decimal_latex(out["decimal"])
+    # Ans is worked with exact (√8 squared is 8, not 8.000000001), but the
+    # line shows it as the decimal it is — 801.38/900, not (40069/50)/900
+    ans = req.get("ans")
+    if ans and _ANS.search(req.get("latex") or "") and "input_latex" in out:
+        try:
+            shown = _smart({"latex": ans}).get("decimal")
+            shown = shown and _decimal_latex(shown)
+            if shown:
+                out["input_latex"] = _smart({**req, "ans": shown})["input_latex"]
+        except MathInputError:
+            pass
+    return out
+
+
+def _smart(req: dict) -> dict:
     known = [k.split("(")[0] for k in req.get("vars") or {}]
     # (before the spaces go: cos t with a space typed — cos\,t — is cosine)
     latex, quoted = _unquote(_typed(_unglue(req.get("latex") or "", known)))
