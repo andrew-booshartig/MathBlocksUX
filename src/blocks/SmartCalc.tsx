@@ -857,24 +857,155 @@ export default function SmartCalc({
     }
   };
   /** a number typed into a waiting letter: it's a variable now */
+  /** a variable with a number: name = number, named (in place, if it's there) */
+  const addVariable = async (name: string, number: string, label?: string) => {
+    const latex = `${nameTex(name)}=${number}`;
+    const result = await mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, vars });
+    if (result.kind !== "assign" || !result.name) throw new Error(`${name} = ${number} isn't a value to save`);
+    const d = current();
+    const list = d?.smart ?? [];
+    const old = list.find((e) => e.result.kind === "assign" && e.result.name === result.name);
+    const line = { latex, result, ...(label ? { label } : {}) };
+    updateBlock(data.id, {
+      smart: old ? list.map((e) => (e.id === old.id ? { ...e, ...line } : e)) : [...list, { id: newId("calc"), ...line }].slice(-MAX_ENTRIES),
+      smartBlanks: (d?.smartBlanks ?? []).filter((b) => b.name !== name),
+    });
+    if (result.value_latex) setVariable(result.name, result.value_latex, result.params);
+  };
+  /** a number typed into a waiting letter: it's a variable now */
   const fillBlank = async (name: string, text: string) => {
     const number = text.trim();
     if (!number) return;
-    const latex = `${nameTex(name)}=${number}`;
     try {
-      const result = await mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, vars });
-      if (result.kind !== "assign" || !result.name) return;
-      const d = current();
-      const label = (d?.smartBlanks ?? []).find((b) => b.name === name)?.label;
-      updateBlock(data.id, {
-        smart: [...(d?.smart ?? []), { id: newId("calc"), latex, result, ...(label ? { label } : {}) }].slice(-MAX_ENTRIES),
-        smartBlanks: (d?.smartBlanks ?? []).filter((b) => b.name !== name),
-      });
-      if (result.value_latex) setVariable(result.name, result.value_latex, result.params);
+      await addVariable(name, number, (current()?.smartBlanks ?? []).find((b) => b.name === name)?.label);
     } catch (err) {
       failed(err);
     }
   };
+
+  /** + variables: a quick card to fill in, like flashcards — what it is,
+   * its letter, its number if you have one. Tab through; Enter for the
+   * next; Enter on an empty one (or Done) to finish */
+  type QuickRow = { label: string; name: string; value: string };
+  const [quick, setQuick] = useState<QuickRow[] | null>(null);
+  const [quickError, setQuickError] = useState<string | null>(null);
+  const [quickFocus, setQuickFocus] = useState<number | null>(null);
+  const quickInputs = useRef<(HTMLInputElement | null)[]>([]);
+  useEffect(() => {
+    if (quickFocus === null) return;
+    quickInputs.current[quickFocus]?.focus();
+    setQuickFocus(null);
+  }, [quickFocus]);
+  const blankRow = (): QuickRow => ({ label: "", name: "", value: "" });
+  const openQuick = () => {
+    setQuick([blankRow()]);
+    setQuickError(null);
+    setQuickFocus(0);
+    setSideOpen(true);
+  };
+  /** the letter it'd get: height → h */
+  const suggest = (label: string) => label.trim().match(/[A-Za-z]/)?.[0] ?? "";
+  const quickName = (row: QuickRow) => row.name.trim() || suggest(row.label);
+  const commitQuick = async () => {
+    const rows = (quick ?? []).filter((r) => quickName(r));
+    for (const r of rows) {
+      if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(quickName(r))) return setQuickError(`“${quickName(r)}” can't be a letter — start with a letter`);
+    }
+    try {
+      for (const r of rows) {
+        const name = quickName(r);
+        const label = r.label.trim() || undefined;
+        if (r.value.trim()) {
+          await addVariable(name, r.value.trim(), label);
+          continue;
+        }
+        // no number yet: it waits for one (or, already a variable, takes the name)
+        const d = current();
+        const existing = (d?.smart ?? []).find((e) => e.result.kind === "assign" && e.result.name === name);
+        if (existing) {
+          if (label) updateBlock(data.id, { smart: (d?.smart ?? []).map((e) => (e.id === existing.id ? { ...e, label } : e)) });
+          continue;
+        }
+        const waiting = (d?.smartBlanks ?? []).filter((b) => b.name !== name);
+        updateBlock(data.id, { smartBlanks: [...waiting, { name, ...(label ? { label } : {}) }] });
+      }
+    } catch (err) {
+      return setQuickError(String(err).replace(/^Error:\s*/, ""));
+    }
+    setQuick(null);
+    setQuickError(null);
+    eqField.current?.focus(); // back to the equation
+  };
+  const quickKey = (e: React.KeyboardEvent, i: number) => {
+    if (e.key === "Escape") return setQuick(null);
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const row = quick![i];
+    if (!row.label.trim() && !row.name.trim() && !row.value.trim()) return void commitQuick(); // Enter twice: done
+    if (i === quick!.length - 1) setQuick([...quick!, blankRow()]);
+    setQuickFocus((i + 1) * 3);
+  };
+  const setQuickRow = (i: number, patch: Partial<QuickRow>) => setQuick((rows) => rows!.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const quickCard = quick && (
+    <div className="quick-vars" role="dialog" aria-label="New variables">
+      <div className="quick-head">
+        New variables
+        <span className="quick-hint">Tab through · Enter for the next · Enter on an empty line to finish</span>
+      </div>
+      <div className="quick-row is-cols">
+        <span>what it is</span>
+        <span>letter</span>
+        <span>number (if you have it)</span>
+      </div>
+      {quick.map((row, i) => (
+        <div key={i} className="quick-row">
+          <input
+            ref={(el) => {
+              quickInputs.current[i * 3] = el;
+            }}
+            className="quick-label nodrag"
+            value={row.label}
+            placeholder={i === 0 ? "height" : ""}
+            spellCheck={false}
+            onChange={(e) => setQuickRow(i, { label: e.target.value })}
+            onKeyDown={(e) => quickKey(e, i)}
+          />
+          <input
+            ref={(el) => {
+              quickInputs.current[i * 3 + 1] = el;
+            }}
+            className="quick-letter nodrag"
+            value={row.name}
+            placeholder={suggest(row.label) || (i === 0 ? "h" : "")}
+            spellCheck={false}
+            onChange={(e) => setQuickRow(i, { name: e.target.value.trim() })}
+            onKeyDown={(e) => quickKey(e, i)}
+          />
+          <input
+            ref={(el) => {
+              quickInputs.current[i * 3 + 2] = el;
+            }}
+            className="quick-num nodrag"
+            value={row.value}
+            placeholder="?"
+            inputMode="decimal"
+            spellCheck={false}
+            onChange={(e) => setQuickRow(i, { value: e.target.value })}
+            onKeyDown={(e) => quickKey(e, i)}
+          />
+        </div>
+      ))}
+      {quickError && <div className="eq-error">{quickError}</div>}
+      <div className="quick-foot">
+        <button className="chip" onClick={() => setQuick(null)}>
+          Cancel
+        </button>
+        <button className="chip is-primary" onClick={commitQuick}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
   const setBlankLabel = (name: string, label: string) =>
     updateBlock(data.id, { smartBlanks: (current()?.smartBlanks ?? []).map((b) => (b.name === name ? { name, ...(label.trim() ? { label: label.trim() } : {}) } : b)) });
   // a letter given a number some other way (A = 5 on the line): no longer
@@ -1108,6 +1239,9 @@ export default function SmartCalc({
           </div>
         ))}
       </div>
+      <button className="smart-side-add" title="Add several at once — what each is, its letter, its number" onClick={openQuick}>
+        + variables
+      </button>
       <div className="smart-side-eq">
         <MathInput
           ref={eqField}
@@ -1266,6 +1400,7 @@ export default function SmartCalc({
       {tab === "calc" && (
         <div className="smart-calc-split">
           {sideOpen && sidebar}
+          {quickCard}
           {eqOpen && (
             <EquationsPanel
               mine={myEquations}

@@ -6616,3 +6616,102 @@ math-field {
   border-style: solid;
   border-color: var(--t-teal, #55d6be);
 }
+
+/* + variables: what it is · letter · number, a line each */
+.smart-side-add {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 2px 2px;
+  color: var(--t-teal, #55d6be);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.smart-side-add:hover {
+  text-decoration: underline;
+}
+
+.quick-vars {
+  position: absolute;
+  left: 0;
+  top: 26px;
+  z-index: 25;
+  width: min(440px, 100%);
+  max-height: calc(100% - 40px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 12px;
+  background: var(--t-bg3, #1c1c24);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--t-bg0, #000) 55%, transparent);
+  animation: smart-side-in 0.14s ease-out;
+}
+
+.quick-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--t-text, #e6e6f0);
+  margin-bottom: 4px;
+}
+
+.quick-hint {
+  font-size: 11px;
+  color: var(--t-muted, #74748a);
+}
+
+.quick-row {
+  display: grid;
+  grid-template-columns: 1fr 64px 110px;
+  gap: 6px;
+}
+
+.quick-row.is-cols span {
+  font-size: 10.5px;
+  color: var(--t-muted, #74748a);
+}
+
+.quick-row input {
+  min-width: 0;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 6px;
+  background: var(--t-bg1, #0e0e12);
+  color: var(--t-text, #e6e6f0);
+  font-size: 13px;
+  padding: 5px 8px;
+  outline: none;
+}
+
+.quick-row input:focus {
+  border-color: var(--t-teal, #55d6be);
+}
+
+.quick-row .quick-letter,
+.quick-row .quick-num {
+  font-family: "KaTeX_Main", "Times New Roman", serif;
+  font-size: 15px;
+  text-align: center;
+}
+
+.quick-row .quick-letter {
+  font-style: italic;
+}
+
+.quick-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.quick-foot .chip.is-primary {
+  background: var(--t-teal, #55d6be);
+  border-color: var(--t-teal, #55d6be);
+  color: var(--t-bg1, #0e0e12);
+  font-weight: 600;
+}
