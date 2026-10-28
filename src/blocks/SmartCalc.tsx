@@ -166,8 +166,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const [graphLine, setGraphLine] = useState("");
   const [graphError, setGraphError] = useState<string | null>(null);
   const tape = useRef<HTMLDivElement>(null);
-  /** the variables list is open (it folds away — type a name to see its value) */
-  const [varsOpen, setVarsOpen] = useState(false);
   /** a/b mode: everything shown with its fractions on one line */
   const asLine = (latex: string) => (data.smartLinear ? linearize(latex) : latex);
   /** a unit from the Reference sheet, on its way into the Work tab's line */
@@ -176,7 +174,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   const [noting, setNoting] = useState(false);
   /** the unit key's list */
   const [unitsOpen, setUnitsOpen] = useState(false);
-  const varsPanel = useRef<HTMLDivElement>(null);
   /** the history is scrolled down: older answers are up above (it fades there) */
   const [tapeScrolled, setTapeScrolled] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -265,24 +262,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     setWiped(null);
   };
 
-  // the list closes on a click anywhere else, or Esc
-  useEffect(() => {
-    if (!varsOpen) return;
-    const onDown = (e: PointerEvent) => {
-      if (!(e.target as HTMLElement).closest(".smart-vars-panel, .smart-vars-toggle")) setVarsOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      setVarsOpen(false);
-      field.current?.focus(); // back to the line
-    };
-    document.addEventListener("pointerdown", onDown, true);
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("pointerdown", onDown, true);
-      document.removeEventListener("keydown", onKey, true);
-    };
-  }, [varsOpen]);
   /** the variables there are: this calculator's own (newest first), then the canvas's */
   const allVariables = [...[...localItems].reverse().map((v) => ({ ...v, own: true })), ...globalItems.map((v) => ({ ...v, own: false }))].filter(
     (v) => values[v.name]?.latex !== undefined,
@@ -328,7 +307,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     const onDown = (event: Event) => {
       const target = event.target as HTMLElement;
       if ((current()?.smartTab ?? "calc") !== "calc") return;
-      if (target.closest("button, input, textarea, select, label, math-field, .calc-settings, .smart-tape")) return;
+      if (target.closest("button, input, textarea, select, label, math-field, .calc-settings, .smart-tape, .smart-side")) return;
       requestAnimationFrame(() => field.current?.focus());
     };
     node.addEventListener("pointerdown", onDown);
@@ -390,8 +369,9 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   /** an answer's name, following the math: d/f → kilometers per liter,
    * trip/r → liters, 9k → meters */
   const answerName = (r?: SmartResult | null) =>
-    // an answer with real units (72 L) says them already
-    r && !/\\mathrm\{/.test(r.result_latex ?? "") ? nameOf(r.dims, variableNames) : null;
+    // only when asked (Answers say names, under the variables); an
+    // answer with real units (72 L) says them already
+    data.smartNameAnswers && r && !/\\mathrm\{/.test(r.result_latex ?? "") ? nameOf(r.dims, variableNames) : null;
 
   /** the number in a variable's line, being typed: it's worked out as you
    * type, and everything using the variable follows */
@@ -774,6 +754,136 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     });
   }
 
+  /** the history holds what's worked out; variables (w = 40) live in the sidebar */
+  const tapeEntries = entries.filter((e) => e.result.kind !== "assign");
+  const sideEntries = entries.filter((e) => e.result.kind === "assign" && e.result.name);
+  /** variables with no line of their own: one whose line has scrolled out of
+   * the history, or a Variables block's on the canvas */
+  const sideExtras = allVariables.filter((v) => !sideEntries.some((e) => e.result.name === v.name));
+  /** a variable's name into the line — a function ready for its input: f(▢) */
+  const putName = (name: string, params?: string[]) => {
+    field.current?.insert(params?.length ? `${nameTex(name)}\\left(#?\\right)` : nameTex(name));
+    field.current?.focus();
+  };
+
+  /** a variable in the sidebar: its name, w = [40] to change right there,
+   * and on hover — into the line, name, link, lock, copy, to Work, remove */
+  const variableRow = (entry: SmartEntry) => {
+    const r = entry.result;
+    const worked = r.result_latex && r.result_latex.replace(/\s/g, "") !== r.input_latex.replace(/\s/g, "") ? r.result_latex : null;
+    const editable = numberIn(entry.latex, r.input_latex);
+    return (
+      <div key={entry.id} className={`smart-entry is-assign${isLocked(entry) ? " is-locked" : ""}`}>
+        <span className="smart-tape-tools">
+          <button className="smart-tape-tool" title={`Put ${r.name} in the line`} onPointerDown={(e) => e.preventDefault()} onClick={() => putName(r.name!, r.params)}>
+            ↵
+          </button>
+          <button className="smart-tape-tool" title={entry.label ? "Rename it" : "Name it — meters, dollars…"} onClick={() => setLabeling(entry.id)}>
+            🏷
+          </button>
+          {editable && (
+            <button className="smart-tape-tool" title="Link it to another variable — when one changes, the other keeps their ratio" onClick={() => setLinking(linking === r.name ? null : r.name!)}>
+              🔗
+            </button>
+          )}
+          {lockButton(entry)}
+          <button className="smart-tape-tool" title="Copy it — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
+            ⧉
+          </button>
+          <button className="smart-tape-tool" title="Add it to the Work tab as your next step" onClick={() => answerToWork(r)}>
+            ✎
+          </button>
+          <button className="smart-tape-tool is-remove" title={`Remove ${r.name}`} onClick={() => removeOwnVariable(r.name!)}>
+            ×
+          </button>
+        </span>
+        {labelView(entry)}
+        {/* s = [9] km/h: the number edits right here */}
+        <span className="smart-side-value">
+          {editable ? (
+            numberField(entry, editable)
+          ) : (
+            <button className="smart-in" title={`Put ${r.name} in the line`} onPointerDown={(e) => e.preventDefault()} onClick={() => putName(r.name!, r.params)}>
+              <Tex math={asLine(r.input_latex)} />
+            </button>
+          )}
+          {worked && <Tex math={`\\Rightarrow ${worked}`} />}
+          {isLocked(entry) && lockButton(entry)}
+        </span>
+        {/* linked: c ↔ a (click to unlink) */}
+        {links
+          .filter((l) => l.a === r.name || l.b === r.name)
+          .map((l) => {
+            const other = l.a === r.name ? l.b : l.a;
+            return (
+              <button key={other} className="smart-link" title={`Linked to ${other} — they keep their ratio. Click to unlink`} onClick={() => setLinks(links.filter((x) => x !== l))}>
+                🔗 {other}
+              </button>
+            );
+          })}
+        {linking === r.name && (
+          <span className="smart-link-pick">
+            link {r.name} to
+            {sideEntries
+              .filter((e) => e.result.name !== r.name && numberIn(e.latex, e.result.input_latex))
+              .filter((e) => !links.some((l) => (l.a === r.name && l.b === e.result.name) || (l.b === r.name && l.a === e.result.name)))
+              .map((e) => (
+                <button
+                  key={e.id}
+                  className="chip"
+                  onClick={() => {
+                    setLinks([...links, { a: r.name!, b: e.result.name! }]);
+                    setLinking(null);
+                  }}
+                >
+                  {e.result.name}
+                </button>
+              ))}
+            <button className="chip" onClick={() => setLinking(null)}>
+              cancel
+            </button>
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  const sidebar = (
+    <aside className="smart-side">
+      <div className="smart-side-head">Variables</div>
+      <div className="smart-side-list">
+        {!sideEntries.length && !sideExtras.length && (
+          <div className="smart-side-empty">
+            Type <b>w = 40</b> and press Enter — it lands here, apart from the history. Change its number right here; 🏷 names it.
+          </div>
+        )}
+        {sideEntries.map(variableRow)}
+        {sideExtras.map((v) => (
+          <div key={`${v.own ? "own" : "canvas"}:${v.name}`} className="smart-vars-item">
+            <button className="smart-vars-use" title="Put it in the line" onPointerDown={(e) => e.preventDefault()} onClick={() => putName(v.name, v.params)}>
+              <Tex math={`${signature(v)} = ${values[v.name].latex}`} />
+            </button>
+            {v.own ? (
+              <button className="smart-vars-remove" title={`Remove ${v.name}`} onClick={() => removeOwnVariable(v.name)}>
+                ×
+              </button>
+            ) : (
+              <span className="smart-vars-from" title="Set in a Variables block — change it there">
+                Variables block
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      {variableNames.size > 0 && (
+        <label className="smart-side-names" title="Answers named from these variables' names — d/f says kilometers per liter. It only knows the names you gave, so a bare 25 in w·25 is left out.">
+          <input type="checkbox" checked={!!data.smartNameAnswers} onChange={(e) => updateBlock(data.id, { smartNameAnswers: e.target.checked || undefined })} />
+          Answers say names
+        </label>
+      )}
+    </aside>
+  );
+
   return (
     <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" || tab === "reference" ? " is-assignment" : ""}`} ref={root}>
       {tabs}
@@ -907,19 +1017,12 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       )}
 
       {tab === "calc" && (
-        <>
+        <div className="smart-calc-split">
+          {sidebar}
+          <div className="smart-calc-main">
           {/* a quiet bar: the variables fold away behind a count (type a name
               and Enter to see its value), and Clear all */}
           <div className="smart-bar">
-            {allVariables.length > 0 && (
-              <button
-                className={`smart-vars-toggle${varsOpen ? " is-on" : ""}`}
-                title="Your variables — or type a name and press Enter to see its value"
-                onClick={() => setVarsOpen((open) => !open)}
-              >
-                Variables · {allVariables.length} {varsOpen ? "▴" : "▾"}
-              </button>
-            )}
             {data.smartNote === undefined && !noting && (
               <button className="smart-vars-action" title="A note at the top — what this problem is, in plain words" onClick={() => setNoting(true)}>
                 + Note
@@ -935,36 +1038,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                   Clear all
                 </button>
               )
-            )}
-            {varsOpen && allVariables.length > 0 && (
-              <div className="smart-vars-panel" ref={varsPanel}>
-                {allVariables.map((v) => (
-                  <div key={`${v.own ? "own" : "canvas"}:${v.name}`} className="smart-vars-item">
-                    <button
-                      className="smart-vars-use"
-                      title="Put it in the line"
-                      onPointerDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        // a function goes in ready for its input: f(▢)
-                        field.current?.insert(v.params?.length ? `${nameTex(v.name)}\\left(#?\\right)` : nameTex(v.name));
-                        field.current?.focus();
-                        setVarsOpen(false);
-                      }}
-                    >
-                      <Tex math={`${signature(v)} = ${values[v.name].latex}`} />
-                    </button>
-                    {v.own ? (
-                      <button className="smart-vars-remove" title={`Remove ${v.name}`} onClick={() => removeOwnVariable(v.name)}>
-                        ×
-                      </button>
-                    ) : (
-                      <span className="smart-vars-from" title="Set in a Variables block — change it there">
-                        Variables block
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
             )}
           </div>
           {/* the history: a fixed-height window that scrolls, so the calculator
@@ -992,8 +1065,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
             </div>
           )}
           <div className={`smart-tape${tapeScrolled ? " is-scrolled" : ""}`} ref={tape} onScroll={(e) => setTapeScrolled(e.currentTarget.scrollTop > 4)}>
-            {!entries.length && <div className="smart-empty">Type math — numbers, x, an equation, or r = 4 to save a value — and press Enter.</div>}
-            {entries.map((entry) => {
+            {!tapeEntries.length && <div className="smart-empty">Type math — numbers, x, an equation, or r = 4 to save a value — and press Enter.</div>}
+            {tapeEntries.map((entry) => {
               const r = entry.result;
               const handoffs = (
                 <>
@@ -1004,79 +1077,6 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                   )}
                 </>
               );
-              // a saved variable: one slim line (it's in the Variables list too)
-              if (r.kind === "assign") {
-                const worked = r.result_latex && r.result_latex.replace(/\s/g, "") !== r.input_latex.replace(/\s/g, "") ? r.result_latex : null;
-                return (
-                  <div key={entry.id} className={`smart-entry is-assign${isLocked(entry) ? " is-locked" : ""}`}>
-                    <span className="smart-tape-tools">
-                      <button className="smart-tape-tool" title={entry.label ? "Rename it" : "Name it — meters, dollars… (answers using it say it too)"} onClick={() => setLabeling(entry.id)}>
-                        🏷
-                      </button>
-                      {r.name && numberIn(entry.latex, r.input_latex) && (
-                        <button className="smart-tape-tool" title="Link it to another variable — when one changes, the other keeps their ratio" onClick={() => setLinking(linking === r.name ? null : r.name!)}>
-                          🔗
-                        </button>
-                      )}
-                      {lockButton(entry)}
-                    </span>
-                    {/* linked: c ↔ a (click to unlink) */}
-                    {r.name &&
-                      links
-                        .filter((l) => l.a === r.name || l.b === r.name)
-                        .map((l) => {
-                          const other = l.a === r.name ? l.b : l.a;
-                          return (
-                            <button key={other} className="smart-link" title={`Linked to ${other} — they keep their ratio. Click to unlink`} onClick={() => setLinks(links.filter((x) => x !== l))}>
-                              🔗 {other}
-                            </button>
-                          );
-                        })}
-                    {linking === r.name && (
-                      <span className="smart-link-pick">
-                        link {r.name} to
-                        {entries
-                          .filter((e) => e.result.kind === "assign" && e.result.name && e.result.name !== r.name && numberIn(e.latex, e.result.input_latex))
-                          .filter((e) => !links.some((l) => (l.a === r.name && l.b === e.result.name) || (l.b === r.name && l.a === e.result.name)))
-                          .map((e) => (
-                            <button
-                              key={e.id}
-                              className="chip"
-                              onClick={() => {
-                                setLinks([...links, { a: r.name!, b: e.result.name! }]);
-                                setLinking(null);
-                              }}
-                            >
-                              {e.result.name}
-                            </button>
-                          ))}
-                        <button className="chip" onClick={() => setLinking(null)}>
-                          cancel
-                        </button>
-                      </span>
-                    )}
-                    {labelView(entry)}
-                    {/* s = [9] km/h: the number edits right here */}
-                    {numberIn(entry.latex, r.input_latex) ? (
-                      numberField(entry, numberIn(entry.latex, r.input_latex)!)
-                    ) : (
-                      <button className="smart-in" title="Put this in the line (at the cursor)" onPointerDown={(e) => e.preventDefault()} onClick={() => reuse(entry.latex)}>
-                        <Tex math={asLine(r.input_latex)} />
-                      </button>
-                    )}
-                    {worked && <Tex math={`\\Rightarrow ${worked}`} />}
-                    {isLocked(entry) && lockButton(entry)}
-                    <span className="smart-assign-actions">
-                      <button className="chip is-handoff" title="Copy this — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
-                        ⧉ Copy
-                      </button>
-                      <button className="chip is-handoff" title="Add this to the Work tab as your next step" onClick={() => answerToWork(r)}>
-                        → Add to Work
-                      </button>
-                    </span>
-                  </div>
-                );
-              }
               // on hover: name it, or put its answer on the line with + − × ÷
               const tools = (
                 <span className="smart-tape-tools">
@@ -1220,7 +1220,8 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
               </button>
             ))}
           </div>
-        </>
+          </div>
+        </div>
       )}
     </div>
   );

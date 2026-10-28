@@ -6259,3 +6259,123 @@ math-field {
 .ref-unit-chip:hover {
   border-color: var(--t-teal, #55d6be);
 }
+
+/* Calculate: the variables in a sidebar, the history and line beside them —
+   stacked (variables on top) when the calculator is narrow */
+.smart-calc.is-calc {
+  container-type: inline-size;
+}
+
+.smart-calc-split {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 10px;
+}
+
+.smart-calc-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.smart-calc-main > :not(.smart-tape) {
+  flex-shrink: 0;
+}
+
+.smart-side {
+  flex: 0 0 230px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 10px;
+  border-right: 1px solid var(--t-line, #2e2e3a);
+}
+
+.smart-side-head {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-muted, #74748a);
+  height: 22px;
+  line-height: 22px;
+}
+
+.smart-side-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.smart-side-list > * {
+  flex-shrink: 0;
+}
+
+.smart-side .smart-entry.is-assign {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px 8px;
+}
+
+.smart-side .smart-tape-tools {
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+}
+
+.smart-side-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.smart-tape-tool.is-remove:hover {
+  color: var(--t-red, #e06c75);
+}
+
+.smart-side-empty {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--t-muted, #74748a);
+  padding: 4px 2px;
+}
+
+.smart-side-empty b {
+  color: var(--t-text, #e6e6f0);
+  font-weight: 600;
+}
+
+.smart-side-names {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--t-muted, #74748a);
+  cursor: pointer;
+}
+
+@container (max-width: 600px) {
+  .smart-calc-split {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .smart-side {
+    flex: 0 1 auto;
+    max-height: 32%;
+    padding: 0 0 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--t-line, #2e2e3a);
+  }
+}

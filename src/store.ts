@@ -438,6 +438,9 @@ export interface CalculatorBlockData extends BlockBase {
   smartNote?: string;
   /** fractions typed and shown on one line (3/4), not stacked */
   smartLinear?: boolean;
+  /** answers say a name worked out from the variables' names (d/f →
+   * kilometers per liter) — off unless turned on */
+  smartNameAnswers?: boolean;
   /** variables linked to keep their ratio (c and a: c doubles, a doubles) */
   smartLinks?: { a: string; b: string }[];
   /** the Reference tab's lookup: 9 km/h → m/s */
