@@ -399,6 +399,8 @@ export default function SmartCalc({
         if (result.kind !== "assign" || !result.name) return;
         save((current()?.smart ?? []).map((e) => (e.id === entry.id ? { ...e, latex, result } : e)));
         if (result.value_latex) setVariable(result.name, result.value_latex, result.params);
+        // saved: the box can show what's saved again (unless it's still being typed in)
+        if ((document.activeElement as HTMLElement | null)?.dataset.entry !== entry.id) setNumbers(({ [entry.id]: _, ...rest }) => rest);
       } catch {
         // half a number (−, 2.) — wait for the rest
       }
@@ -439,6 +441,22 @@ export default function SmartCalc({
   const [linking, setLinking] = useState<string | null>(null);
   const setLinks = (next: { a: string; b: string }[]) => updateBlock(data.id, { smartLinks: next.length ? next : undefined });
 
+  /** Tab / Enter in a variable's number: on to the next variable's number
+   * (Shift back), all of it picked so typing replaces it — run an equation
+   * again and again with new numbers. Leaving one is what saves it */
+  const hop = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") return e.currentTarget.blur();
+    if (e.key !== "Tab" && e.key !== "Enter") return;
+    const all = [...(root.current?.querySelectorAll<HTMLInputElement>(".smart-side .smart-num") ?? [])];
+    const here = all.indexOf(e.currentTarget);
+    if (here < 0) return;
+    e.preventDefault();
+    const next = all[(here + (e.shiftKey ? -1 : 1) + all.length) % all.length];
+    if (next === e.currentTarget) return e.currentTarget.blur();
+    next.focus();
+    next.select();
+  };
+
   const numberField = (entry: SmartEntry, parts: NonNullable<ReturnType<typeof numberIn>>) => {
     const text = numbers[entry.id] ?? parts.number;
     return (
@@ -459,8 +477,12 @@ export default function SmartCalc({
               followLinks(parts.name, parts.number, next);
             }
           }}
-          onBlur={() => setNumbers(({ [entry.id]: _, ...rest }) => rest)}
-          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+          data-entry={entry.id}
+          // a number on its way to being saved stays shown (Tab straight on
+          // mustn't flash the old one); half a number (−, 2.) goes back
+          onBlur={(e) => !/^-?\d+(\.\d+)?$/.test(e.currentTarget.value) && setNumbers(({ [entry.id]: _, ...rest }) => rest)}
+          onFocus={(e) => e.currentTarget.select()}
+          onKeyDown={hop}
         />
         {parts.restShown.trim() && <Tex math={parts.restShown} />}
       </span>
@@ -1201,8 +1223,8 @@ export default function SmartCalc({
                 placeholder="?"
                 inputMode="decimal"
                 spellCheck={false}
-                title="Type its number, then Enter"
-                onKeyDown={(e) => e.key === "Enter" && fillBlank(b.name, e.currentTarget.value)}
+                title="Type its number (or leave it) — Tab or Enter for the next"
+                onKeyDown={hop}
                 onBlur={(e) => fillBlank(b.name, e.currentTarget.value)}
               />
             </span>
