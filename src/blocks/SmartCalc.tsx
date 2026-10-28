@@ -310,10 +310,26 @@ export default function SmartCalc({
   };
 
   // a quiet preview of the answer while typing
+  /** a chip under the line, clicked: those letters made a unit
+   * (\mathrm{lb}), or a unit made plain letters again (\mathit{kg}) —
+   * everywhere they're typed in the line */
+  const flipUnit = (word: string, toUnit: boolean) => {
+    const line = field.current?.getValue() ?? draft;
+    const w = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const wrapped = new RegExp(`\\\\(?:mathrm|mathit|operatorname)\\{${w}\\}`, "g");
+    const bare = new RegExp(`(?<![A-Za-z\\\\])${w}(?![A-Za-z])`, "g");
+    const to = toUnit ? `\\mathrm{${word}}` : `\\mathit{${word}}`;
+    // the wrapped ones first (kept aside), then the bare letters
+    const parts = line.split(wrapped);
+    const next = parts.map((p) => p.replace(bare, to)).join(to);
+    field.current?.setValue(next);
+    setDraft(next);
+    field.current?.focus();
+  };
   const { result: preview } = useLiveMath<SmartResult>(draft.trim() ? { op: "smart", latex: draft, angle: data.angle, ans, vars } : null, 250);
   // the unit linter: the units the line is reading as you type, and letters
   // that spell one but are being read as letters (m·L, no number before it)
-  const { result: lint } = useLiveMath<{ units: { symbol: string; name: string }[]; letters: { text: string; unit: string; name: string }[] }>(
+  const { result: lint } = useLiveMath<{ units: { symbol: string; typed: string; name: string }[]; letters: { text: string; unit: string; name: string }[] }>(
     draft.trim() ? { op: "smartlint", latex: draft, vars } : null,
     120,
   );
@@ -1766,18 +1782,26 @@ export default function SmartCalc({
             {draft.trim() && lint && (lint.units.length > 0 || lint.letters.length > 0) && (
               <div className="smart-lint">
                 {lint.units.map((u) => (
-                  <span key={u.symbol} className="lint-unit" title={`Read as a unit: ${u.name}`}>
+                  <button
+                    key={u.symbol}
+                    className="lint-unit"
+                    title={`Read as a unit: ${u.name}. Click to make it letters (a variable each) instead`}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => flipUnit(u.typed, false)}
+                  >
                     <b>{u.symbol}</b> {u.name}
-                  </span>
+                  </button>
                 ))}
                 {lint.letters.map((l) => (
-                  <span
+                  <button
                     key={l.text}
                     className="lint-letters"
-                    title={`Read as letters ${l.text} (a variable each). For ${l.name}, put it right after a number and a space (5 ${l.unit}), or use the unit key.`}
+                    title={`Read as letters ${l.text} (a variable each). Click to make it ${l.name}`}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => flipUnit(l.text.replace(/·/g, ""), true)}
                   >
                     <b>{l.text}</b> letters, not {l.name}
-                  </span>
+                  </button>
                 ))}
               </div>
             )}

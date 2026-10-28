@@ -330,7 +330,15 @@ def mark(latex: str) -> str:
         unit = find(m.group(2))
         return f"{m.group(1)}\\frac{{\\mathrm{{{unit.symbol}}}{m.group(3)}}}{{" if unit else m.group(0)
 
-    return re.sub(rf"(?<=[\d}}])(\s*\\,\s*|\s+)\\frac\{{({_RUN})({_POW})\}}\{{", over, latex)
+    latex = re.sub(rf"(?<=[\d}}])(\s*\\,\s*|\s+)\\frac\{{({_RUN})({_POW})\}}\{{", over, latex)
+
+    # 5 mg over lb, typed: \frac{5\,mg}{lb} — the top is an amount with a
+    # unit, so a unit alone on the bottom is a unit too (a rate: mg per lb)
+    def under(m: re.Match) -> str:
+        unit = find(m.group(2))
+        return f"{m.group(1)}{{\\mathrm{{{unit.symbol}}}{m.group(3)}}}" if unit else m.group(0)
+
+    return re.sub(rf"(\\mathrm\{{[A-Za-z]+\}}{_POW}\s*\}})\{{\s*({_RUN})({_POW})\s*\}}", under, latex)
 
 
 # ------------------------------------------------------------- quantities

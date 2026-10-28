@@ -190,3 +190,16 @@ def test_the_linter_names_what_it_reads():
     lint = handle({"op": "smartlint", "latex": r"0.9\,\frac{g}{mL}+mL"})
     assert [u["symbol"] for u in lint["units"]] == ["g", "mL"]
     assert lint["letters"] == [{"text": "m·L", "unit": "mL", "name": "milliliters"}]
+
+
+def test_a_unit_alone_under_an_amount_is_a_unit():
+    """5 mg over lb, typed as a fraction: the lb on its own line is pounds"""
+    assert smart(r"72.7\,kg\cdot\frac{5\,mg}{lb}")["decimal"] == "801.380323 mg"
+    assert smart(r"\frac{72.7\,kg\cdot\frac{5\,mg}{lb}}{\frac{0.9\,g}{mL}}")["decimal"] == "0.8904225812 mL"
+    assert smart(r"\frac{2x}{y}")["kind"] == "choose"  # letters over letters: still letters
+
+
+def test_mathit_keeps_letters_letters():
+    """the linter's click: \\mathit{kg} is k·g, even right after a number"""
+    lint = handle({"op": "smartlint", "latex": r"72.7\,\mathit{kg}"})
+    assert lint["units"] == [] and lint["letters"][0]["text"] == "k·g"

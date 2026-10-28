@@ -837,4 +837,4 @@ def op_smart_lint(req: dict) -> dict:
 
     walk(node)
     found = [units.of(sympy.Symbol(s)) for s in seen]
-    return {"units": [{"symbol": u.display, "name": u.plural} for u in found], "letters": letters}
+    return {"units": [{"symbol": u.display, "typed": u.symbol, "name": u.plural} for u in found], "letters": letters}

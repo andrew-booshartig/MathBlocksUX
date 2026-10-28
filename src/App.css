@@ -4778,6 +4778,23 @@ math-field {
   color: var(--t-muted, #8c98ad);
 }
 
+.lint-unit,
+.lint-letters {
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
+  padding: 1px 5px;
+  margin: -1px -5px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.lint-unit:hover,
+.lint-letters:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
 .lint-unit b {
   color: var(--t-teal, #55d6be);
   font-family: "KaTeX_Main", "Times New Roman", serif;
@@ -4785,7 +4802,8 @@ math-field {
   font-weight: normal;
 }
 
-.lint-letters {
+.lint-letters,
+.lint-letters:hover {
   color: var(--t-orange, #ffd391);
 }
 

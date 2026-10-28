@@ -90,7 +90,8 @@ class LatexReader:
         from .. import units  # here: units reads through parsing, which lang uses too
 
         self.units = units
-        text = units.mark(clean(text))
+        # \mathit{kg}: letters you said are letters (k·g), never a unit
+        text = re.sub(r"\\mathit\{([A-Za-z]+)\}", r"\1", units.mark(clean(text)))
         if "\\placeholder" in text:
             raise Incomplete("there's an empty box ▢ to fill in")
         self.toks = _tokens(text)
