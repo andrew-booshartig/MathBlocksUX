@@ -657,6 +657,12 @@ export default function SmartCalc({
    * everyone carries into the next calculation — else the answer itself */
   const decimalOf = (r: SmartResult) => r.decimal_latex ?? r.result_latex?.match(/\\approx\s*([^,]*)$/)?.[1].trim() ?? null;
   const carried = (r: SmartResult) => decimalOf(r) ?? asStep(r);
+  /** the decimal alone is the answer when the exact one says nothing new —
+   * the line over again, or a pile of roots (⌥-click still takes it) */
+  const decimalOnly = (r: SmartResult) => {
+    const exact = asStep(r).replace(/\s/g, "");
+    return !!r.decimal_latex && (exact === r.input_latex.replace(/\s/g, "") || exact.length > 60);
+  };
   const copyAnswer = (r: SmartResult) =>
     navigator.clipboard?.writeText(carried(r)).then(
       () => setNote("Copied — ⌘V puts it in any line"),
@@ -1647,9 +1653,9 @@ export default function SmartCalc({
                           reuse(decimalOf(r) && !e.altKey ? decimalOf(r)! : r.action?.kind === "solve" ? asStep(r).replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)
                         }
                       >
-                        <Tex math={asLine(r.result_latex ?? "")} />
+                        <Tex math={decimalOnly(r) ? `\\approx ${r.decimal_latex}` : asLine(r.result_latex ?? "")} />
                         {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
-                        {r.decimal && <span className="smart-decimal">≈ {r.decimal}</span>}
+                        {r.decimal && !decimalOnly(r) && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
                       {r.kind !== "truth" && (
                         <div className="smart-more">
