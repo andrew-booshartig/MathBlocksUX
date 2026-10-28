@@ -364,6 +364,19 @@ def _convert_line(req: dict, left: str, right: str) -> dict:
     }
 
 
+def _plugged_in(node, right: str, vars_: dict) -> dict:
+    """V = A·h/3 with its variables' numbers in place — V = 53000·150/3 —
+    to start Show work with, so the arithmetic is yours to do."""
+    used = [n for n in _names(right) if n in vars_]
+    if not used:
+        return {}
+    try:
+        values = {n: lang.parse(vars_[n], "value", _VALUE_READER) for n in used}
+        return {"work_latex": lang.latex(dataclasses.replace(node, parts=[node.parts[0], _fill_in(node.parts[1], values)]))}
+    except Exception:  # noqa: BLE001 — then Work gets the answer instead
+        return {}
+
+
 def op_formula(req: dict) -> dict:
     """An equation to load (V = A·h/3): the letter it works out (V) and the
     letters it needs a number for (A, h), in the order they're written."""
@@ -460,6 +473,7 @@ def op_smart(req: dict) -> dict:
                 "ans": value["exact_latex"],
                 # r = d/f: r is kilometers per liter, if d and f are named
                 "dims": _dims(right, vars_),
+                **_plugged_in(node, right, vars_),
             }
 
     # just numbers (or every letter has a value): work it out

@@ -1145,7 +1145,12 @@ export default function SmartCalc({
           <button className="smart-tape-tool" title="Edit it — the whole line (Enter keeps it, Esc doesn't)" onClick={() => startEdit(entry)}>
             ✎
           </button>
-          <button className="smart-tape-tool is-op" title="Add it to Show work (the Work tab) as your next step" onClick={() => answerToWork(r)}>
+          <button
+            className="smart-tape-tool is-op"
+            title={r.work_latex ? "Into Show work with its numbers plugged in — you do the math" : "Add it to Show work (the Work tab) as your next step"}
+            // an equation (V = A·h/3): set up in Work as V = 53000·150/3, to work through
+            onClick={() => (r.work_latex ? showWork(r.work_latex) : answerToWork(r))}
+          >
             +
           </button>
           {!editable && (

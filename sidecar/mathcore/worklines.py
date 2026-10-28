@@ -523,7 +523,14 @@ def op_worklines(req: dict) -> dict:
     out = []
     prev = given
     carried = False  # an earlier line was wrong
+    # a word name in the problem (total = 12·4 + 5, from the calculator's
+    # variables) is one name in your lines too — total, not t·o·t·a·l
+    words = re.findall(r"\\mathrm\{([A-Za-z][A-Za-z0-9]+)\}", problem_text) if language == "latex" else []
     for raw in req.get("lines", []):
+        if words:
+            from .smartcalc import _mark_names  # (smartcalc imports this module)
+
+            raw = _mark_names(raw, words)
         # blank, or clearly still being typed (ends on an operator, or has an
         # empty box) — no marks or complaints yet
         if not raw.strip():

@@ -270,3 +270,13 @@ def test_quoted_names():
         op_smart({"latex": '"toy price"=10'})
     # or / and stay words
     assert "or" in op_smart({"latex": r"x<2 \text{ or } x>5"})["result_latex"]
+
+
+def test_plugged_in_for_show_work():
+    from mathcore.worklines import op_worklines
+
+    out = op_smart({"latex": r"total=price\cdot qty+5", "vars": {"price": "12", "qty": "4"}})
+    assert out["work_latex"] == r"\mathrm{total} = 12 \cdot 4 + 5"
+    # typed in Work, total is one name (not t·o·t·a·l)
+    checked = op_worklines({"problem": out["work_latex"], "lines": ["total=48+5", "total=53"]})
+    assert [x["status"] for x in checked["lines"]] == ["ok", "ok"]
