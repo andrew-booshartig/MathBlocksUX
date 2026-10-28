@@ -58,7 +58,8 @@ def _unglue(latex: str, names, define: bool = False) -> str:
     """The math field turns a word starting with a function's name into the
     function: cost → cos t, login → log in. Back into one word when it's a
     name: in quotes ("cost"), a variable there is, or — `define` — the name
-    being saved (cost = k/f·c; not cos t = 0.5, which is cosine)."""
+    being saved (cost = k/f·c; not cos t = 0.5, which is cosine). A space
+    typed after it (cos\\,t) always means the function."""
     def join(m: re.Match) -> str:
         return m.group(1) + (m.group(2) or m.group(3))
 
@@ -409,7 +410,7 @@ def op_formula(req: dict) -> dict:
     """An equation to load (V = A·h/3): the letter it works out (V) and the
     letters it needs a number for (A, h), in the order they're written."""
     known = [k.split("(")[0] for k in req.get("vars") or {}]
-    latex, quoted = _unquote(_unglue(_typed(req.get("latex") or ""), known, define=True))
+    latex, quoted = _unquote(_typed(_unglue(req.get("latex") or "", known, define=True)))
     if not latex:
         raise MathInputError("")
     # price · n: price is one name when it's a variable (or "quoted")
@@ -436,9 +437,10 @@ def op_smart_vars(req: dict) -> dict:
 
 def op_smart(req: dict) -> dict:
     known = [k.split("(")[0] for k in req.get("vars") or {}]
-    typed = _typed(req.get("latex") or "")
-    # (naming: a variable's line being written — the left side is a name)
-    latex, quoted = _unquote(_unglue(typed, known, define=bool(req.get("naming")) or _defines(typed, known)))
+    raw = req.get("latex") or ""
+    # (naming: a variable's line being written — the left side is a name.
+    # Before the spaces go: cos t with a space typed — cos\,t — is cosine)
+    latex, quoted = _unquote(_typed(_unglue(raw, known, define=bool(req.get("naming")) or _defines(raw, known))))
     if not latex:
         raise MathInputError("")
     ans = req.get("ans")

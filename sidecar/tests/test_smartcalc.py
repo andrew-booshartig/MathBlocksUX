@@ -293,3 +293,10 @@ def test_function_name_glued_into_a_word():
     from mathcore.smartcalc import op_formula
 
     assert op_formula({"latex": r"\cos t=\frac{k}{f}\cdot c"})["target"] == "cost"
+
+
+def test_a_typed_space_keeps_the_function():
+    # cos, a space, t: cosine — even where cost would be a name
+    out = op_smart({"latex": r"\cos\,t=\frac{k}{f}", "vars": {"k": "1", "f": "2"}, "naming": True})
+    assert out.get("name") != "cost"
+    assert op_smart({"latex": r"\cos\,t\cdot2", "vars": {"cost": "30"}})["result_latex"] != "60"
