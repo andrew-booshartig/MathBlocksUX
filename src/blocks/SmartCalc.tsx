@@ -813,6 +813,49 @@ export default function SmartCalc({
       failed(err);
     }
   };
+  /** an equation made from the variables you've collected (V = A·h/3 typed
+   * under them): worked out from them — a letter with no number yet waits */
+  const eqField = useRef<MathInputHandle>(null);
+  const [eqDraft, setEqDraft] = useState("");
+  const [eqError, setEqError] = useState<string | null>(null);
+  const addEquation = async () => {
+    const latex = eqDraft.trim();
+    if (!latex) return;
+    try {
+      await mathRequest({ op: "formula", latex }); // one letter = the rest?
+    } catch (err) {
+      return setEqError(String(err).replace(/^Error:\s*/, "") || "I can't read that yet");
+    }
+    await loadEquation({ name: "", latex });
+    eqField.current?.setValue("");
+    setEqDraft("");
+    setEqError(null);
+  };
+  /** ☆ an equation in Variables, into Equations (Yours) — with the names its
+   * letters have here (A: base area), so it comes back named */
+  const sameEquation = (a: string, b: string) => a.replace(/\s/g, "") === b.replace(/\s/g, "");
+  const isSaved = (latex: string) => myEquations.some((e) => sameEquation(e.latex, latex));
+  // (only names you gave — not ones worked out, like "base area height")
+  const labelOf = (letter: string) => entries.find((e) => e.result.kind === "assign" && e.result.name === letter)?.label ?? blanks.find((b) => b.name === letter)?.label;
+  const saveEquation = async (latex: string) => {
+    try {
+      const f = await mathRequest<{ target: string; letters: string[]; input_latex: string }>({ op: "formula", latex });
+      if (isSaved(f.input_latex)) return setNote("Already in Equations");
+      const labels: Record<string, string> = {};
+      for (const l of [f.target, ...f.letters]) {
+        const name = labelOf(l);
+        if (name) labels[l] = name;
+      }
+      // named for what it works out (volume → Volume), or by itself
+      const said = labels[f.target];
+      let name = said ? said[0].toUpperCase() + said.slice(1) : `${f.target} = …`;
+      if (said) for (let n = 2; myEquations.some((e) => e.name === name); n++) name = `${said[0].toUpperCase() + said.slice(1)} ${n}`;
+      saveEquations([...myEquations, { name, latex: f.input_latex, ...(Object.keys(labels).length ? { labels } : {}) }]);
+      setNote(`Saved to Equations${said ? `: ${name}` : ""}`);
+    } catch (err) {
+      failed(err);
+    }
+  };
   /** a number typed into a waiting letter: it's a variable now */
   const fillBlank = async (name: string, text: string) => {
     const number = text.trim();
@@ -915,6 +958,11 @@ export default function SmartCalc({
           <button className="smart-tape-tool" title="Add it to the Work tab as your next step" onClick={() => answerToWork(r)}>
             ✎
           </button>
+          {!editable && (
+            <button className="smart-tape-tool" title={isSaved(r.input_latex) ? "In your Equations" : "Save to Equations — with these letters' names"} onClick={() => saveEquation(r.input_latex)}>
+              {isSaved(r.input_latex) ? "★" : "☆"}
+            </button>
+          )}
           <button className="smart-tape-tool is-remove" title={`Remove ${r.name}`} onClick={() => removeOwnVariable(r.name!)}>
             ×
           </button>
@@ -1034,6 +1082,9 @@ export default function SmartCalc({
           <div key={p.id} className="smart-pending">
             <Tex math={asLine(p.latex)} />
             <span className="smart-pending-note">needs {p.letters.filter((l) => !(l in vars)).join(", ")}</span>
+            <button className="smart-vars-remove" title={isSaved(p.latex) ? "In your Equations" : "Save to Equations"} onClick={() => saveEquation(p.latex)}>
+              {isSaved(p.latex) ? "★" : "☆"}
+            </button>
             <button className="smart-vars-remove" title="Drop this equation" onClick={() => updateBlock(data.id, { smartPending: pending.filter((x) => x.id !== p.id) })}>
               ×
             </button>
@@ -1056,6 +1107,20 @@ export default function SmartCalc({
             )}
           </div>
         ))}
+      </div>
+      <div className="smart-side-eq">
+        <MathInput
+          ref={eqField}
+          className="smart-side-eq-field"
+          value={eqDraft}
+          placeholder="+ equation: V = A·h/3"
+          onChange={(l) => {
+            setEqDraft(l);
+            setEqError(null);
+          }}
+          onEnter={addEquation}
+        />
+        {eqError && <div className="eq-error">{eqError}</div>}
       </div>
       {variableNames.size > 0 && (
         <label className="smart-side-names" title="Answers named from these variables' names — d/f says kilometers per liter. It only knows the names you gave, so a bare 25 in w·25 is left out.">

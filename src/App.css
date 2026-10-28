@@ -6598,3 +6598,21 @@ math-field {
   color: var(--t-text, #e6e6f0);
   border-color: var(--t-teal, #55d6be);
 }
+
+/* + equation, under the variables: made from what's collected */
+.smart-side-eq .smart-side-eq-field {
+  font-size: 14px;
+}
+
+.smart-side-eq,
+.eq-add {
+  border: 1px dashed var(--t-line, #2e2e3a);
+  border-radius: 8px;
+  padding: 2px 6px;
+}
+
+.smart-side-eq:focus-within,
+.eq-add:focus-within {
+  border-style: solid;
+  border-color: var(--t-teal, #55d6be);
+}
