@@ -653,15 +653,26 @@ export default function SmartCalc({
 
   // ---- an answer, as a clean step: no "≈ 3.5" tail
   const asStep = (r: SmartResult) => (r.result_latex ?? "").replace(/\s*\\approx\s*[^,]*$/, "").trim();
+  /** the ≈ answer as math — from the engine, or (a line saved before it
+   * sent one) read off the text: "160.276 lb" → 160.276\,\mathrm{lb} */
+  const decimalTex = (r: SmartResult) => {
+    if (r.decimal_latex) return r.decimal_latex;
+    const m = r.decimal?.trim().match(/^(-?[\d.]+(?: \\times 10\^\{-?\d+\})?)(?: (.+))?$/);
+    if (!m) return null;
+    if (!m[2]) return m[1];
+    const sup: Record<string, string> = { "²": "^{2}", "³": "^{3}" };
+    const unit = m[2].replace(/[A-Za-zµΩ°]+/g, (w) => `\\mathrm{${w}}`).replace(/[²³]/g, (c) => sup[c]);
+    return `${m[1]}\\,${unit}`;
+  };
   /** an answer to go on with: its decimal (801.38, 160.2760646 lb) — what
    * everyone carries into the next calculation — else the answer itself */
-  const decimalOf = (r: SmartResult) => r.decimal_latex ?? r.result_latex?.match(/\\approx\s*([^,]*)$/)?.[1].trim() ?? null;
+  const decimalOf = (r: SmartResult) => decimalTex(r) ?? r.result_latex?.match(/\\approx\s*([^,]*)$/)?.[1].trim() ?? null;
   const carried = (r: SmartResult) => decimalOf(r) ?? asStep(r);
   /** the decimal alone is the answer when the exact one says nothing new —
    * the line over again, or a pile of roots (⌥-click still takes it) */
   const decimalOnly = (r: SmartResult) => {
     const exact = asStep(r).replace(/\s/g, "");
-    return !!r.decimal_latex && (exact === r.input_latex.replace(/\s/g, "") || exact.length > 60);
+    return !!decimalTex(r) && (exact === r.input_latex.replace(/\s/g, "") || exact.length > 60);
   };
   const copyAnswer = (r: SmartResult) =>
     navigator.clipboard?.writeText(carried(r)).then(
@@ -1604,9 +1615,9 @@ export default function SmartCalc({
                       <button
                         key={op.label}
                         className="smart-tape-tool is-op"
-                        title={`${op.title} ${plainMath(r.decimal_latex ?? r.ans!)} — onto the end of the line`}
+                        title={`${op.title} ${plainMath(decimalTex(r) ?? r.ans!)} — onto the end of the line`}
                         onPointerDown={(e) => e.preventDefault() /* keep the cursor in the line */}
-                        onClick={() => combine(op, r.decimal_latex ?? r.ans!)}
+                        onClick={() => combine(op, decimalTex(r) ?? r.ans!)}
                       >
                         {op.label}
                       </button>
@@ -1629,7 +1640,7 @@ export default function SmartCalc({
                   </button>
                   {ansFrom.get(entry.id) && (
                     <span className="smart-ans-from" title="What Ans was on this line — the named answer before it">
-                      Ans = <Tex math={ansFrom.get(entry.id)!.result.decimal_latex ?? ansFrom.get(entry.id)!.result.ans ?? ""} /> {ansFrom.get(entry.id)!.label}
+                      Ans = <Tex math={decimalTex(ansFrom.get(entry.id)!.result) ?? ansFrom.get(entry.id)!.result.ans ?? ""} /> {ansFrom.get(entry.id)!.label}
                     </span>
                   )}
                   {r.kind === "choose" ? (
@@ -1653,7 +1664,7 @@ export default function SmartCalc({
                           reuse(decimalOf(r) && !e.altKey ? decimalOf(r)! : r.action?.kind === "solve" ? asStep(r).replace(/^[a-zA-Z]\s*=\s*/, "") : r.result_latex)
                         }
                       >
-                        <Tex math={decimalOnly(r) ? `\\approx ${r.decimal_latex}` : asLine(r.result_latex ?? "")} />
+                        <Tex math={decimalOnly(r) ? `\\approx ${decimalTex(r)}` : asLine(r.result_latex ?? "")} />
                         {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
                         {r.decimal && !decimalOnly(r) && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
