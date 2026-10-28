@@ -864,6 +864,20 @@ math-field {
   font-size: 1em;
 }
 
+/* a step that wraps at its × signs instead of running off the side */
+.tex-wrap {
+  display: block;
+  padding: 4px 0 2px;
+  font-size: 1.1em;
+}
+
+/* each piece KaTeX breaks the line into: room above and below, so a
+   wrapped row of fractions doesn't touch the one before it */
+.tex-wrap .katex-base,
+.tex-wrap .katex .base {
+  margin: 6px 0;
+}
+
 .tex-block {
   display: block;
   overflow-x: auto;

@@ -50,7 +50,7 @@ export function RichText({ text }: { text: string }) {
 
 /** Worked steps, numbered, each a note above its math. Collapsible so a
  * block can show just the answer until you want to see the work. */
-export function StepList({ steps, defaultOpen = true }: { steps: Step[]; defaultOpen?: boolean }) {
+export function StepList({ steps, defaultOpen = true, wrap = false }: { steps: Step[]; defaultOpen?: boolean; wrap?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   if (!steps.length) return null;
   return (
@@ -65,7 +65,9 @@ export function StepList({ steps, defaultOpen = true }: { steps: Step[]; default
               <div className="step-note">
                 <RichText text={s.note} />
               </div>
-              {s.latex && <Tex math={s.latex} block />}
+              {/* wrap: a long chain (a × b × c …) breaks onto the next line at a ×,
+                  fractions still full size */}
+              {s.latex && (wrap ? <Tex math={`\\displaystyle ${s.latex}`} className="tex-wrap" /> : <Tex math={s.latex} block />)}
             </li>
           ))}
         </ol>

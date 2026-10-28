@@ -46,7 +46,7 @@ def test_variables_keep_their_units():
     d = smart(r"d=r\cdot t", vars={n: v["plain"] for n, v in values.items()})
     assert d["result_latex"] == r"d = 50\,\mathrm{m}"
     notes = [s["note"] for s in d["steps"]]
-    assert notes[0] == "Put in the values" and any("cancel" in n for n in notes)
+    assert notes[0] == "Put in the values" and any("cancel" in n.lower() for n in notes)
     assert d["steps"][0]["latex"] == r"\left(5\,\frac{\mathrm{m}}{\mathrm{s}}\right) \cdot \left(10\,\mathrm{s}\right)"
 
 
@@ -57,7 +57,7 @@ def test_solving_with_units():
 def test_steps_cross_out_what_cancels():
     steps = smart(r"5\,\frac{m}{s}\cdot10\,s")["steps"]
     assert any(r"\cancel{\mathrm{s}}" in s["latex"] for s in steps)
-    assert steps[-1]["latex"] == r"50\,\mathrm{m}"
+    assert steps[-1]["latex"].endswith(r"= 50\,\mathrm{m}")
 
 
 def test_a_conversion_chain_cancels_without_undoing_itself():
@@ -66,8 +66,8 @@ def test_a_conversion_chain_cancels_without_undoing_itself():
     r = smart(r"9\,\frac{km}{h}\cdot\frac{1000\,m}{1\,km}\cdot\frac{1\,h}{3600\,s}")
     assert r["result_latex"] == r"\frac{5}{2}\,\frac{\mathrm{m}}{\mathrm{s}}" and r["decimal"] == "2.5 m/s"
     notes = [s["note"] for s in r["steps"]]
-    assert not any(n.startswith("Write") for n in notes) and any("cancel" in n for n in notes)
-    assert r["steps"][-1]["latex"] == r["result_latex"]
+    assert not any("into" in n for n in notes) and any("cancel" in n.lower() for n in notes)
+    assert r["steps"][-1]["latex"].endswith(r"= 2.5\,\frac{\mathrm{m}}{\mathrm{s}}")
 
 
 @pytest.mark.parametrize(
@@ -83,7 +83,7 @@ def test_a_conversion_chain_cancels_without_undoing_itself():
 def test_arrow_converts_one_fact_at_a_time(latex, vars_, result):
     r = smart(latex, vars=vars_)
     assert r["result_latex"] == result
-    assert r["steps"][0]["note"] == "Start" and len(r["steps"]) > 1
+    assert r["steps"][0]["note"] in ("Start", "Put in the values") and len(r["steps"]) > 1
 
 
 def test_a_rate_in_two_units_of_one_kind_keeps_its_shape():
@@ -146,3 +146,27 @@ def test_more_kinds_of_units(latex, result):
 def test_a_unit_against_its_number_says_to_add_a_space():
     with pytest.raises(MathInputError, match="put a space"):
         smart(r"3kg\to g")
+
+
+def test_dimensional_analysis_chain():
+    """the drug problem (Khan Academy): 5 mg/lb for a 72.7 kg patient, from
+    0.9 g/mL — worked as a class does: one chain, a conversion fraction
+    worth 1 wherever a unit must change, units crossed out, tops ÷ bottoms"""
+    for latex in [
+        r"\frac{72.7\,\mathrm{kg}\cdot\frac{5\,\mathrm{mg}}{\mathrm{lb}}}{\frac{0.9\,\mathrm{g}}{\mathrm{mL}}}",
+        r"72.7\,\mathrm{kg}\cdot5\,\mathrm{mg}/\mathrm{lb}\div0.9\,\mathrm{g}/\mathrm{mL}",  # typed on one line
+    ]:
+        r = smart(latex)
+        assert r["decimal"] == "0.8904225812 mL"
+        work = [s["latex"] for s in r["steps"]]
+        chain = next(w for w in work if r"\cancel" in w)
+        for factor in [r"\frac{1\,\cancel{\mathrm{lb}}}{0.45359237\,\cancel{\mathrm{kg}}}", r"\frac{1\,\cancel{\mathrm{g}}}{1000\,\cancel{\mathrm{mg}}}", r"\frac{1\,\mathrm{mL}}{0.9\,\cancel{\mathrm{g}}}"]:
+            assert factor in chain
+        assert any("flip" in s["note"] for s in r["steps"])
+        assert work[-1].endswith(r"\approx 0.8904225812\,\mathrm{mL}")
+        assert "45359237}" not in "".join(work)  # decimals, not giant fractions
+
+
+def test_a_quantity_after_divide_stays_together():
+    assert smart(r"10\,m\div2\,s")["result_latex"] == r"5\,\frac{\mathrm{m}}{\mathrm{s}}"
+    assert smart(r"6\div2x")["result_latex"] == "3 x"  # letters: unchanged

@@ -693,7 +693,8 @@ export default function SmartCalc({
   const showsDecimal = (r: SmartResult) => !!r.decimal && !decimalOnly(r) && /\\frac|\\sqrt|\\pi|\^|\\mathrm\{e\}|\\log|\\ln|\\sin|\\cos|\\tan/.test(asStep(r));
   const decimalOnly = (r: SmartResult) => {
     const exact = asStep(r).replace(/\s/g, "");
-    return !!decimalTex(r) && (exact === r.input_latex.replace(/\s/g, "") || exact.length > 60);
+    // …or a fraction no one reads: 363500000/408233133
+    return !!decimalTex(r) && (exact === r.input_latex.replace(/\s/g, "") || exact.length > 60 || /\\frac\{-?\d+\}\{\d{5,}\}/.test(exact));
   };
   const copyAnswer = (r: SmartResult) =>
     navigator.clipboard?.writeText(carried(r)).then(
@@ -1724,7 +1725,7 @@ export default function SmartCalc({
                           </button>
                         </div>
                       )}
-                      {openSteps === entry.id && r.steps && <StepList steps={r.steps} />}
+                      {openSteps === entry.id && r.steps && <StepList steps={r.steps} wrap />}
                     </>
                   )}
                 </div>

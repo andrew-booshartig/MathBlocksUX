@@ -23,7 +23,7 @@ import dataclasses
 from .lang.ast import Const, Group, Mul, Num, Sym
 from .calculator import _fmt_decimal, op_calc
 from .parsing import MathInputError, build_scope, parse, step, tex
-from . import units
+from . import chain, units
 from .arith import arithmetic_steps
 from .solve import interval_tex, op_solve, set_relational_tex, set_to_segments
 from .transform import op_transform
@@ -186,7 +186,9 @@ def _unit_steps(node, vars_: dict) -> list[dict] | None:
             # a value with units as it's written: 5 m/s, not (5 m)/s
             values = {n: lang.parse(tex(sympy.sympify(vars_[n])), "latex") for n in used}
             node = _fill_in(node, values)
-        worked = units.steps(lang.to_sympy(node, evaluate=False), lambda n: tex(n, keep_order=True))
+        # a chain of fractions, the way a class works units (factor-label);
+        # else numbers together, units together
+        worked = chain.steps(node) or units.steps(lang.to_sympy(node, evaluate=False), lambda n: tex(n, keep_order=True))
     except Exception:  # noqa: BLE001 — then just the answer
         return None
     if not worked:
@@ -365,7 +367,8 @@ def _convert_line(req: dict, left: str, right: str) -> dict:
         number_tex = _number(n)["latex"]
         return f"{number_tex}\\,{_units_latex(read_units(us))}"
 
-    steps = [step("Start", worked["result_latex"])]
+    # the work that got it here (the chain), then the conversion
+    steps = worked.get("steps") or [step("Start", worked["result_latex"])]
     steps += [step(line["why"], shown(sympy.sympify(line["result"]["exact"]), line["units"] or out["to"]["units"])) for line in out["lines"]]
     result_latex = shown(result, target_text)
     decimal = None if (result.is_Rational and out["to"]["amount"].get("approx") is None) else f"{float(result):.6g} {units.plain(target)}"

@@ -277,14 +277,49 @@ class LatexReader:
                 self.take()
                 self.need_more()
                 den = self.unary()
+                after = self.quantity(den) if isinstance(den, Num) else None
+                if after:
+                    den, after = after
                 num = factors[0] if len(factors) == 1 else Mul(factors, ops)
                 factors, ops = [Div(num, den, "div" if t == "div" else "slash")], []
+                if after:  # what followed the quantity, not part of it
+                    factors.append(after)
+                    ops.append("implicit")
             elif self.starts_atom():
                 factors.append(self.unary())
                 ops.append("implicit")
             else:
                 break
         return factors[0] if len(factors) == 1 else Mul(factors, ops)
+
+    def quantity(self, number: Num):
+        """÷ 2 s, ÷ 0.9 g/mL: a number written against its units is one
+        quantity, so it's all divided by — not (10 m ÷ 2)·s, the way bare
+        left to right would read it. (quantity, what came after it) when
+        units follow; None when they don't."""
+        units, after = [], None
+        while self.starts_atom():
+            nxt = self.unary()
+            if not _unit(nxt):
+                after = nxt
+                break
+            units.append(nxt)
+        if not units:
+            return (number, after) if after else None
+        q: Node = Mul([number, *units], ["implicit"] * len(units))
+        # ÷ 0.9 g / mL: the rate, per mL
+        while after is None and self.at("op", "/"):
+            save = self.i
+            self.take()
+            if not self.starts_atom():
+                self.i = save
+                break
+            per = self.unary()
+            if not _unit(per):
+                self.i = save
+                break
+            q = Div(q, per, "frac")
+        return Group(q), after
 
     def unary(self) -> Node:
         if self.at("op", "-"):
