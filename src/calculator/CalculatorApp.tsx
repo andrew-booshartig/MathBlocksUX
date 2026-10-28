@@ -17,7 +17,10 @@ const SAVE = "__calculator__";
 const SETTINGS = "__settings__";
 const CALC_ID = "calculator";
 /** a named workspace's file (any name works — km/h to m/s too) */
-const wsFile = (name: string | null) => (name === null ? SAVE : `ws-${encodeName(name)}`);
+const wsFile = (name: string | null) => (name === null ? SAVE : name.startsWith(EQ) ? `eq-${encodeName(name.slice(EQ.length))}` : `ws-${encodeName(name)}`);
+/** an equation's own workspace is "eq:Pyramid volume" (its file eq-…) —
+ * opened from the Equations sidebar, not the Workspaces menu */
+const EQ = "eq:";
 /** every character a filename could trip on, as %XX — the apostrophe in
  * Dante's too (encodeURIComponent leaves ' ! ( ) * as they are) */
 const encodeName = (name: string) => encodeURIComponent(name).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -50,9 +53,12 @@ export default function CalculatorApp() {
   const activeRef = useRef<string | null>(null);
   const [workspaces, setWorkspaces] = useState<string[]>([]);
   const [wsOpen, setWsOpen] = useState(false);
+  /** the equations that have a workspace of their own (worked on before) */
+  const [eqSpaces, setEqSpaces] = useState<string[]>([]);
   const listWorkspaces = useCallback(async () => {
     const files = await invoke<string[]>("list_workspaces").catch(() => [] as string[]);
     setWorkspaces(files.filter((f) => f.startsWith("ws-")).map((f) => decodeURIComponent(f.slice(3))).sort((a, b) => a.localeCompare(b)));
+    setEqSpaces(files.filter((f) => f.startsWith("eq-")).map((f) => decodeURIComponent(f.slice(3))));
   }, []);
   const snapshot = () => {
     const { blocks, order, edges } = useStore.getState();
@@ -72,6 +78,24 @@ export default function CalculatorApp() {
     activeRef.current = name;
     setActive(name);
     useStore.getState().loadSnapshot(next);
+  };
+  /** an equation clicked: into its own workspace — the one from before, with
+   * your numbers, or a fresh one (true: fresh, so load the equation in) */
+  const openEquation = async (name: string) => {
+    if (activeRef.current === EQ + name) return false;
+    const fresh = !eqSpaces.includes(name);
+    await openWorkspace(EQ + name);
+    if (fresh) {
+      await invoke("save_workspace", { name: wsFile(EQ + name), data: snapshot() }).catch(() => {});
+      setEqSpaces((list) => [...list, name]);
+    }
+    return fresh;
+  };
+  /** an equation's workspace, gone — it starts fresh next time */
+  const forgetEquation = async (name: string) => {
+    await invoke("delete_workspace", { name: wsFile(EQ + name) }).catch(() => {});
+    setEqSpaces((list) => list.filter((n) => n !== name));
+    if (activeRef.current === EQ + name) await openWorkspace(null);
   };
   const saveAs = async (name: string) => {
     setWsOpen(false);
@@ -176,7 +200,7 @@ export default function CalculatorApp() {
         <span className="calc-app-title">Calculator</span>
         <span className="calc-app-tools">
         <button className={`calc-app-workspaces${wsOpen ? " is-on" : ""}`} title="Workspaces — problems saved to come back to" onClick={() => setWsOpen((o) => !o)}>
-          {active ?? "Scratch"} ▾
+          {active === null ? "Scratch" : active.startsWith(EQ) ? active.slice(EQ.length) : active} ▾
         </button>
         <button className={`calc-app-theme${menuOpen ? " is-on" : ""}`} title="Theme" onClick={() => setMenuOpen((open) => !open)}>
           <span className="calc-app-swatch" style={{ background: `linear-gradient(135deg, ${theme.ui.raised} 0 50%, ${theme.numberline.solution} 50% 100%)` }} />
@@ -185,7 +209,20 @@ export default function CalculatorApp() {
         </span>
       </header>
       {wsOpen && <WorkspaceMenu names={workspaces} active={active} onOpen={openWorkspace} onSaveAs={saveAs} onDelete={deleteWorkspace} onClose={() => setWsOpen(false)} />}
-      <main className="calc-app-main">{block && <SmartCalc data={block} equations={equations} onEquations={setEquations} />}</main>
+      <main className="calc-app-main">{block && (
+          <SmartCalc
+            data={block}
+            equations={equations}
+            onEquations={setEquations}
+            spaces={{
+              opened: eqSpaces,
+              active: active?.startsWith(EQ) ? active.slice(EQ.length) : null,
+              open: openEquation,
+              forget: forgetEquation,
+              scratch: () => openWorkspace(null),
+            }}
+          />
+        )}</main>
 
       {menuOpen && (
         <ThemeMenu

@@ -26,7 +26,7 @@ import { plainMath, sameWritten } from "../numberLine";
 import { nameOf } from "../calcNames";
 import UnitPicker from "./UnitPicker";
 import EquationsPanel from "./EquationsPanel";
-import type { Equation } from "../equations";
+import { type Equation, type EquationSpaces, spaceName } from "../equations";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
@@ -151,8 +151,11 @@ export default function SmartCalc({
   data,
   equations,
   onEquations,
+  spaces,
 }: {
   data: CalculatorBlockData;
+  /** each equation in a workspace of its own (the calculator app) */
+  spaces?: EquationSpaces;
   /** your saved equations — the app keeps them for every workspace */
   equations?: Equation[];
   onEquations?: (next: Equation[]) => void;
@@ -849,7 +852,9 @@ export default function SmartCalc({
       });
     }
     for (const p of d?.smartPending ?? []) {
-      if (working.current.has(p.id) || !p.letters.every((l) => l in vars)) continue;
+      // (its letters this workspace's own — not ones from the workspace before)
+      const own = new Set((d?.smartVars ?? []).map((v) => v.name));
+      if (working.current.has(p.id) || !p.letters.every((l) => l in vars && own.has(l))) continue;
       working.current.add(p.id);
       mathRequest<SmartResult>({ op: "smart", latex: p.latex, angle: data.angle, ans, vars }).then(
         (result) => {
@@ -1196,7 +1201,20 @@ export default function SmartCalc({
       {tab === "calc" && (
         <div className="smart-calc-split">
           {sideOpen && sidebar}
-          {eqOpen && <EquationsPanel mine={myEquations} onSave={saveEquations} onLoad={loadEquation} onClose={() => setEqOpen(false)} />}
+          {eqOpen && (
+            <EquationsPanel
+              mine={myEquations}
+              onSave={saveEquations}
+              spaces={spaces}
+              onLoad={async (eq) => {
+                // its own workspace: back to where you were, or fresh with its letters
+                if (spaces && !(await spaces.open(spaceName(eq)))) return updateBlock(data.id, { smartEqSide: true, smartSide: undefined });
+                if (spaces) updateBlock(data.id, { smartEqSide: true });
+                await loadEquation(eq);
+              }}
+              onClose={() => setEqOpen(false)}
+            />
+          )}
           <div className="smart-calc-main">
           {/* a quiet bar: the variables fold away behind a count (type a name
               and Enter to see its value), and Clear all */}

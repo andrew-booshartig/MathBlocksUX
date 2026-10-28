@@ -4,7 +4,7 @@
 import { useRef, useState } from "react";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { mathRequest } from "../mathSidecar";
-import { type Equation, STARTER } from "../equations";
+import { type Equation, type EquationSpaces, STARTER, spaceName } from "../equations";
 import { Tex } from "../ui";
 
 export default function EquationsPanel({
@@ -12,8 +12,10 @@ export default function EquationsPanel({
   onSave,
   onLoad,
   onClose,
+  spaces,
 }: {
   mine: Equation[];
+  spaces?: EquationSpaces;
   onSave: (next: Equation[]) => void;
   onLoad: (eq: Equation) => void;
   onClose: () => void;
@@ -41,12 +43,28 @@ export default function EquationsPanel({
     }
   };
 
-  const card = (eq: Equation, remove?: () => void, i?: number) => (
-    <div key={`${eq.name}:${eq.latex}`} className="eq-card">
-      <button className="eq-use" title="Load it — its letters go into Variables, ready for numbers" onClick={() => onLoad(eq)}>
+  const card = (eq: Equation, remove?: () => void, i?: number) => {
+    const name = spaceName(eq);
+    const here = spaces?.active === name;
+    const before = spaces?.opened.includes(name);
+    return (
+    <div key={`${eq.name}:${eq.latex}`} className={`eq-card${here ? " is-here" : ""}`}>
+      <button
+        className="eq-use"
+        title={here ? "Open now" : before ? "Back to it — your numbers are where you left them" : "Open it in a workspace of its own, its letters ready for numbers"}
+        onClick={() => onLoad(eq)}
+      >
         <Tex math={eq.latex} />
-        {!eq.name.endsWith("…") && <span className="eq-name">{eq.name}</span>}
+        <span className="eq-name">
+          {!eq.name.endsWith("…") && eq.name}
+          {here ? <span className="eq-state is-here">open</span> : before && <span className="eq-state">● saved</span>}
+        </span>
       </button>
+      {spaces && before && (
+        <button className="eq-remove" title="Start it over — forget its numbers and history" onClick={() => spaces.forget(name)}>
+          ↺
+        </button>
+      )}
       {remove &&
         (confirming === i ? (
           <button className="eq-remove is-sure" onClick={() => (remove(), setConfirming(null))}>
@@ -58,7 +76,8 @@ export default function EquationsPanel({
           </button>
         ))}
     </div>
-  );
+    );
+  };
 
   return (
     <aside className="eq-side">
@@ -68,6 +87,11 @@ export default function EquationsPanel({
           ›
         </button>
       </div>
+      {spaces?.active && (
+        <button className="eq-back" title="Back to Scratch — this equation stays saved" onClick={spaces.scratch}>
+          ← Scratch
+        </button>
+      )}
       <div className="eq-add">
         <MathInput ref={field} className="eq-field" value={draft} placeholder="your own: V = A·h/3, Enter" onChange={(l) => (setDraft(l), setError(null))} onEnter={save} />
         {error && <div className="eq-error">{error}</div>}

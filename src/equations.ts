@@ -57,3 +57,17 @@ export const STARTER: { group: string; equations: Equation[] }[] = [
     ],
   },
 ];
+
+/** the name an equation's workspace goes by: its name, or (one of yours) the
+ * equation itself */
+export const spaceName = (eq: Equation) => (eq.name.endsWith("…") ? eq.latex : eq.name);
+
+/** each equation's own workspace: which have one, which is open, and how to
+ * open one, start one over, or go back to Scratch */
+export interface EquationSpaces {
+  opened: string[];
+  active: string | null;
+  open: (name: string) => Promise<boolean>;
+  forget: (name: string) => void;
+  scratch: () => void;
+}
