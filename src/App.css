@@ -6296,6 +6296,34 @@ math-field {
   border-right: 1px solid var(--t-line, #2e2e3a);
 }
 
+.smart-side {
+  animation: smart-side-in 0.16s ease-out;
+}
+
+@keyframes smart-side-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+}
+
+.smart-side-close {
+  float: right;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0 8px;
+  color: var(--t-muted, #74748a);
+  font-size: 16px;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.smart-side-close:hover {
+  background: var(--t-bg4, #26262f);
+  color: var(--t-text, #e6e6f0);
+}
+
 .smart-side-head {
   font-size: 11px;
   letter-spacing: 0.04em;

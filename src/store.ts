@@ -441,6 +441,8 @@ export interface CalculatorBlockData extends BlockBase {
   /** answers say a name worked out from the variables' names (d/f →
    * kilometers per liter) — off unless turned on */
   smartNameAnswers?: boolean;
+  /** false: the variables sidebar is tucked away (⌘B brings it back) */
+  smartSide?: boolean;
   /** variables linked to keep their ratio (c and a: c doubles, a doubles) */
   smartLinks?: { a: string; b: string }[];
   /** the Reference tab's lookup: 9 km/h → m/s */

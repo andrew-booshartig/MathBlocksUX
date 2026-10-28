@@ -754,6 +754,20 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     });
   }
 
+  /** the variables sidebar pops out and tucks away (⌘B) — open unless tucked */
+  const sideOpen = data.smartSide !== false;
+  const setSideOpen = (open: boolean) => updateBlock(data.id, { smartSide: open ? undefined : false });
+  useEffect(() => {
+    if (tab !== "calc") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "b") return;
+      e.preventDefault();
+      updateBlock(data.id, { smartSide: current()?.smartSide === false ? undefined : false });
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** the history holds what's worked out; variables (w = 40) live in the sidebar */
   const tapeEntries = entries.filter((e) => e.result.kind !== "assign");
   const sideEntries = entries.filter((e) => e.result.kind === "assign" && e.result.name);
@@ -850,7 +864,12 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
 
   const sidebar = (
     <aside className="smart-side">
-      <div className="smart-side-head">Variables</div>
+      <div className="smart-side-head">
+        Variables
+        <button className="smart-side-close" title="Tuck the variables away (⌘B)" onClick={() => setSideOpen(false)}>
+          ‹
+        </button>
+      </div>
       <div className="smart-side-list">
         {!sideEntries.length && !sideExtras.length && (
           <div className="smart-side-empty">
@@ -1018,11 +1037,16 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
 
       {tab === "calc" && (
         <div className="smart-calc-split">
-          {sidebar}
+          {sideOpen && sidebar}
           <div className="smart-calc-main">
           {/* a quiet bar: the variables fold away behind a count (type a name
               and Enter to see its value), and Clear all */}
           <div className="smart-bar">
+            {!sideOpen && (
+              <button className="smart-vars-toggle" title="Show your variables (⌘B)" onClick={() => setSideOpen(true)}>
+                Variables · {sideEntries.length + sideExtras.length} ›
+              </button>
+            )}
             {data.smartNote === undefined && !noting && (
               <button className="smart-vars-action" title="A note at the top — what this problem is, in plain words" onClick={() => setNoting(true)}>
                 + Note
