@@ -283,20 +283,21 @@ def test_plugged_in_for_show_work():
 
 
 def test_function_name_glued_into_a_word():
-    # the math field types "cost" as \cos t — a name when it's being defined
-    out = op_smart({"latex": r"\cos t=\frac{k}{f}\cdot c", "vars": {"k": "120", "f": "5", "c": "1.29"}})
-    assert out["kind"] == "assign" and out["name"] == "cost"
+    # the math field types "cost" as \cos t — one name only in quotes, or
+    # when there's a variable cost already
     assert op_smart({"latex": r'"\cos t"=5'})["name"] == "cost"
     assert op_smart({"latex": r"\cos t\cdot2", "vars": {"cost": "30"}})["result_latex"] == "60"
-    assert op_smart({"latex": r"\cos t=5", "naming": True})["name"] == "cost"
-    assert op_smart({"latex": r"\cos(60)"})["result_latex"] == r"\frac{1}{2}"  # cosine is still cosine
+    assert op_smart({"latex": r"\cos t=\frac{k}{f}\cdot c", "vars": {"k": "120", "f": "5", "c": "1.29", "cost": "1"}})["name"] == "cost"
+    # no variable cost: it's cosine
+    assert op_smart({"latex": r"\cos t=\frac{k}{f}", "vars": {"k": "1", "f": "2"}}).get("name") != "cost"
+    assert op_smart({"latex": r"\cos(60)"})["result_latex"] == r"\frac{1}{2}"
     from mathcore.smartcalc import op_formula
 
-    assert op_formula({"latex": r"\cos t=\frac{k}{f}\cdot c"})["target"] == "cost"
+    assert op_formula({"latex": r'"\cos t"=\frac{k}{f}\cdot c'})["target"] == "cost"
 
 
 def test_a_typed_space_keeps_the_function():
     # cos, a space, t: cosine — even where cost would be a name
-    out = op_smart({"latex": r"\cos\,t=\frac{k}{f}", "vars": {"k": "1", "f": "2"}, "naming": True})
+    out = op_smart({"latex": r"\cos\,t=\frac{k}{f}", "vars": {"k": "1", "f": "2", "cost": "3"}})
     assert out.get("name") != "cost"
     assert op_smart({"latex": r"\cos\,t\cdot2", "vars": {"cost": "30"}})["result_latex"] != "60"

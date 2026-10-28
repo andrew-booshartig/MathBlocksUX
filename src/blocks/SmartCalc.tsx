@@ -1103,7 +1103,7 @@ export default function SmartCalc({
   };
   const editVariable = async (entry: SmartEntry, latex: string) => {
     try {
-      const result = await mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, vars, naming: true });
+      const result = await mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, vars });
       if (result.kind !== "assign" || !result.name) return setEditError("keep it a variable: a name = …");
       const d = current();
       const was = entry.result.name;

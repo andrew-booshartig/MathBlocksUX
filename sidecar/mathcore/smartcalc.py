@@ -54,30 +54,17 @@ def _typed(latex: str) -> str:
 _GLUED = re.compile(r"\\(arcsin|arccos|arctan|sinh|cosh|tanh|sin|cos|tan|sec|csc|cot|log|ln|exp)\s*(?:\{\s*([A-Za-z][A-Za-z0-9]*)\s*\}|([A-Za-z][A-Za-z0-9]*))")
 
 
-def _unglue(latex: str, names, define: bool = False) -> str:
+def _unglue(latex: str, names) -> str:
     """The math field turns a word starting with a function's name into the
-    function: cost → cos t, login → log in. Back into one word when it's a
-    name: in quotes ("cost"), a variable there is, or — `define` — the name
-    being saved (cost = k/f·c; not cos t = 0.5, which is cosine). A space
-    typed after it (cos\\,t) always means the function."""
+    function: cost → cos t, login → log in. Back into one word only when it's
+    a name: in quotes ("cost"), or a variable there is already (cost). A
+    space typed after it (cos\\,t) always means the function."""
     def join(m: re.Match) -> str:
         return m.group(1) + (m.group(2) or m.group(3))
 
     latex = re.sub(r'"[^"]*"', lambda q: _GLUED.sub(join, q.group(0)), latex)
     known = set(names)
-    latex = _GLUED.sub(lambda m: join(m) if join(m) in known else m.group(0), latex)
-    if define:
-        m = re.match(r"\s*" + _GLUED.pattern + r"\s*(?==(?!=))", latex)
-        if m:
-            latex = join(m) + latex[m.end():]
-    return latex
-
-
-def _defines(latex: str, names) -> bool:
-    """name = something made of the variables there are (cost = k/f·c) —
-    a definition, not an equation to solve"""
-    right = latex.split("=", 1)[1] if "=" in latex else ""
-    return any(re.search(rf"(?<![A-Za-z\\]){re.escape(n)}(?![A-Za-z])", right) for n in names)
+    return _GLUED.sub(lambda m: join(m) if join(m) in known else m.group(0), latex)
 
 
 _QUOTED = re.compile(r'"([^"]*)"|\\text\{([^{}]*)\}')
@@ -410,7 +397,7 @@ def op_formula(req: dict) -> dict:
     """An equation to load (V = A·h/3): the letter it works out (V) and the
     letters it needs a number for (A, h), in the order they're written."""
     known = [k.split("(")[0] for k in req.get("vars") or {}]
-    latex, quoted = _unquote(_typed(_unglue(req.get("latex") or "", known, define=True)))
+    latex, quoted = _unquote(_typed(_unglue(req.get("latex") or "", known)))
     if not latex:
         raise MathInputError("")
     # price · n: price is one name when it's a variable (or "quoted")
@@ -437,10 +424,8 @@ def op_smart_vars(req: dict) -> dict:
 
 def op_smart(req: dict) -> dict:
     known = [k.split("(")[0] for k in req.get("vars") or {}]
-    raw = req.get("latex") or ""
-    # (naming: a variable's line being written — the left side is a name.
-    # Before the spaces go: cos t with a space typed — cos\,t — is cosine)
-    latex, quoted = _unquote(_typed(_unglue(raw, known, define=bool(req.get("naming")) or _defines(raw, known))))
+    # (before the spaces go: cos t with a space typed — cos\,t — is cosine)
+    latex, quoted = _unquote(_typed(_unglue(req.get("latex") or "", known)))
     if not latex:
         raise MathInputError("")
     ans = req.get("ans")
