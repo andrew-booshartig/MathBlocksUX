@@ -125,7 +125,6 @@ export function WorkPad({
   const [paper, setPaper] = useState(false);
   const [settings, setSettings] = useState(false);
   const [checkedKey, setCheckedKey] = useState<string | null>(null);
-  const [focus, setFocus] = useState<number | null>(null);
   /** the line (or the problem) being typed right now: its errors and marks
    * wait until Enter, or until you leave it — no complaints mid-thought */
   const [typing, setTyping] = useState<number | "problem" | null>(null);
@@ -143,7 +142,6 @@ export function WorkPad({
     return () => clearTimeout(timer);
   }, [flash]);
   const clearTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const mathInputs = useRef<(MathInputHandle | null)[]>([]);
   const problemMath = useRef<MathInputHandle | null>(null);
   const problemText = useRef<HTMLInputElement | null>(null);
@@ -176,15 +174,15 @@ export function WorkPad({
       const d = latest.current;
       if (!d.problem.trim()) return void (visual ? problemMath.current?.focus() : problemText.current?.focus());
       const empty = d.lines.findIndex((l) => !l.trim());
-      const at = empty >= 0 ? empty : d.lines.length - 1;
-      if (visual) mathInputs.current[at]?.focus();
-      else inputs.current[at]?.focus();
+      mathInputs.current[empty >= 0 ? empty : d.lines.length - 1]?.focus();
     }, 40);
     return () => clearTimeout(timer);
     // only when it opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const syntax = visual ? "latex" : language;
+  // the language is the problem's only: what's checked is the problem as
+  // Visual, and the steps (always Visual)
+  const syntax = "latex";
   // how it's solved (Show work): only while it's still this problem
   const plain = (t: string) => t.replace(/\\[,;:! ]|\s/g, "");
   const guide = data.guide && plain(data.guide.problem) === plain(data.problem) ? data.guide : null;
@@ -204,6 +202,32 @@ export function WorkPad({
   }, [insert?.n]); // eslint-disable-line react-hooks/exhaustive-deps
   const reasons = data?.reasons ?? [];
   const { result, error } = useLiveMath<WorkResult>(data?.problem?.trim() ? { op: "worklines", problem: data.problem, lines, syntax, languages: customLanguages } : null, 300);
+
+  // ---- the problem in a text language (Python, Lua…): typed there, kept as
+  // Visual. Its text is good while it's for the problem there is
+  const source = data?.problemSource && data.problemSource.latex === data.problem ? data.problemSource.text : null;
+  const { result: translated } = useLiveMath<{ items: { text: string; ok: boolean }[] }>(
+    !visual && source?.trim() ? { op: "translate", from: language, to: "latex", items: [source], languages: customLanguages } : null,
+    250,
+  );
+  useEffect(() => {
+    const t = translated?.items?.[0];
+    const d = latest.current;
+    if (!t?.ok || t.text === d.problem || !d.problemSource) return;
+    update({ problem: t.text, problemSource: { text: d.problemSource.text, latex: t.text } });
+  }, [translated]); // eslint-disable-line react-hooks/exhaustive-deps
+  // a problem from elsewhere (Show work, Undo…): written in this language to show
+  useEffect(() => {
+    const d = latest.current;
+    if (visual || !languageList || source !== null || !d?.problem.trim()) return;
+    const problem = d.problem;
+    mathRequest<{ items: { text: string; ok: boolean }[] }>({ op: "translate", from: "latex", to: language, items: [problem], languages: customLanguages }).then(
+      ({ items }) => update({ problemSource: { text: items[0].ok ? items[0].text : "", latex: problem } }),
+      () => update({ problemSource: { text: "", latex: problem } }),
+    );
+  }, [visual, language, languageList, source, data?.problem]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** the problem's text typed (in its language) */
+  const setSource = (text: string) => update({ problemSource: { text, latex: latest.current.problem }, ...(text.trim() ? {} : { problem: "" }) });
 
   // "Check on request": marks show for the exact work that was checked, and
   // disappear again as soon as anything is edited
@@ -226,18 +250,10 @@ export function WorkPad({
     const target = pendingFocus.current;
     if (!target) return;
     pendingFocus.current = null;
-    if (visual) {
-      // after the key that caused this has fully finished in the old field,
-      // or that field takes focus straight back
-      const index = target.index;
-      setTimeout(() => mathInputs.current[index]?.focus(), 30);
-      return;
-    }
-    const el = inputs.current[target.index];
-    if (!el) return;
-    el.focus();
-    const at = target.caret ?? el.value.length;
-    el.setSelectionRange(at, at);
+    // after the key that caused this has fully finished in the old field,
+    // or that field takes focus straight back
+    const index = target.index;
+    setTimeout(() => mathInputs.current[index]?.focus(), 30);
   });
 
   const paperLatex = useMemo(() => {
@@ -289,12 +305,17 @@ export function WorkPad({
     const problem = typed ?? d.problem;
     const hasWork = d.lines.some((l) => l.trim());
     const before = d.workFor ?? "";
+    // the first Enter on a problem: it's step 1 (as Visual), to work from
+    const start = problem.trim() ? { lines: [problem, ""], reasons: ["", ""], workFor: problem } : {};
+    const fresh = !hasWork || (before.trim() !== "" && before.trim() !== problem.trim());
     if (hasWork && before.trim() && before.trim() !== problem.trim()) {
       fileWork(before, d.lines, d.reasons).then((id) => id && setFlash(`Last problem filed in History (${(latest.current.history ?? []).length})`));
-      update({ problem, lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined, guide: undefined });
+      update({ problem, lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined, guide: undefined, ...start });
       onReset?.();
-    } else if (problem !== d.problem) update({ problem });
-    setTimeout(() => (visual ? mathInputs.current[0]?.focus() : inputs.current[0]?.focus()), 40);
+    } else if (!hasWork) update({ problem, ...start });
+    else if (problem !== d.problem) update({ problem });
+    const at = fresh && problem.trim() ? 1 : 0;
+    setTimeout(() => mathInputs.current[at]?.focus(), 40);
   };
 
   /** Next problem: the current one (and its work) into the history, then a
@@ -348,6 +369,20 @@ export function WorkPad({
   };
 
   const insertLine = (at: number, text = "") => {
+    const now = latest.current.lines;
+    const goTo = (index: number) => {
+      setTyping(null);
+      setTimeout(() => mathInputs.current[index]?.focus(), 30);
+    };
+    // never two empty steps: an empty one there already is where you go
+    // (⇧Enter's copy fills it) …
+    if (at < now.length && !now[at].trim()) {
+      if (text) setLines(now.map((l, j) => (j === at ? text : l)));
+      return goTo(at);
+    }
+    // … and Enter on an empty step (or + line under one) stays on it
+    // (the field itself, not our copy — that can lag the last key)
+    if (!text && at > 0 && !(mathInputs.current[at - 1]?.getValue() ?? now[at - 1] ?? "").trim()) return goTo(at - 1);
     const next = [...lines];
     next.splice(at, 0, text);
     const nextReasons = [...reasons];
@@ -389,37 +424,6 @@ export function WorkPad({
     return true;
   };
 
-  const onKey = (event: React.KeyboardEvent<HTMLInputElement>, i: number) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      // ⇧Enter: start the next line as a copy of this one — most steps are
-      // "the same line with one thing changed"
-      insertLine(i + 1, event.shiftKey ? lines[i] : "");
-    } else if (event.key === "Backspace" && lines[i] === "" && lines.length > 1) {
-      event.preventDefault();
-      pendingFocus.current = { index: Math.max(0, i - 1) };
-      setLines(
-        lines.filter((_, j) => j !== i),
-        reasons.filter((_, j) => j !== i),
-      );
-    } else if (
-      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
-      cycle(i, event.key === "ArrowUp" ? "up" : "down", lines[i], (text) => {
-        setLines(lines.map((l, j) => (j === i ? text : l)));
-        setTyping(i);
-        return text;
-      })
-    ) {
-      event.preventDefault();
-    } else if (event.key === "ArrowUp" && i > 0) {
-      event.preventDefault();
-      inputs.current[i - 1]?.focus();
-    } else if (event.key === "ArrowDown" && i < lines.length - 1) {
-      event.preventDefault();
-      inputs.current[i + 1]?.focus();
-    }
-  };
-
   const deleteLine = (i: number) => {
     if (lines.length <= 1) return;
     pendingFocus.current = { index: Math.max(0, i - 1) };
@@ -432,32 +436,18 @@ export function WorkPad({
 
   const textPalette = language === "latex" ? LATEX_PALETTE : (info?.palette ?? []);
 
-  /** Switch language, translating the problem and every line — so the same
-   * work reads in the new language. A half-typed line is left as it was. */
+  /** Switch language: only the problem's — it's written in the new one (your
+   * steps are always Visual, so they stay as they are) */
   const switchLanguage = async (next: string, available: LanguageSpec[] = customLanguages, nextName?: string) => {
     if (next === language) return;
     setNotice(null);
-    const from = language === "visual" ? "latex" : language;
-    const to = next === "visual" ? "latex" : next;
-    if (from === to) return update({ input: next });
+    if (next === "visual" || !data.problem.trim()) return update({ input: next, problemSource: undefined });
     try {
-      const { items } = await mathRequest<{ items: { text: string; ok: boolean }[] }>({
-        op: "translate",
-        from,
-        to,
-        items: [data.problem, ...lines],
-        languages: available,
-      });
-      const kept = items.map((item, i) => (item.ok ? null : i)).filter((i): i is number => i !== null && (i === 0 ? data.problem : lines[i - 1]).trim() !== "");
-      update({ input: next, problem: items[0].text, lines: items.slice(1).map((item) => item.text) });
-      const name = nextName ?? (next === "visual" ? "Visual" : known.find((l) => l.id === next)?.name ?? next);
-      setNotice(
-        kept.length
-          ? `Translated to ${name}. ${kept.map((i) => (i === 0 ? "The problem" : `Line ${i}`)).join(", ")} wasn't finished, so it was left as typed.`
-          : null,
-      );
+      const { items } = await mathRequest<{ items: { text: string; ok: boolean }[] }>({ op: "translate", from: "latex", to: next, items: [data.problem], languages: available });
+      update({ input: next, problemSource: { text: items[0].ok ? items[0].text : "", latex: data.problem } });
+      if (!items[0].ok) setNotice(`The problem couldn't be written in ${nextName ?? known.find((l) => l.id === next)?.name ?? next} — it's still there as Visual; type it again to change it.`);
     } catch (err) {
-      setNotice(`Couldn't translate: ${err}`);
+      setNotice(`Couldn't switch: ${err}`);
     }
   };
 
@@ -469,16 +459,18 @@ export function WorkPad({
     if (language !== spec.id) switchLanguage(spec.id, updated, spec.name);
   };
 
+  /** a palette symbol, into the problem's text box (at the cursor) */
   const insertSymbol = (item: Snippet) => {
-    const i = focus ?? lines.length - 1;
-    const el = inputs.current[i];
-    const text = lines[i] ?? "";
+    const el = problemText.current;
+    const text = source ?? "";
     const start = el?.selectionStart ?? text.length;
     const end = el?.selectionEnd ?? text.length;
-    const next = [...lines];
-    next[i] = text.slice(0, start) + item.insert + text.slice(end);
-    pendingFocus.current = { index: i, caret: start + item.insert.length + (item.caret ?? 0) };
-    setLines(next);
+    setSource(text.slice(0, start) + item.insert + text.slice(end));
+    const caret = start + item.insert.length + (item.caret ?? 0);
+    setTimeout(() => {
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    }, 20);
   };
 
   const copyLatex = () => {
@@ -645,14 +637,27 @@ export function WorkPad({
           <input
             ref={problemText}
             className="nodrag block-input"
-            value={data.problem}
+            value={source ?? ""}
             placeholder={language === "latex" ? LATEX_PLACEHOLDER : info?.placeholder ?? ""}
             onChange={(e) => {
-              update({ problem: e.target.value });
+              setSource(e.target.value);
               setTyping("problem");
             }}
             onBlur={() => setTyping(null)}
-            onKeyDown={(e) => e.key === "Enter" && problemEntered((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              // as Visual, right now (the live one can lag the last key)
+              const text = e.currentTarget.value;
+              if (!text.trim()) return problemEntered("");
+              mathRequest<{ items: { text: string; ok: boolean }[] }>({ op: "translate", from: language, to: "latex", items: [text], languages: customLanguages }).then(
+                ({ items }) => {
+                  if (!items[0].ok) return setNotice("The problem isn't finished yet — check it, then Enter.");
+                  update({ problemSource: { text, latex: items[0].text } });
+                  problemEntered(items[0].text);
+                },
+                (err) => setNotice(String(err)),
+              );
+            }}
           />
         )}
         {result && (data.locked || !visual) && <Tex math={result.problem_latex} block className="tex-block work-problem-tex" />}
@@ -715,19 +720,23 @@ export function WorkPad({
               </button>
             </div>
           )}
-          {visual ? (
-            <MathKeypad target={() => activeMath.current ?? mathInputs.current[lines.length - 1]} />
-          ) : (
-          <div className="work-palette nodrag">
-            {textPalette.map((item) => (
+          {!visual && (
+            <>
+              <div className="work-palette nodrag" title="Into the problem">
+                {textPalette.map((item) => (
                   <button key={item.label} onMouseDown={(e) => e.preventDefault()} onClick={() => insertSymbol(item)}>
                     {item.label}
                   </button>
                 ))}
-          </div>
+              </div>
+              <div className="work-hint">
+                <RichText text={`For the problem: ${language === "latex" ? LATEX_HINT : info?.hint ?? ""} **Your steps** are always Visual.`} />
+              </div>
+            </>
           )}
+          <MathKeypad target={() => activeMath.current ?? mathInputs.current[lines.length - 1]} />
           <div className="work-hint">
-            <RichText text={visual ? VISUAL_HINT : language === "latex" ? LATEX_HINT : info?.hint ?? ""} />
+            <RichText text={VISUAL_HINT} />
           </div>
           {guide && <WorkGuidePanel guide={guide} update={(next) => update({ guide: next })} />}
           <ol className="work-lines nodrag">
@@ -740,63 +749,39 @@ export function WorkPad({
                   <span className="work-num">{i + 1}</span>
                   <div className="work-line-main">
                     <div className="work-line-inputs">
-                      {visual ? (
-                        <MathInput
-                          ref={(handle) => {
-                            mathInputs.current[i] = handle;
-                          }}
-                          className="work-math"
-                          value={text}
-                          placeholder={i === 0 ? "first step…" : "next step…"}
-                          onFocus={() => {
-                            setFocus(i);
-                            setTyping(null);
-                            activeMath.current = mathInputs.current[i];
-                          }}
-                          onBlur={() => setTyping(null)}
-                          onChange={(latex) => {
-                            const next = [...latest.current.lines];
-                            next[i] = latex;
-                            setLines(next);
-                            setTyping(i);
-                          }}
-                          onEnter={(shift) => insertLine(i + 1, shift ? lines[i] : "")}
-                          onArrow={(direction) => {
-                            const field = mathInputs.current[i];
-                            if (!field) return false;
-                            return cycle(i, direction, field.getValue(), (text) => {
-                              field.setValue(text);
-                              return field.getValue();
-                            });
-                          }}
-                          onBackspaceEmpty={() => deleteLine(i)}
-                          onMoveOut={(direction) => {
-                            if (direction === "upward") (i > 0 ? mathInputs.current[i - 1] : null)?.focus();
-                            else mathInputs.current[i + 1]?.focus();
-                          }}
-                        />
-                      ) : (
-                      <input
-                        ref={(el) => {
-                          inputs.current[i] = el;
+                      <MathInput
+                        ref={(handle) => {
+                          mathInputs.current[i] = handle;
                         }}
-                        className="block-input work-input"
+                        className="work-math"
                         value={text}
-                        placeholder={i === 0 ? "first step…  (Enter: new line · ⇧Enter: copy line down)" : "next step…"}
+                        placeholder={i === 0 ? "first step…" : "next step…"}
                         onFocus={() => {
-                          setFocus(i);
                           setTyping(null);
+                          activeMath.current = mathInputs.current[i];
                         }}
                         onBlur={() => setTyping(null)}
-                        onKeyDown={(e) => onKey(e, i)}
-                        onChange={(e) => {
-                          const next = [...lines];
-                          next[i] = e.target.value;
+                        onChange={(latex) => {
+                          const next = [...latest.current.lines];
+                          next[i] = latex;
                           setLines(next);
                           setTyping(i);
                         }}
+                        onEnter={(shift) => insertLine(i + 1, shift ? lines[i] : "")}
+                        onArrow={(direction) => {
+                          const field = mathInputs.current[i];
+                          if (!field) return false;
+                          return cycle(i, direction, field.getValue(), (text) => {
+                            field.setValue(text);
+                            return field.getValue();
+                          });
+                        }}
+                        onBackspaceEmpty={() => deleteLine(i)}
+                        onMoveOut={(direction) => {
+                          if (direction === "upward") (i > 0 ? mathInputs.current[i - 1] : null)?.focus();
+                          else mathInputs.current[i + 1]?.focus();
+                        }}
                       />
-                      )}
                       {data.showReasons && (
                         <input
                           className="block-input work-reason"
@@ -809,12 +794,12 @@ export function WorkPad({
                           }}
                         />
                       )}
-                      {onCalculate && (visual ? text : c?.latex)?.trim() && (
+                      {onCalculate && text.trim() && (
                         <button
                           className="work-to-calc"
                           title="Calculate this step — it goes on the Calculate tab's line"
                           onPointerDown={(e) => e.preventDefault()}
-                          onClick={() => onCalculate((visual ? text : c?.latex) ?? "")}
+                          onClick={() => onCalculate(text)}
                         >
                           =
                         </button>
@@ -823,7 +808,6 @@ export function WorkPad({
                         {MARK[status].icon}
                       </span>
                     </div>
-                    {c?.latex && !visual && <Tex math={c.latex} block className="tex-block work-line-tex" />}
                     {shown && c?.message && c.status !== "ok" && (
                       <div className="work-message">
                         <RichText text={c.message} />

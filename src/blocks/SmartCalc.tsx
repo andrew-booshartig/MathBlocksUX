@@ -676,7 +676,8 @@ export default function SmartCalc({
     focusOn.current = "work";
     const solving = (steps ?? []).filter((s, i) => !(i === 0 && /^start/i.test(s.note)));
     const guide = solving.length ? { problem: latex, steps: solving, shown: 1 } : undefined;
-    updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), problem: latex, lines: [""], reasons: [""], guide }, smartTab: "work" });
+    // the problem is step 1 too — set up, ready to work from
+    updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), problem: latex, lines: [latex, ""], reasons: ["", ""], workFor: latex, guide }, smartTab: "work" });
   };
 
   /** An operator first, on an empty line, carries on from the last answer —

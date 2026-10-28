@@ -233,6 +233,10 @@ export interface WorkBlockData extends BlockBase {
   /** The input language — always chosen, never guessed: "visual" (type
    *  the way it looks), "latex", or a text language by id. */
   input?: WorkLanguage;
+  /** the problem as typed in a text language (Python…) — only the problem
+   *  takes the language; `problem` is always Visual (LaTeX), and so are the
+   *  steps. `latex` is the problem it was typed for */
+  problemSource?: { text: string; latex: string };
   /** finished problems, with their work — an assignment's worth */
   history?: WorkHistoryEntry[];
   /** the problem the current lines were written for (a new problem + Enter
