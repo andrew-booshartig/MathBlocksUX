@@ -4721,17 +4721,21 @@ math-field {
 .smart-out {
   background: transparent;
   border: none;
-  padding: 0;
+  /* room for the hover highlight, without moving anything */
+  padding: 3px 8px;
+  margin: -3px -8px;
+  border-radius: 8px;
   cursor: pointer;
   color: inherit;
-  max-width: 100%;
+  max-width: calc(100% + 16px);
   overflow-x: auto;
+  transition: background 0.12s, color 0.12s;
 }
 
 .smart-in {
   align-self: flex-start;
   color: var(--t-subtle, #a9a9bd);
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .smart-out {
@@ -4740,18 +4744,31 @@ math-field {
   align-items: baseline;
   gap: 8px;
   color: var(--t-text, #ffffff);
-  font-size: 18px;
+  font-size: 17px;
 }
 
+/* hovered: lit up, so you see what a click puts in the line */
 .smart-in:hover,
 .smart-out:hover {
   color: var(--t-orange, #ffd391);
+  background: rgba(255, 211, 145, 0.08);
 }
 
+/* the ≈ answer: the same math type as the rest, a step quieter */
 .smart-decimal {
-  color: var(--t-muted, #7c8aa0);
-  font-size: 13px;
-  font-family: -apple-system, "Inter", Helvetica, sans-serif;
+  color: var(--t-muted, #8c98ad);
+  font-size: 0.88em;
+  font-family: "KaTeX_Main", "Times New Roman", serif;
+}
+
+/* an answer whose click takes its decimal: the decimal lights, not the
+   exact answer beside it */
+.smart-out.carries-decimal:hover {
+  color: var(--t-text, #ffffff);
+}
+
+.smart-out.carries-decimal:hover .smart-decimal {
+  color: var(--t-orange, #ffd391);
 }
 
 .smart-choose {

@@ -670,6 +670,9 @@ export default function SmartCalc({
   const carried = (r: SmartResult) => decimalOf(r) ?? asStep(r);
   /** the decimal alone is the answer when the exact one says nothing new —
    * the line over again, or a pile of roots (⌥-click still takes it) */
+  /** the ≈ beside the answer, only when it says something the answer
+   * doesn't — 40069/50 ≈ 801.38, but not 160.2760646 lb ≈ 160.276 lb */
+  const showsDecimal = (r: SmartResult) => !!r.decimal && !decimalOnly(r) && /\\frac|\\sqrt|\\pi|\^|\\mathrm\{e\}|\\log|\\ln|\\sin|\\cos|\\tan/.test(asStep(r));
   const decimalOnly = (r: SmartResult) => {
     const exact = asStep(r).replace(/\s/g, "");
     return !!decimalTex(r) && (exact === r.input_latex.replace(/\s/g, "") || exact.length > 60);
@@ -1656,7 +1659,7 @@ export default function SmartCalc({
                   ) : (
                     <>
                       <button
-                        className="smart-out"
+                        className={`smart-out${showsDecimal(r) && decimalTex(r) ? " carries-decimal" : ""}`}
                         title={decimalOf(r) ? "Put this answer in the line, as its decimal — ⌥-click for the exact one" : "Put this answer in the line (at the cursor)"}
                         onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
                         onClick={(e) =>
@@ -1666,7 +1669,7 @@ export default function SmartCalc({
                       >
                         <Tex math={decimalOnly(r) ? `\\approx ${decimalTex(r)}` : asLine(r.result_latex ?? "")} />
                         {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
-                        {r.decimal && !decimalOnly(r) && <span className="smart-decimal">≈ {r.decimal}</span>}
+                        {showsDecimal(r) && <span className="smart-decimal">≈ {r.decimal}</span>}
                       </button>
                       {r.kind !== "truth" && (
                         <div className="smart-more">
