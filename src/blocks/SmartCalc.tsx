@@ -25,6 +25,8 @@ import { nameTex, signature, splitKey } from "../varNames";
 import { plainMath, sameWritten } from "../numberLine";
 import { nameOf } from "../calcNames";
 import UnitPicker from "./UnitPicker";
+import EquationsPanel from "./EquationsPanel";
+import type { Equation } from "../equations";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
@@ -145,7 +147,16 @@ const GRAPH_MODES: { value: "numberline" | "xy" | "xyz"; label: string; soon?: b
 type VarValue = { plain?: string; latex?: string; decimal?: string | null; error?: string; params?: string[] };
 
 
-export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
+export default function SmartCalc({
+  data,
+  equations,
+  onEquations,
+}: {
+  data: CalculatorBlockData;
+  /** your saved equations — the app keeps them for every workspace */
+  equations?: Equation[];
+  onEquations?: (next: Equation[]) => void;
+}) {
   const updateBlock = useStore((state) => state.updateBlock<CalculatorBlockData>);
   const entries = data.smart ?? [];
   const variables = data.smartVars ?? [];
@@ -246,7 +257,7 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
     const vars = (d?.smartVars ?? []).filter((v) => !keptNames.has(v.name));
     const entries = (d?.smart ?? []).filter((e) => !isLocked(e));
     if (!vars.length && !entries.length) return;
-    updateBlock(data.id, { smartVars: (d?.smartVars ?? []).filter((v) => keptNames.has(v.name)), smart: keptEntries });
+    updateBlock(data.id, { smartVars: (d?.smartVars ?? []).filter((v) => keptNames.has(v.name)), smart: keptEntries, smartBlanks: undefined, smartPending: undefined });
     setOpenSteps(null);
     setWiped({ vars, entries });
   };
@@ -760,17 +771,109 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
   useEffect(() => {
     if (tab !== "calc") return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "b") return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === "b") updateBlock(data.id, { smartSide: current()?.smartSide === false ? undefined : false });
+      else if (key === "e") updateBlock(data.id, { smartEqSide: current()?.smartEqSide ? undefined : true });
+      else return;
       e.preventDefault();
-      updateBlock(data.id, { smartSide: current()?.smartSide === false ? undefined : false });
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** the Equations sidebar, on the right (⌘E) */
+  const eqOpen = !!data.smartEqSide;
+  const setEqOpen = (open: boolean) => updateBlock(data.id, { smartEqSide: open || undefined });
+  const myEquations = equations ?? data.smartEquations ?? [];
+  const saveEquations = (next: Equation[]) => (onEquations ? onEquations(next) : updateBlock(data.id, { smartEquations: next.length ? next : undefined }));
+  const blanks = data.smartBlanks ?? [];
+  const pending = data.smartPending ?? [];
+  const failed = (err: unknown) => setError(String(err).replace(/^Error:\s*/, "") || "I can't read that yet");
+
+  /** an equation clicked: its letters into Variables, named and waiting for
+   * a number — and it's worked out once every one has one */
+  const loadEquation = async (eq: Equation) => {
+    try {
+      const f = await mathRequest<{ target: string; letters: string[]; input_latex: string }>({ op: "formula", latex: eq.latex });
+      const d = current();
+      const have = new Set([...(d?.smartVars ?? []).map((v) => v.name), ...(d?.smartBlanks ?? []).map((b) => b.name)]);
+      const fresh = f.letters.filter((l) => !have.has(l)).map((name) => ({ name, ...(eq.labels?.[name] ? { label: eq.labels[name] } : {}) }));
+      const label = eq.labels?.[f.target];
+      updateBlock(data.id, {
+        smartBlanks: [...(d?.smartBlanks ?? []), ...fresh],
+        smartPending: [...(d?.smartPending ?? []).filter((p) => p.target !== f.target), { id: newId("eq"), latex: f.input_latex, target: f.target, letters: f.letters, ...(label ? { label } : {}) }],
+        smartSide: undefined, // Variables out, to fill them in
+      });
+      setError(null);
+    } catch (err) {
+      failed(err);
+    }
+  };
+  /** a number typed into a waiting letter: it's a variable now */
+  const fillBlank = async (name: string, text: string) => {
+    const number = text.trim();
+    if (!number) return;
+    const latex = `${nameTex(name)}=${number}`;
+    try {
+      const result = await mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, vars });
+      if (result.kind !== "assign" || !result.name) return;
+      const d = current();
+      const label = (d?.smartBlanks ?? []).find((b) => b.name === name)?.label;
+      updateBlock(data.id, {
+        smart: [...(d?.smart ?? []), { id: newId("calc"), latex, result, ...(label ? { label } : {}) }].slice(-MAX_ENTRIES),
+        smartBlanks: (d?.smartBlanks ?? []).filter((b) => b.name !== name),
+      });
+      if (result.value_latex) setVariable(result.name, result.value_latex, result.params);
+    } catch (err) {
+      failed(err);
+    }
+  };
+  const setBlankLabel = (name: string, label: string) =>
+    updateBlock(data.id, { smartBlanks: (current()?.smartBlanks ?? []).map((b) => (b.name === name ? { name, ...(label.trim() ? { label: label.trim() } : {}) } : b)) });
+  // a letter given a number some other way (A = 5 on the line): no longer
+  // waiting — and its name goes with it. A loaded equation whose letters all
+  // have numbers: worked out, saved as a variable that follows them
+  const working = useRef(new Set<string>());
+  useEffect(() => {
+    const d = current();
+    const waiting = d?.smartBlanks ?? [];
+    const done = waiting.filter((b) => b.name in vars);
+    if (done.length) {
+      updateBlock(data.id, {
+        smartBlanks: waiting.filter((b) => !(b.name in vars)),
+        smart: (d?.smart ?? []).map((e) => {
+          const b = done.find((x) => e.result.kind === "assign" && e.result.name === x.name);
+          return b?.label && !e.label ? { ...e, label: b.label } : e;
+        }),
+      });
+    }
+    for (const p of d?.smartPending ?? []) {
+      if (working.current.has(p.id) || !p.letters.every((l) => l in vars)) continue;
+      working.current.add(p.id);
+      mathRequest<SmartResult>({ op: "smart", latex: p.latex, angle: data.angle, ans, vars }).then(
+        (result) => {
+          const now = current();
+          updateBlock(data.id, { smartPending: (now?.smartPending ?? []).filter((x) => x.id !== p.id) });
+          if (result.kind !== "assign" || !result.name) return;
+          const list = now?.smart ?? [];
+          const old = list.find((e) => e.result.kind === "assign" && e.result.name === result.name);
+          const line = { latex: p.latex, result, ...(p.label ? { label: p.label } : {}) };
+          save(old ? list.map((e) => (e.id === old.id ? { ...e, ...line } : e)) : [...list, { id: newId("calc"), ...line }]);
+          if (result.value_latex) setVariable(result.name, result.value_latex, result.params);
+        },
+        (err) => {
+          working.current.delete(p.id);
+          failed(err);
+        },
+      );
+    }
+  }, [vars, data.smartPending, data.smartBlanks]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** the history holds what's worked out; variables (w = 40) live in the sidebar */
   const tapeEntries = entries.filter((e) => e.result.kind !== "assign");
   const sideEntries = entries.filter((e) => e.result.kind === "assign" && e.result.name);
+  const isNumber = (e: SmartEntry) => !!numberIn(e.latex, e.result.input_latex);
   /** variables with no line of their own: one whose line has scrolled out of
    * the history, or a Variables block's on the canvas */
   const sideExtras = allVariables.filter((v) => !sideEntries.some((e) => e.result.name === v.name));
@@ -871,12 +974,67 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
         </button>
       </div>
       <div className="smart-side-list">
-        {!sideEntries.length && !sideExtras.length && (
+        {!sideEntries.length && !sideExtras.length && !blanks.length && !pending.length && (
           <div className="smart-side-empty">
             Type <b>w = 40</b> and press Enter — it lands here, apart from the history. Change its number right here; 🏷 names it.
           </div>
         )}
-        {sideEntries.map(variableRow)}
+        {sideEntries.filter(isNumber).map(variableRow)}
+        {/* an equation's letters, waiting for a number: h (height) = [ ? ] */}
+        {blanks.map((b) => (
+          <div key={`blank:${b.name}`} className="smart-entry is-assign is-blank">
+            <span className="smart-tape-tools">
+              <button className="smart-tape-tool" title={b.label ? "Rename it" : "Name it"} onClick={() => setLabeling(`blank:${b.name}`)}>
+                🏷
+              </button>
+              <button className="smart-tape-tool is-remove" title={`Stop waiting for ${b.name}`} onClick={() => updateBlock(data.id, { smartBlanks: blanks.filter((x) => x.name !== b.name) })}>
+                ×
+              </button>
+            </span>
+            {labeling === `blank:${b.name}` ? (
+              <input
+                className="smart-label-edit nodrag"
+                autoFocus
+                defaultValue={b.label ?? ""}
+                placeholder="name it"
+                onKeyDown={(e) => (e.key === "Enter" || e.key === "Escape") && e.currentTarget.blur()}
+                onBlur={(e) => {
+                  setBlankLabel(b.name, e.currentTarget.value);
+                  setLabeling(null);
+                }}
+              />
+            ) : (
+              b.label && (
+                <button className="smart-label" title="Rename it" onClick={() => setLabeling(`blank:${b.name}`)}>
+                  {b.label}
+                </button>
+              )
+            )}
+            <span className="smart-in is-editable">
+              <Tex math={`${nameTex(b.name)} =`} />
+              <input
+                className="smart-num is-blank nodrag"
+                placeholder="?"
+                inputMode="decimal"
+                spellCheck={false}
+                title="Type its number, then Enter"
+                onKeyDown={(e) => e.key === "Enter" && fillBlank(b.name, e.currentTarget.value)}
+                onBlur={(e) => fillBlank(b.name, e.currentTarget.value)}
+              />
+            </span>
+          </div>
+        ))}
+        {/* a loaded equation, waiting: V = A·h/3 · needs A, h */}
+        {pending.map((p) => (
+          <div key={p.id} className="smart-pending">
+            <Tex math={asLine(p.latex)} />
+            <span className="smart-pending-note">needs {p.letters.filter((l) => !(l in vars)).join(", ")}</span>
+            <button className="smart-vars-remove" title="Drop this equation" onClick={() => updateBlock(data.id, { smartPending: pending.filter((x) => x.id !== p.id) })}>
+              ×
+            </button>
+          </div>
+        ))}
+        {sideEntries.filter((e) => !isNumber(e)).map(variableRow)}
         {sideExtras.map((v) => (
           <div key={`${v.own ? "own" : "canvas"}:${v.name}`} className="smart-vars-item">
             <button className="smart-vars-use" title="Put it in the line" onPointerDown={(e) => e.preventDefault()} onClick={() => putName(v.name, v.params)}>
@@ -1038,13 +1196,14 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
       {tab === "calc" && (
         <div className="smart-calc-split">
           {sideOpen && sidebar}
+          {eqOpen && <EquationsPanel mine={myEquations} onSave={saveEquations} onLoad={loadEquation} onClose={() => setEqOpen(false)} />}
           <div className="smart-calc-main">
           {/* a quiet bar: the variables fold away behind a count (type a name
               and Enter to see its value), and Clear all */}
           <div className="smart-bar">
             {!sideOpen && (
               <button className="smart-vars-toggle" title="Show your variables (⌘B)" onClick={() => setSideOpen(true)}>
-                Variables · {sideEntries.length + sideExtras.length} ›
+                Variables · {sideEntries.length + sideExtras.length + blanks.length} ›
               </button>
             )}
             {data.smartNote === undefined && !noting && (
@@ -1062,6 +1221,11 @@ export default function SmartCalc({ data }: { data: CalculatorBlockData }) {
                   Clear all
                 </button>
               )
+            )}
+            {!eqOpen && (
+              <button className="smart-vars-toggle smart-eq-toggle" title="Equations — click one to load its letters into Variables (⌘E)" onClick={() => setEqOpen(true)}>
+                ‹ Equations
+              </button>
             )}
           </div>
           {/* the history: a fixed-height window that scrolls, so the calculator

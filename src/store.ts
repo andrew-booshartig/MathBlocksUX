@@ -443,6 +443,15 @@ export interface CalculatorBlockData extends BlockBase {
   smartNameAnswers?: boolean;
   /** false: the variables sidebar is tucked away (⌘B brings it back) */
   smartSide?: boolean;
+  /** true: the Equations sidebar (on the right) is out */
+  smartEqSide?: boolean;
+  /** an equation's letters waiting for a number (h: height = ?) */
+  smartBlanks?: { name: string; label?: string }[];
+  /** loaded equations waiting for their letters' numbers — worked out
+   * (and saved as a variable) once every one has one */
+  smartPending?: { id: string; latex: string; target: string; letters: string[]; label?: string }[];
+  /** saved equations, for a calculator with nowhere else to keep them */
+  smartEquations?: { name: string; latex: string; labels?: Record<string, string> }[];
   /** variables linked to keep their ratio (c and a: c doubles, a doubles) */
   smartLinks?: { a: string; b: string }[];
   /** the Reference tab's lookup: 9 km/h → m/s */

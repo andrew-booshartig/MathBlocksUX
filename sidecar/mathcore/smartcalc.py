@@ -342,6 +342,24 @@ def _convert_line(req: dict, left: str, right: str) -> dict:
     }
 
 
+def op_formula(req: dict) -> dict:
+    """An equation to load (V = A·h/3): the letter it works out (V) and the
+    letters it needs a number for (A, h), in the order they're written."""
+    latex = _typed(req.get("latex") or "")
+    if not latex:
+        raise MathInputError("")
+    node = lang.parse(latex, "latex")
+    if not (isinstance(node, lang.Rel) and node.ops == ["="] and isinstance(node.parts[0], Sym)):
+        raise MathInputError("an equation with one letter on the left: V = A·h/3")
+    target = node.parts[0].name
+    right = lang.write(node.parts[1], "plain", PLAIN)
+    needed = set(_letters(right, names=_names(right)))
+    if target in needed:
+        raise MathInputError(f"{target} is on both sides — put it alone on the left")
+    order = [n for n in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", right) if n in needed]
+    return {"target": target, "letters": list(dict.fromkeys(order)), "input_latex": lang.latex(node)}
+
+
 def op_smart_vars(req: dict) -> dict:
     return {"values": resolve_variables(req.get("vars") or [], req.get("context") or {})}
 

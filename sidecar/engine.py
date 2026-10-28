@@ -25,7 +25,7 @@ from mathcore.worklines import op_worklines  # noqa: E402
 from mathcore.calculator import op_calc  # noqa: E402
 from mathcore.ti85 import op_ti  # noqa: E402
 from mathcore.reference import op_reference, op_refconvert  # noqa: E402
-from mathcore.smartcalc import op_numberline, op_smart, op_smart_console, op_smart_vars  # noqa: E402
+from mathcore.smartcalc import op_formula, op_numberline, op_smart, op_smart_console, op_smart_vars  # noqa: E402
 from mathcore.lang import op_languages, op_translate  # noqa: E402
 from mathcore.analyze import op_line_public, op_quadratic, op_sequence, op_stats  # noqa: E402
 from mathcore.graphing import op_fit, op_graph, op_table  # noqa: E402
@@ -86,6 +86,7 @@ OPS = {
     "reference": op_reference,
     "refconvert": op_refconvert,
     "smartvars": op_smart_vars,
+    "formula": op_formula,
     "smartconsole": op_smart_console,
     "numberline": op_numberline,
     "translate": op_translate,

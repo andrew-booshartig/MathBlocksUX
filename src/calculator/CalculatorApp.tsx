@@ -11,6 +11,7 @@ import { DEFAULT_THEME, type Theme, ThemeError, applyTheme, builtInThemes, readT
 import ThemeMenu from "./ThemeMenu";
 import ThemeEditor from "./ThemeEditor";
 import WorkspaceMenu from "./WorkspaceMenu";
+import type { Equation } from "../equations";
 
 const SAVE = "__calculator__";
 const SETTINGS = "__settings__";
@@ -37,6 +38,8 @@ export default function CalculatorApp() {
   const [themes, setThemes] = useState<Theme[]>(() => builtInThemes());
   const [problems, setProblems] = useState<ThemeProblem[]>([]);
   const [themeName, setThemeName] = useState(DEFAULT_THEME);
+  /** your saved equations — the same in every workspace */
+  const [equations, setEquations] = useState<Equation[]>([]);
   /** hovering a theme in the menu (or editing one) shows it for a moment */
   const [preview, setPreview] = useState<Theme | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -118,8 +121,9 @@ export default function CalculatorApp() {
     (async () => {
       let open: string | null = null;
       try {
-        const settings = await invoke<{ theme?: string; workspace?: string | null }>("load_workspace", { name: SETTINGS });
+        const settings = await invoke<{ theme?: string; workspace?: string | null; equations?: Equation[] }>("load_workspace", { name: SETTINGS });
         if (settings.theme) setThemeName(settings.theme);
+        if (settings.equations) setEquations(settings.equations);
         open = settings.workspace ?? null;
       } catch {
         // first run: One Dark, Scratch
@@ -155,8 +159,8 @@ export default function CalculatorApp() {
   }, [theme, preview]);
   useEffect(() => {
     if (!loaded.current) return;
-    invoke("save_workspace", { name: SETTINGS, data: { theme: themeName, workspace: active } }).catch(() => {});
-  }, [themeName, active]);
+    invoke("save_workspace", { name: SETTINGS, data: { theme: themeName, workspace: active, equations } }).catch(() => {});
+  }, [themeName, active, equations]);
 
   const openFolder = async () => {
     try {
@@ -181,7 +185,7 @@ export default function CalculatorApp() {
         </span>
       </header>
       {wsOpen && <WorkspaceMenu names={workspaces} active={active} onOpen={openWorkspace} onSaveAs={saveAs} onDelete={deleteWorkspace} onClose={() => setWsOpen(false)} />}
-      <main className="calc-app-main">{block && <SmartCalc data={block} />}</main>
+      <main className="calc-app-main">{block && <SmartCalc data={block} equations={equations} onEquations={setEquations} />}</main>
 
       {menuOpen && (
         <ThemeMenu

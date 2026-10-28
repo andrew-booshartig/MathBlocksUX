@@ -245,3 +245,16 @@ def test_a_compound_whose_answer_hides_its_parts_sends_them():
 def test_answers_say_how_variables_sit_in_them(latex, dims):
     out = op_smart({"latex": latex, "vars": {"d": "100", "f": "8", "k": "1000", "trip": "900", "r": "d/f"}})
     assert out.get("dims") == dims
+
+
+def test_formula_letters():
+    from mathcore.smartcalc import op_formula
+
+    out = op_formula({"latex": r"V=\frac{A\cdot h}{3}"})
+    assert out["target"] == "V" and out["letters"] == ["A", "h"]
+    assert op_formula({"latex": r"A=\pi r^2"})["letters"] == ["r"]
+    assert op_formula({"latex": r"F=\frac{9}{5}C+32"})["letters"] == ["C"]
+    with pytest.raises(Exception):
+        op_formula({"latex": "x+1=3"})
+    with pytest.raises(Exception):
+        op_formula({"latex": "x=x+1"})
