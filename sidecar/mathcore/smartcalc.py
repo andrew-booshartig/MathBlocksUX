@@ -51,6 +51,34 @@ def _typed(latex: str) -> str:
     return re.sub(r"\\[,;:! ]", " ", latex).strip()
 
 
+_GLUED = re.compile(r"\\(arcsin|arccos|arctan|sinh|cosh|tanh|sin|cos|tan|sec|csc|cot|log|ln|exp)\s*(?:\{\s*([A-Za-z][A-Za-z0-9]*)\s*\}|([A-Za-z][A-Za-z0-9]*))")
+
+
+def _unglue(latex: str, names, define: bool = False) -> str:
+    """The math field turns a word starting with a function's name into the
+    function: cost → cos t, login → log in. Back into one word when it's a
+    name: in quotes ("cost"), a variable there is, or — `define` — the name
+    being saved (cost = k/f·c; not cos t = 0.5, which is cosine)."""
+    def join(m: re.Match) -> str:
+        return m.group(1) + (m.group(2) or m.group(3))
+
+    latex = re.sub(r'"[^"]*"', lambda q: _GLUED.sub(join, q.group(0)), latex)
+    known = set(names)
+    latex = _GLUED.sub(lambda m: join(m) if join(m) in known else m.group(0), latex)
+    if define:
+        m = re.match(r"\s*" + _GLUED.pattern + r"\s*(?==(?!=))", latex)
+        if m:
+            latex = join(m) + latex[m.end():]
+    return latex
+
+
+def _defines(latex: str, names) -> bool:
+    """name = something made of the variables there are (cost = k/f·c) —
+    a definition, not an equation to solve"""
+    right = latex.split("=", 1)[1] if "=" in latex else ""
+    return any(re.search(rf"(?<![A-Za-z\\]){re.escape(n)}(?![A-Za-z])", right) for n in names)
+
+
 _QUOTED = re.compile(r'"([^"]*)"|\\text\{([^{}]*)\}')
 
 
@@ -380,11 +408,13 @@ def _plugged_in(node, right: str, vars_: dict) -> dict:
 def op_formula(req: dict) -> dict:
     """An equation to load (V = A·h/3): the letter it works out (V) and the
     letters it needs a number for (A, h), in the order they're written."""
-    latex, quoted = _unquote(_typed(req.get("latex") or ""))
+    known = [k.split("(")[0] for k in req.get("vars") or {}]
+    latex, quoted = _unquote(_unglue(_typed(req.get("latex") or ""), known, define=True))
     if not latex:
         raise MathInputError("")
     # price · n: price is one name when it's a variable (or "quoted")
-    latex = _mark_names(latex, [*(k.split("(")[0] for k in req.get("vars") or {}), *quoted])
+    saving = _NEW_NAME.match(latex)  # cost = …: one name on the left
+    latex = _mark_names(latex, [*known, *quoted, *([saving.group(1)] if saving else [])])
     node = lang.parse(latex, "latex")
     if not (isinstance(node, lang.Rel) and node.ops == ["="] and isinstance(node.parts[0], Sym)):
         raise MathInputError("an equation with one letter on the left: V = A·h/3")
@@ -405,7 +435,10 @@ def op_smart_vars(req: dict) -> dict:
 
 
 def op_smart(req: dict) -> dict:
-    latex, quoted = _unquote(_typed(req.get("latex") or ""))
+    known = [k.split("(")[0] for k in req.get("vars") or {}]
+    typed = _typed(req.get("latex") or "")
+    # (naming: a variable's line being written — the left side is a name)
+    latex, quoted = _unquote(_unglue(typed, known, define=bool(req.get("naming")) or _defines(typed, known)))
     if not latex:
         raise MathInputError("")
     ans = req.get("ans")

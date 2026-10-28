@@ -280,3 +280,16 @@ def test_plugged_in_for_show_work():
     # typed in Work, total is one name (not t·o·t·a·l)
     checked = op_worklines({"problem": out["work_latex"], "lines": ["total=48+5", "total=53"]})
     assert [x["status"] for x in checked["lines"]] == ["ok", "ok"]
+
+
+def test_function_name_glued_into_a_word():
+    # the math field types "cost" as \cos t — a name when it's being defined
+    out = op_smart({"latex": r"\cos t=\frac{k}{f}\cdot c", "vars": {"k": "120", "f": "5", "c": "1.29"}})
+    assert out["kind"] == "assign" and out["name"] == "cost"
+    assert op_smart({"latex": r'"\cos t"=5'})["name"] == "cost"
+    assert op_smart({"latex": r"\cos t\cdot2", "vars": {"cost": "30"}})["result_latex"] == "60"
+    assert op_smart({"latex": r"\cos t=5", "naming": True})["name"] == "cost"
+    assert op_smart({"latex": r"\cos(60)"})["result_latex"] == r"\frac{1}{2}"  # cosine is still cosine
+    from mathcore.smartcalc import op_formula
+
+    assert op_formula({"latex": r"\cos t=\frac{k}{f}\cdot c"})["target"] == "cost"

@@ -528,9 +528,9 @@ def op_worklines(req: dict) -> dict:
     words = re.findall(r"\\mathrm\{([A-Za-z][A-Za-z0-9]+)\}", problem_text) if language == "latex" else []
     for raw in req.get("lines", []):
         if words:
-            from .smartcalc import _mark_names  # (smartcalc imports this module)
+            from .smartcalc import _mark_names, _unglue  # (smartcalc imports this module)
 
-            raw = _mark_names(raw, words)
+            raw = _mark_names(_unglue(raw, words), words)
         # blank, or clearly still being typed (ends on an operator, or has an
         # empty box) — no marks or complaints yet
         if not raw.strip():
