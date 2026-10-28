@@ -135,7 +135,8 @@ def op_calc(req: dict) -> dict:
         names = ", ".join(sorted(map(str, units.without_units(value.free_symbols))))
         raise MathInputError(f"{names} has no value — give it one in a Variable block")
     if units.has_units(value):
-        return _quantity(units.normalize(value), input_latex)
+        # 5 mg/lb (over a bare unit) is a rate, kept as written; 3 km/(500 m) is a ratio
+        return _quantity(units.normalize(value, rates=bool(re.search(r"/\s*unit_", text))), input_latex)
     exact = sympy.nsimplify(value) if value.is_Float else sympy.simplify(value)
     if exact.has(sympy.zoo, sympy.oo, -sympy.oo, sympy.nan):
         raise MathInputError("Math error: division by zero")

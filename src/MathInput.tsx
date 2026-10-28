@@ -168,7 +168,8 @@ export default function MathInput({
     // words — score became sc∨e. Here or and and are words (typeWord).
     // So do its unit shortcuts (km → one unit): here letters are letters —
     // k and m are variables of yours.
-    const units = new Set(["mm", "cm", "km", "kg", "ft", "inch", "mi"]);
+    // (lb too: MathLive's binary log — 5 lb is five pounds here)
+    const units = new Set(["mm", "cm", "km", "kg", "ft", "inch", "mi", "lb"]);
     const { or: _or, and: _and, not: _not, ...shortcuts } = mf.inlineShortcuts;
     mf.inlineShortcuts = Object.fromEntries(Object.entries(shortcuts).filter(([key]) => !units.has(key)));
     // copied into another app, math reads as math: (3x)/4+5, not $$\frac{3x}{4}+5$$

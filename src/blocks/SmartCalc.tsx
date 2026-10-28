@@ -311,6 +311,12 @@ export default function SmartCalc({
 
   // a quiet preview of the answer while typing
   const { result: preview } = useLiveMath<SmartResult>(draft.trim() ? { op: "smart", latex: draft, angle: data.angle, ans, vars } : null, 250);
+  // the unit linter: the units the line is reading as you type, and letters
+  // that spell one but are being read as letters (m·L, no number before it)
+  const { result: lint } = useLiveMath<{ units: { symbol: string; name: string }[]; letters: { text: string; unit: string; name: string }[] }>(
+    draft.trim() ? { op: "smartlint", latex: draft, vars } : null,
+    120,
+  );
 
   useEffect(() => {
     tape.current?.scrollTo({ top: tape.current.scrollHeight });
@@ -761,8 +767,10 @@ export default function SmartCalc({
       ? "\\text{Enter — then pick what to do}"
       : preview?.kind === "assign"
         ? `\\text{saves } ${preview.result_latex}`
-        : preview?.result_latex
-          ? `${preview.kind === "value" || preview.kind === "truth" ? "= " : "\\Rightarrow "}${preview.result_latex}`
+        : preview && decimalOnly(preview)
+          ? `\\approx ${decimalTex(preview)}`
+          : preview?.result_latex
+            ? `${preview.kind === "value" || preview.kind === "truth" ? "= " : "\\Rightarrow "}${preview.result_latex}`
           : null;
 
   const tabs = (
@@ -1755,6 +1763,24 @@ export default function SmartCalc({
                 </>
               ) : null}
             </div>
+            {draft.trim() && lint && (lint.units.length > 0 || lint.letters.length > 0) && (
+              <div className="smart-lint">
+                {lint.units.map((u) => (
+                  <span key={u.symbol} className="lint-unit" title={`Read as a unit: ${u.name}`}>
+                    <b>{u.symbol}</b> {u.name}
+                  </span>
+                ))}
+                {lint.letters.map((l) => (
+                  <span
+                    key={l.text}
+                    className="lint-letters"
+                    title={`Read as letters ${l.text} (a variable each). For ${l.name}, put it right after a number and a space (5 ${l.unit}), or use the unit key.`}
+                  >
+                    <b>{l.text}</b> letters, not {l.name}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {unitsOpen && (

@@ -46,6 +46,8 @@ def clean(text: str) -> str:
             inner = "{" + inner + "}"
         text = text[: m.start()] + inner + text[j + 1 :]
     text = re.sub(r"\\color\{[^{}]*\}|\\hspace\*?\{[^{}]*\}", "", text)
+    # MathLive's lb (binary log) arrives as \operatorname{\mathrm{lb}}: a word, upright
+    text = re.sub(r"\\operatorname\{\\mathrm\{([A-Za-z]+)\}\}", r"\\mathrm{\1}", text)
     text = re.sub(r"\{\s*(\\text\{[^{}]*\})\s*\}", r"\1", text)
     return text.replace("~", " ")
 

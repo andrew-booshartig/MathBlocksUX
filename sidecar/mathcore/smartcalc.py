@@ -794,3 +794,47 @@ def _readable(node) -> str:
     for ascii_, sign in (("<=", "≤"), (">=", "≥"), ("!=", "≠"), ("-", "−")):
         text = text.replace(ascii_, sign)
     return text
+
+
+# ------------------------------------------------------- the unit linter
+
+
+def op_smart_lint(req: dict) -> dict:
+    """While you type: the units the line is reading (kg — kilograms), and
+    letters that spell a unit but are being read as letters (m·L with no
+    number before it) — so you see it register before you press Enter."""
+    known = [k.split("(")[0] for k in req.get("vars") or {}]
+    try:
+        latex, _ = _unquote(_typed(_unglue(req.get("latex") or "", known)))
+        node = lang.parse(latex, "latex")
+    except Exception:  # noqa: BLE001 — half typed: nothing to say yet
+        return {"units": [], "letters": []}
+    seen: list = []
+    letters: list = []
+
+    def walk(n):
+        if isinstance(n, Sym) and units.is_unit(sympy.Symbol(n.name)) and n.name not in seen:
+            seen.append(n.name)
+        if isinstance(n, Mul):
+            run: list = []
+            for i, f in enumerate([*n.factors, None]):
+                joined = i > 0 and i < len(n.factors) and n.ops[i - 1] == "implicit"
+                plain = isinstance(f, Sym) and len(f.name) == 1 and f.name not in known
+                if plain and (joined or not run):
+                    run.append(f.name)
+                    continue
+                word = "".join(run)
+                if len(run) > 1 and units.find(word):
+                    letters.append({"text": "·".join(run), "unit": units.find(word).display, "name": units.find(word).plural})
+                run = [f.name] if plain else []
+        for field in dataclasses.fields(n) if dataclasses.is_dataclass(n) else []:
+            value = getattr(n, field.name)
+            for child in value if isinstance(value, list) else [value]:
+                if isinstance(child, tuple):
+                    child = child[-1]
+                if dataclasses.is_dataclass(child):
+                    walk(child)
+
+    walk(node)
+    found = [units.of(sympy.Symbol(s)) for s in seen]
+    return {"units": [{"symbol": u.display, "name": u.plural} for u in found], "letters": letters}

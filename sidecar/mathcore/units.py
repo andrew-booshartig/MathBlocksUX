@@ -373,38 +373,52 @@ def kind_name(unit_part) -> str:
     return "units"
 
 
-def _one_unit_per_kind(term):
-    """m/s · min → the minutes as seconds, so they cancel: within a term,
-    each kind (by its base) is written in one unit — the one below the bar
-    if there is one (so it cancels), else the bigger."""
+def _one_unit_per_kind(term, rates: bool = False):
+    """m/s · min → the minutes as seconds, so they cancel: within a term, a
+    unit on top is written in the unit of its kind below (the closest in
+    size: kg against lb, not the mg of a dose) — or, all on one side, in
+    the bigger one."""
     number, units = split(term)
     by_kind: dict = {}
     for f in sympy.Mul.make_args(units):
         base, power = (f.base, f.exp) if f.is_Pow else (f, 1)
         if is_unit(base):
             by_kind.setdefault(of(base).dim, []).append((base, power))
+    lone = len([f for f in sympy.Mul.make_args(units) if is_unit(f.base if f.is_Pow else f)]) == 2
     for dim, found in by_kind.items():
         if len({b for b, _ in found}) < 2 or sum(1 for d in dim if d) != 1:
             continue
-        # a rate in two units of one kind (50 mm³ per cm²): kept as written —
-        # it's only made one unit when it cancels away (h and min in
-        # km/h · 30 min) or sits all on one side (km · m)
-        if len({p > 0 for _, p in found}) > 1 and sum(p for _, p in found) != 0:
+        top = [(b, p) for b, p in found if p > 0]
+        below = [(b, p) for b, p in found if p < 0]
+        if top and below:
+            # a rate, written as one (5 mg/lb, a dose per body weight): kept
+            if rates and lone:
+                continue
+            # a rate in two units of one kind (50 mm³ per cm²): kept as
+            # written — powers that can't cancel
+            if not any(p == -q for _, p in top for _, q in below):
+                continue
+            for b, q in below:
+                matches = [(a, p) for a, p in top if p == -q and a != b]
+                if not matches:
+                    continue
+                a = min(matches, key=lambda m: abs(sympy.log(of(m[0]).size / of(b).size)))[0]
+                term = term.subs(a, of(a).size / of(b).size * b)
+                top = [(t, p) for t, p in top if t != a]
             continue
-        below = [b for b, p in found if p < 0]
-        keep = below[0] if below else max((b for b, _ in found), key=lambda b: of(b).size)
+        keep = max((b for b, _ in found), key=lambda b: of(b).size)
         for b, _ in found:
             if b != keep:
                 term = term.subs(b, of(b).size / of(keep).size * keep)
     return sympy.simplify(term) if term.is_Mul else term
 
 
-def normalize(expr):
+def normalize(expr, rates: bool = False):
     """Units made to agree: in each term one unit per kind (so they
     cancel), and a sum in one unit — 5 m + 20 cm → 5.2 m (the bigger unit);
     unlike kinds can't be added (meters and seconds)."""
     expr = sympy.expand(expr)
-    terms = [_one_unit_per_kind(t) for t in sympy.Add.make_args(expr)]
+    terms = [_one_unit_per_kind(t, rates) for t in sympy.Add.make_args(expr)]
     parts = [split(t) for t in terms]
     unitful = [u for _, u in parts if u != 1]
     if unitful and len(unitful) < len(parts):

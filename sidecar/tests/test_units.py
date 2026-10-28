@@ -170,3 +170,23 @@ def test_dimensional_analysis_chain():
 def test_a_quantity_after_divide_stays_together():
     assert smart(r"10\,m\div2\,s")["result_latex"] == r"5\,\frac{\mathrm{m}}{\mathrm{s}}"
     assert smart(r"6\div2x")["result_latex"] == "3 x"  # letters: unchanged
+
+
+def test_mathlive_lb_is_pounds():
+    """MathLive types lb as \\operatorname{\\mathrm{lb}} (binary log) — here it's pounds"""
+    r = smart(r"\frac{72.7\,kg\cdot5\,\frac{mg}{\operatorname{\mathrm{lb}}}}{0.9\,\frac{g}{mL}}")
+    assert r["decimal"] == "0.8904225812 mL"
+
+
+def test_a_rate_over_a_bare_unit_keeps_its_shape():
+    assert smart(r"5\,\frac{mg}{lb}")["result_latex"] == r"5\,\frac{\mathrm{mg}}{\mathrm{lb}}"
+    # the weight cancels against the per-pound, the mg stays
+    assert smart(r"72.7\,kg\cdot 5\,\frac{mg}{lb}")["decimal"] == "801.380323 mg"
+    # an amount over an amount of one kind is how many times
+    assert smart(r"\frac{3\,km}{500\,m}")["result_latex"] == "6"
+
+
+def test_the_linter_names_what_it_reads():
+    lint = handle({"op": "smartlint", "latex": r"0.9\,\frac{g}{mL}+mL"})
+    assert [u["symbol"] for u in lint["units"]] == ["g", "mL"]
+    assert lint["letters"] == [{"text": "m·L", "unit": "mL", "name": "milliliters"}]
