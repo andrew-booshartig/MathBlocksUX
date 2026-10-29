@@ -213,6 +213,7 @@ export default function GraphView({
   appearance = {},
   drawings = [],
   live = false,
+  latex = false,
   onResult,
   onPlot,
   overlay,
@@ -237,6 +238,8 @@ export default function GraphView({
   drawings?: GraphDrawing[];
   /** redraw continuously while values change (sliders), not after a pause */
   live?: boolean;
+  /** the lines are LaTeX, as typed in a math field */
+  latex?: boolean;
   onResult?: (result: GraphResult | null, error: string | null) => void;
   /** the Plotly element, once drawn — for exporting and for drawing tools */
   onPlot?: (plot: PlotDiv) => void;
@@ -283,6 +286,7 @@ export default function GraphView({
         op: "graph",
         exprs,
         vars,
+        ...(latex ? { latex: true } : {}),
         xrange: [window.xmin - span, window.xmax + span],
         yrange: [window.ymin, window.ymax],
         features: (["intercepts", "vertices", "intersections"] as MarkerFeature[]).filter((f) => !hide.includes(f)),

@@ -279,6 +279,14 @@ export interface AssignmentInfo {
   reasons?: boolean;
 }
 
+/** The calculator's xy graph: its lines (LaTeX, as typed), a value for each
+ * letter nothing else defines (m, b…), lines tucked away, and the window */
+export interface XYPlot {
+  lines?: { id: string; latex: string; hidden?: boolean }[];
+  letters?: Record<string, number>;
+  window?: GraphWindow;
+}
+
 /** An inequality drawn on a number line (the calculator's Graph tab) —
  * kept with the problem it was drawn for, so that problem's document has
  * it (a problem nobody graphed gets no graph). */
@@ -468,7 +476,7 @@ export interface CalculatorBlockData extends BlockBase {
   smartVars?: { id: string; name: string; latex: string; params?: string[] }[];
   /** its Graph tab: which kind of graph, and the last one drawn (only when
    * Graph is pressed) */
-  smartPlot?: { mode?: "numberline" | "xy" | "xyz"; drawn?: NumberLineGraph };
+  smartPlot?: { mode?: "numberline" | "xy" | "xyz"; drawn?: NumberLineGraph; xy?: XYPlot };
   /** its Work section: the same data as a Show-your-work block */
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
   ti?: TIState;

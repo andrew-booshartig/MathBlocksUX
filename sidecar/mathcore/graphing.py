@@ -274,6 +274,22 @@ def _function_markers(i, expr, xr):
     return markers
 
 
+_LATEX_POINT = re.compile(r"^\s*(?:\\left)?\(\s*(.+?)\s*,\s*(.+?)\s*(?:\\right)?\)\s*$")
+
+
+def _from_latex(latex: str) -> str:
+    """a line as typed in a math field (LaTeX) as the plain text a graph
+    reads — \\left(2, 5\\right) stays a point, not 2 or 5"""
+    from . import lang
+    from .smartcalc import PLAIN
+
+    plain = lambda t: lang.write(lang.parse(t, "latex"), "plain", PLAIN)  # noqa: E731
+    point = _LATEX_POINT.match(latex)
+    if point:
+        return f"({plain(point.group(1))}, {plain(point.group(2))})"
+    return plain(latex)
+
+
 def op_graph(req: dict) -> dict:
     lines = req.get("exprs")
     if lines is None:
@@ -290,7 +306,17 @@ def op_graph(req: dict) -> dict:
     for i, line in enumerate(lines):
         if not str(line).strip():
             continue
+        if req.get("latex"):
+            try:
+                line = _from_latex(str(line))
+            except Exception:  # noqa: BLE001 — half-typed: that line only
+                series.append({"kind": "error", "error": "I can't read that yet", "index": i})
+                continue
         missing = unknown_names(str(line), vars_)
+        try:
+            letters = unknown_names(str(line), {"e": "exp(1)"})
+        except Exception:  # noqa: BLE001
+            letters = missing
         try:
             if missing:
                 raise MathInputError(f"give {', '.join(missing)} a value to graph this")
@@ -302,6 +328,8 @@ def op_graph(req: dict) -> dict:
         except Exception as exc:  # a bad line shouldn't blank the whole graph
             s = {"kind": "error", "error": f"{type(exc).__name__}: {exc}"}
         s["index"] = i
+        if letters:
+            s["letters"] = letters  # every letter it uses, defined or not
         if s["kind"] != "error":
             try:
                 s["display"] = display_latex(str(line))

@@ -26,6 +26,7 @@ import { plainMath, sameWritten } from "../numberLine";
 import { nameOf } from "../calcNames";
 import UnitPicker from "./UnitPicker";
 import EquationsPanel from "./EquationsPanel";
+import XYGraph from "./XYGraph";
 import { type Equation, type EquationSpaces, spaceName } from "../equations";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
@@ -142,7 +143,7 @@ const sameGraph = (a?: NumberLineGraph, b?: NumberLineGraph) =>
 /** the Graph tab's kinds of graph — built one at a time */
 const GRAPH_MODES: { value: "numberline" | "xy" | "xyz"; label: string; soon?: boolean }[] = [
   { value: "numberline", label: "Number line" },
-  { value: "xy", label: "xy graph", soon: true },
+  { value: "xy", label: "xy graph" },
   { value: "xyz", label: "xyz (3D)", soon: true },
 ];
 
@@ -479,6 +480,17 @@ export default function SmartCalc({
       const scaled = Number(((Number(parts.number) * to) / from).toPrecision(12)).toString();
       retype(entry, `${nameTex(parts.name)}=${scaled}${parts.rest}`);
     }
+  };
+  /** a variable set to a number from elsewhere (the xy graph's letters):
+   * its line retyped, like typing in its box — the sidebar, its links and
+   * everything using it follow */
+  const setVariableNumber = (name: string, n: number) => {
+    const next = Number(n.toPrecision(12)).toString();
+    const entry = (current()?.smart ?? []).find((e) => e.result.kind === "assign" && e.result.name === name);
+    const parts = entry && numberIn(entry.latex, entry.result.input_latex);
+    if (!entry || !parts) return setVariable(name, next);
+    retype(entry, `${nameTex(parts.name)}=${next}${parts.rest}`);
+    followLinks(parts.name, parts.number, next);
   };
   const [linking, setLinking] = useState<string | null>(null);
   const setLinks = (next: { a: string; b: string }[]) => updateBlock(data.id, { smartLinks: next.length ? next : undefined });
@@ -820,6 +832,18 @@ export default function SmartCalc({
       {body}
     </div>
   );
+
+  const graphMode = data.smartPlot?.mode ?? "numberline";
+  /** each variable as a number, for the xy graph's letters (null: more than a number) */
+  const known = useMemo(() => {
+    const out: Record<string, number | null> = {};
+    for (const [name, v] of Object.entries(values)) {
+      if (v.params?.length) continue;
+      const n = Number(v.plain);
+      out[name] = Number.isFinite(n) ? n : null;
+    }
+    return out;
+  }, [values]);
 
   // ---- the Graph tab's number line
   const drawn = data.smartPlot?.drawn;
@@ -1441,7 +1465,7 @@ export default function SmartCalc({
             {GRAPH_MODES.map((m) => (
               <button
                 key={m.value}
-                className={`smart-graph-mode${(data.smartPlot?.mode ?? "numberline") === m.value ? " is-on" : ""}`}
+                className={`smart-graph-mode${graphMode === m.value ? " is-on" : ""}`}
                 disabled={m.soon}
                 title={m.soon ? "Coming next" : undefined}
                 onClick={() => updateBlock(data.id, { smartPlot: { ...(current()?.smartPlot ?? {}), mode: m.value } })}
@@ -1450,6 +1474,20 @@ export default function SmartCalc({
               </button>
             ))}
           </div>
+          {graphMode === "xy" && (
+            <XYGraph
+              plot={data.smartPlot?.xy ?? {}}
+              update={(patch) => {
+                const plot = current()?.smartPlot ?? {};
+                updateBlock(data.id, { smartPlot: { ...plot, xy: { ...(plot.xy ?? {}), ...patch } } });
+              }}
+              vars={vars}
+              known={known}
+              setVariable={setVariableNumber}
+            />
+          )}
+          {graphMode === "numberline" && (
+          <>
           <div className="smart-graph-line">
             <MathInput
               ref={graphField}
@@ -1505,6 +1543,8 @@ export default function SmartCalc({
           ) : (
             !graphError && <div className="smart-graph-hint">Simplify it first, type it here, then press Graph.</div>
           )}
+          </>
+          )}
         </div>
       )}
 
@@ -1524,6 +1564,14 @@ export default function SmartCalc({
             if (typed && typed !== latex.trim()) setNote("Put in place of what was on the line");
           }}
           onGraph={(latex) => {
+            if (/y/.test(latex.replace(/\\[a-zA-Z]+/g, ""))) {
+              // an equation in x and y: a line of its own on the xy graph
+              const plot = current()?.smartPlot ?? {};
+              const kept = (plot.xy?.lines ?? []).filter((l) => l.latex.trim());
+              updateBlock(data.id, { smartPlot: { ...plot, mode: "xy", xy: { ...(plot.xy ?? {}), lines: [...kept, { id: newId("xy"), latex }] } } });
+              setTab("graph");
+              return;
+            }
             // into the Graph tab's line — drawn when Graph is pressed
             setGraphLine(latex);
             setGraphError(null);

@@ -4709,6 +4709,170 @@ math-field {
 }
 
 
+/* the Graph tab's xy graph: its lines (each with its color — click to
+   hide), the letters they use with a value each, then the plot */
+.xy-graph {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.xy-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.xy-line-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 10px;
+  background: var(--t-bg1, #0e0e12);
+  padding: 2px 6px 2px 10px;
+  transition: border-color 0.15s;
+}
+
+.xy-line-row:focus-within {
+  border-color: var(--t-faint, #55606e);
+}
+
+.xy-line.is-hidden .xy-line-field {
+  opacity: 0.45;
+}
+
+.xy-swatch {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid;
+  padding: 0;
+  cursor: pointer;
+}
+
+.xy-line-field {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+}
+
+.xy-line-field math-field,
+.xy-line-field math-field:hover,
+.xy-line-field math-field:focus-within {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.xy-remove {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--t-muted, #7a7a90);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.xy-remove:hover {
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-line-error {
+  font-size: 12px;
+  color: var(--t-muted, #8a8aa0);
+  padding: 2px 12px 0 32px;
+}
+
+.xy-add {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--t-muted, #7a7a90);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 2px 10px;
+}
+
+.xy-add:hover {
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-letters {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--t-bg2, #17171f);
+}
+
+.xy-letter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-letter-name {
+  min-width: 18px;
+  font-size: 17px;
+}
+
+.xy-letter-eq {
+  color: var(--t-muted, #7a7a90);
+}
+
+.xy-letter-value {
+  width: 64px;
+  background: var(--t-bg1, #0e0e12);
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 7px;
+  color: var(--t-text, #e8e8f0);
+  font: inherit;
+  padding: 2px 6px;
+  outline: none;
+}
+
+.xy-letter-value:focus {
+  border-color: var(--t-faint, #55606e);
+}
+
+.xy-letter-slide {
+  flex: 1;
+  min-width: 60px;
+  accent-color: var(--t-pink, #c99bbf);
+}
+
+.xy-letter-from {
+  font-size: 11px;
+  color: var(--t-pink, #c99bbf);
+  border: 1px solid color-mix(in srgb, var(--t-pink, #c99bbf) 33%, transparent);
+  border-radius: 999px;
+  padding: 0 7px;
+  white-space: nowrap;
+}
+
+.xy-plot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.xy-plot-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--t-muted, #74748a);
+  padding: 0 4px;
+}
+
 /* a saved variable on the tape: one slim line */
 .smart-entry.is-assign {
   flex-direction: row;

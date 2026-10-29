@@ -54,6 +54,8 @@ export interface GraphSeries {
   display?: string;
   /** letters this line needs a value for (the Graph block makes sliders) */
   missing?: string[];
+  /** every letter it uses but x and y — defined somewhere or not */
+  letters?: string[];
 }
 
 export interface GraphMarker {
