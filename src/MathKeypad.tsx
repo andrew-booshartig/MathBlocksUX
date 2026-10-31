@@ -6,11 +6,11 @@
 import { Tex } from "./ui";
 import type { MathInputHandle } from "./MathInput";
 
-type Key = { label: string; tex?: boolean; title: string; insert: string; kind: "template" | "symbol" };
+type Key = { label: string; tex?: boolean; title: string; insert: string; kind: "template" | "symbol"; wide?: boolean };
 
 const TEMPLATES: Key[] = [
   { label: "\\dfrac{\\square}{\\square}", tex: true, title: "Fraction — type the top, ↓ for the bottom, → to step out", insert: "\\frac{#?}{#?}", kind: "template" },
-  { label: "\\square^{\\square}", tex: true, title: "Exponent — type the power, → to come back down", insert: "#@^{#?}", kind: "template" },
+  { label: "\\square^{n}", tex: true, title: "Exponent — type the power, → to come back down", insert: "#@^{#?}", kind: "template" },
   { label: "x^{2}", tex: true, title: "Squared", insert: "#@^{2}", kind: "template" },
   { label: "\\sqrt{\\square}", tex: true, title: "Square root — → to step out", insert: "\\sqrt{#?}", kind: "template" },
   { label: "\\sqrt[n]{\\square}", tex: true, title: "nth root — type the index, → for the inside", insert: "\\sqrt[#?]{#?}", kind: "template" },
@@ -26,8 +26,8 @@ const SYMBOLS: Key[] = [
   { label: "\\ne", tex: true, title: "Not equal (or type !=)", insert: "\\ne", kind: "symbol" },
   { label: "or", title: "Either one: x < −2 or x > 5 (or two answers: x = 2 or x = 3) — typing or works too", insert: "\\text{ or }", kind: "symbol" },
   { label: "and", title: "Both at once: x > −4 and x < 2 — typing and works too", insert: "\\text{ and }", kind: "symbol" },
-  { label: "no solution", title: "No value makes it true (like 5 = 2)", insert: "\\text{no solution}", kind: "symbol" },
-  { label: "all reals", title: "Every value makes it true (like 6 = 6) — infinitely many solutions", insert: "\\text{all real numbers}", kind: "symbol" },
+  { label: "no solution", title: "No value makes it true (like 5 = 2)", insert: "\\text{no solution}", kind: "symbol", wide: true },
+  { label: "all reals", title: "Every value makes it true (like 6 = 6) — infinitely many solutions", insert: "\\text{all real numbers}", kind: "symbol", wide: true },
 ];
 
 export default function MathKeypad({ target }: { target: () => MathInputHandle | null }) {
@@ -36,12 +36,13 @@ export default function MathKeypad({ target }: { target: () => MathInputHandle |
     if (!field) return;
     field.insert(key.insert);
   };
-  const render = (keys: Key[], className: string) => (
-    <div className={`keypad-group ${className}`}>
-      {keys.map((key) => (
+  // the same 9-wide grid of the same keys as the calculator's (.smart-keys)
+  return (
+    <div className="keypad nodrag">
+      {[...TEMPLATES, ...SYMBOLS].map((key) => (
         <button
           key={key.title}
-          className={`keypad-key is-${key.kind}`}
+          className={`keypad-key is-${key.kind}${key.wide ? " is-wide" : ""}`}
           title={key.title}
           // keep the caret in the math field
           onMouseDown={(e) => e.preventDefault()}
@@ -50,12 +51,6 @@ export default function MathKeypad({ target }: { target: () => MathInputHandle |
           {key.tex ? <Tex math={key.label} /> : key.label}
         </button>
       ))}
-    </div>
-  );
-  return (
-    <div className="keypad nodrag">
-      {render(TEMPLATES, "is-templates")}
-      {render(SYMBOLS, "is-symbols")}
     </div>
   );
 }

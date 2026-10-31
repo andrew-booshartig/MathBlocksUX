@@ -211,6 +211,15 @@ function build(api: DockviewApi, zones: Zone[]) {
     } as Parameters<DockviewApi["addPanel"]>[0]);
     for (const id of rest) api.addPanel({ id, component: "tile", title: tileOf(id).title, position: { referencePanel: first }, inactive: true });
   }
+  // then each zone its share: adding a zone takes its room from whichever
+  // zone is at the far end, so sizes given while building drift (twice,
+  // since setting one nudges the ones beside it)
+  for (let pass = 0; pass < 2; pass++)
+    for (const zone of zones) {
+      if (!zone.share) continue;
+      const across = zone.dir === "left" || zone.dir === "right";
+      api.getPanel(zone.tiles[0])?.group.api.setSize(across ? { width: Math.round(api.width * zone.share) } : { height: Math.round(api.height * zone.share) });
+    }
   api.getPanel(zones[0].tiles[0])?.api.setActive();
 }
 

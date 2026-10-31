@@ -579,6 +579,24 @@ body {
   align-items: stretch;
 }
 
+/* a narrow zone: the tabs not showing are just their icons (the name is in
+   the tooltip), so they fit instead of folding into a ⌄ menu */
+.dock-matrix .dv-tabs-and-actions-container {
+  container-type: inline-size;
+}
+
+@container (max-width: 330px) {
+  .dv-tab:not(.dv-active-tab) .dock-tab-title,
+  .dv-tab:not(.dv-active-tab) .dock-tab-badge {
+    display: none;
+  }
+
+  .dv-tab:not(.dv-active-tab) .dock-tab {
+    padding: 0 8px;
+    gap: 4px;
+  }
+}
+
 /* something sent here (→ Work, → Graph): the zone glows a moment */
 .dock-matrix .dv-groupview.is-landing {
   animation: dock-landing 0.95s ease-out;
@@ -728,6 +746,18 @@ body {
 .dock-tile.is-calc {
   overflow: hidden;
   container-type: inline-size;
+}
+
+.dock-tile.is-work {
+  container-type: inline-size;
+}
+
+/* a narrow tile: both keypads go to the same 6-wide grid (3 rows) */
+@container (max-width: 440px) {
+  .dock-tile .keypad,
+  .dock-tile .smart-keys {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 }
 
 .dock-tile.is-calc > .smart-calc-main {
