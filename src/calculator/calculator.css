@@ -12,40 +12,114 @@ body {
   flex-direction: column;
 }
 
+/* the bar on top: the window's title bar too (macOS draws its traffic
+   lights in its left end) — the brand, the workspace in the middle like a
+   document's name, Layout and Theme at the right */
 .calc-app-bar {
   flex: 0 0 auto;
-  display: flex;
+  height: 40px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--t-line);
+  gap: 12px;
+  padding: 0 10px 0 84px;
   background: var(--t-bg1);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.calc-app-title {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--t-orange);
+.calc-app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
+.calc-app-mark {
+  height: 18px;
+  width: auto;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, #4f6bff 35%, transparent));
+}
+
+.calc-app-name {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--t-text);
+  white-space: nowrap;
+}
+
+.calc-app-center {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.calc-app-tools {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.calc-app-workspaces,
+.calc-app-layout,
 .calc-app-theme {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: none;
+  height: 28px;
   border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 3px 10px 3px 4px;
+  border-radius: 8px;
+  background: none;
   color: var(--t-subtle);
-  font-size: 12px;
+  font-size: 12.5px;
   cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
 }
 
+.calc-app-workspaces {
+  max-width: 300px;
+  padding: 0 8px 0 10px;
+  background: var(--t-bg2);
+  border-color: var(--t-line);
+  color: var(--t-text);
+}
+
+.calc-app-ws-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+
+.calc-app-workspaces .icon {
+  flex: 0 0 auto;
+  color: var(--t-muted);
+}
+
+.calc-app-layout,
+.calc-app-theme {
+  padding: 0 10px;
+}
+
+.calc-app-theme {
+  padding-left: 6px;
+}
+
+.calc-app-workspaces:hover,
+.calc-app-workspaces.is-on {
+  border-color: var(--t-faint);
+}
+
+.calc-app-layout:hover,
+.calc-app-layout.is-on,
 .calc-app-theme:hover,
 .calc-app-theme.is-on {
-  border-color: var(--t-line);
+  background: var(--t-bg3);
   color: var(--t-text);
 }
 
@@ -53,12 +127,7 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-}
-
-.calc-app-tools {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t-text) 12%, transparent);
 }
 
 /* the calculator fills the window; its history takes the room */
@@ -321,7 +390,8 @@ body {
 .ws-menu {
   position: fixed;
   top: 44px;
-  right: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 50;
   width: 270px;
   max-height: calc(100vh - 60px);
@@ -428,9 +498,11 @@ body {
   cursor: default;
 }
 
-/* ---- tiles: the app's parts in zones you split, resize and rearrange */
+/* ---- tiles: the app's parts in zones you split, resize, float and
+   rearrange. Zones are cards on the window's background; each tile has its
+   own color (--tile-hue) for its icon, its tab's underline and its count. */
 .calc-app-main:has(> .smart-calc.is-tiled) {
-  padding: 4px;
+  padding: 0 6px 6px;
   overflow: hidden;
 }
 
@@ -447,12 +519,12 @@ body {
 
 .dockview-theme-dark.dock-matrix {
   --dv-group-view-background-color: var(--t-bg2);
-  --dv-tabs-and-actions-container-background-color: var(--t-bg1);
-  --dv-tabs-and-actions-container-height: 32px;
+  --dv-tabs-and-actions-container-background-color: var(--t-bg2);
+  --dv-tabs-and-actions-container-height: 36px;
   --dv-tabs-and-actions-container-font-size: 12.5px;
-  --dv-activegroup-visiblepanel-tab-background-color: var(--t-bg2);
+  --dv-activegroup-visiblepanel-tab-background-color: transparent;
   --dv-activegroup-hiddenpanel-tab-background-color: transparent;
-  --dv-inactivegroup-visiblepanel-tab-background-color: var(--t-bg2);
+  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
   --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
   --dv-activegroup-visiblepanel-tab-color: var(--t-text);
   --dv-activegroup-hiddenpanel-tab-color: var(--t-muted);
@@ -462,55 +534,195 @@ body {
   --dv-separator-border: transparent;
   --dv-paneview-header-border-color: var(--t-line);
   --dv-sash-color: transparent;
-  --dv-active-sash-color: var(--t-pink);
+  --dv-active-sash-color: color-mix(in srgb, var(--t-pink) 80%, transparent);
+  --dv-active-sash-transition-delay: 0.06s;
+  --dv-active-sash-transition-duration: 0.12s;
   --dv-icon-hover-background-color: var(--t-bg4);
-  --dv-drag-over-background-color: color-mix(in srgb, var(--t-pink) 26%, transparent);
+  --dv-drag-over-background-color: color-mix(in srgb, var(--t-pink) 24%, transparent);
   --dv-drag-over-border-color: var(--t-pink);
   --dv-drag-over-border: 2px solid var(--t-pink);
-  --dv-border-radius: 10px;
-  --dv-tab-border-radius: 8px 8px 0 0;
+  --dv-border-radius: 12px;
+  --dv-tab-margin: 0;
   --dv-scrollbar-background-color: var(--t-bg4);
   --dv-tabs-container-scrollbar-color: var(--t-bg4);
   --dv-context-menu-background-color: var(--t-bg3);
   --dv-context-menu-color: var(--t-text);
-  --dv-floating-box-shadow: 0 10px 34px color-mix(in srgb, var(--t-bg0) 60%, transparent);
+  --dv-floating-box-shadow: 0 22px 60px color-mix(in srgb, var(--t-bg0) 70%, transparent), 0 4px 14px color-mix(in srgb, var(--t-bg0) 45%, transparent);
+  --dv-floating-border: 1px solid var(--t-line);
+  --dv-floating-titlebar-background-color: var(--t-bg3);
   background: var(--t-bg1);
   color: var(--t-text);
 }
 
-/* where a dragged tab will land: a bold, rounded preview of its spot */
-.dock-matrix .dv-drop-target-anchor,
-.dock-matrix .dv-drop-target-selection {
-  border-radius: 10px;
-}
-
-/* each zone: a rounded card, its tabs on top */
+/* each zone: a card, its tabs along the top */
 .dock-matrix .dv-groupview {
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--t-line);
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
 .dock-matrix .dv-groupview.dv-active-group {
-  border-color: color-mix(in srgb, var(--t-pink) 35%, var(--t-line));
+  border-color: color-mix(in srgb, var(--t-faint) 75%, var(--t-line));
 }
 
 .dock-matrix .dv-tabs-and-actions-container {
   border-bottom: 1px solid var(--t-line);
+  padding: 0 0 0 4px;
 }
 
 .dock-matrix .dv-tab {
-  padding: 0 12px;
+  padding: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+/* something sent here (→ Work, → Graph): the zone glows a moment */
+.dock-matrix .dv-groupview.is-landing {
+  animation: dock-landing 0.95s ease-out;
+}
+
+@keyframes dock-landing {
+  0% {
+    border-color: var(--t-pink);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--t-pink) 45%, transparent),
+      0 0 28px color-mix(in srgb, var(--t-pink) 30%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
+/* a tab: icon (in the tile's color when it's showing), name, count, × */
+.dock-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 100%;
+  padding: 0 8px 0 12px;
+  color: inherit;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.dock-tab-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--t-muted);
+  transition: color 0.15s;
+}
+
+.dock-tab-title {
+  font-weight: 500;
+}
+
+.dv-tab:hover .dock-tab {
+  color: var(--t-text);
+}
+
+.dv-tab.dv-active-tab .dock-tab-icon {
+  color: var(--tile-hue);
+}
+
+.dv-inactive-group .dv-tab.dv-active-tab .dock-tab-icon {
+  color: color-mix(in srgb, var(--tile-hue) 70%, var(--t-muted));
+}
+
+/* the showing tab's underline, in its tile's color */
+.dv-tab.dv-active-tab .dock-tab::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--tile-hue);
+}
+
+.dv-inactive-group .dv-tab.dv-active-tab .dock-tab::after {
+  opacity: 0.45;
+}
+
+.dock-tab-badge {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--tile-hue) 85%, var(--t-text));
+  background: color-mix(in srgb, var(--tile-hue) 16%, transparent);
+}
+
+.dock-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: -2px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--t-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.dv-tab:hover .dock-tab-close,
+.dv-tab.dv-active-tab .dock-tab-close {
+  opacity: 1;
+}
+
+.dock-tab-close:hover {
+  background: var(--t-bg4);
+  color: var(--t-text);
 }
 
 /* a tile: its part, filling the zone, scrolling on its own */
 .dock-tile {
   height: 100%;
   overflow: auto;
-  padding: 10px 12px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+}
+
+.dock-tile::-webkit-scrollbar,
+.dock-tile *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.dock-tile::-webkit-scrollbar-thumb,
+.dock-tile *::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--t-text) 16%, transparent) padding-box;
+}
+
+.dock-tile::-webkit-scrollbar-thumb:hover,
+.dock-tile *::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--t-text) 28%, transparent) padding-box;
+}
+
+.dock-tile::-webkit-scrollbar-track,
+.dock-tile *::-webkit-scrollbar-track,
+.dock-tile::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .dock-tile.is-calc {
@@ -541,19 +753,20 @@ body {
   animation: none;
 }
 
-/* the tile's own name says what it is; its old tuck-away arrow closes the tile */
+/* the tile's tab says what it is; the old tuck-away arrows are the tab's × */
 .dock-tile > .smart-side > .smart-side-head,
 .dock-tile > .eq-side > .smart-side-head {
   display: none;
 }
 
 .dock-tile.is-assignment > *,
-.dock-tile.is-reference > * {
+.dock-tile.is-reference > *,
+.dock-tile.is-graph > * {
   flex: 1 1 auto;
   min-height: 0;
 }
 
-/* ＋ and ⤢ at the right of each zone's tabs */
+/* ＋ and fill-the-window at the right of each zone's tabs */
 .dock-actions {
   height: 100%;
   display: flex;
@@ -563,54 +776,72 @@ body {
 }
 
 .dock-action {
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: 7px;
+  background: none;
   color: var(--t-muted);
-  font-size: 14px;
-  line-height: 22px;
-  padding: 0 7px;
   cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
-.dock-action:hover {
+.dock-action:hover,
+.dock-action.is-on {
   background: var(--t-bg4);
   color: var(--t-text);
 }
 
+/* menus: the zone's ＋ menu */
 .dock-menu {
   position: fixed;
   z-index: 1000;
-  width: 200px;
+  overflow-y: auto;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   padding: 6px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--t-bg3);
   border: 1px solid var(--t-line);
-  box-shadow: 0 12px 32px color-mix(in srgb, var(--t-bg0) 55%, transparent);
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--t-bg0) 60%, transparent);
+  animation: menu-in 0.12s ease-out;
+  transform-origin: top right;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
 }
 
 .dock-menu-head {
   font-size: 10.5px;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--t-muted);
-  padding: 4px 8px 2px;
+  padding: 6px 8px 4px;
 }
 
 .dock-menu-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 9px;
   background: none;
   border: none;
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--t-text);
   font-size: 13px;
   text-align: left;
-  padding: 5px 8px;
+  padding: 6px 8px;
   cursor: pointer;
 }
 
@@ -618,46 +849,137 @@ body {
   background: var(--t-bg4);
 }
 
-.dock-menu-item.is-here {
+.dock-menu-item.is-muted {
   color: var(--t-muted);
+}
+
+.dock-menu-icon {
+  display: inline-flex;
+  color: var(--t-muted);
+}
+
+.dock-menu-icon.is-hued {
+  color: var(--tile-hue);
+}
+
+.dock-menu-label {
+  flex: 1;
 }
 
 .dock-menu-note {
   font-size: 11px;
   color: var(--t-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .dock-menu-line {
   height: 1px;
-  margin: 4px 6px;
+  margin: 5px 6px;
   background: var(--t-line);
 }
 
-/* an empty zone: every tile, to pick one for it */
+/* an empty zone: every tile as a card, to pick what goes in it */
 .dock-empty {
   height: 100%;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 6px;
+  padding: 16px;
+  box-sizing: border-box;
   background: var(--t-bg2);
 }
 
-.dock-empty-list {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px;
-  max-width: 320px;
+/* centered when it fits, scrolling from the top when it doesn't */
+.dock-empty > :first-child {
+  margin-top: auto;
 }
 
-.dock-empty-list .dock-menu-item {
+.dock-empty > :last-child {
+  margin-bottom: auto;
+}
+
+.dock-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--t-text);
+}
+
+.dock-empty-sub {
+  font-size: 12px;
+  color: var(--t-muted);
+  margin-bottom: 8px;
+}
+
+.dock-empty-grid {
+  width: 100%;
+  max-width: 560px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px;
+}
+
+.dock-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
   border: 1px solid var(--t-line);
+  border-radius: 10px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    background 0.12s,
+    transform 0.12s;
+}
+
+.dock-card:hover {
+  border-color: color-mix(in srgb, var(--tile-hue) 60%, var(--t-line));
+  background: color-mix(in srgb, var(--tile-hue) 6%, var(--t-bg1));
+  transform: translateY(-1px);
+}
+
+.dock-card-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: var(--tile-hue);
+  background: color-mix(in srgb, var(--tile-hue) 15%, transparent);
+}
+
+.dock-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.dock-card-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dock-card-blurb {
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--t-muted);
+}
+
+.dock-card-blurb.is-quiet {
+  font-size: 11px;
+  color: var(--t-faint);
 }
 
 .dock-empty-close {
-  margin-top: 6px;
+  margin-top: 10px;
   background: none;
   border: none;
   color: var(--t-muted);
@@ -667,4 +989,281 @@ body {
 
 .dock-empty-close:hover {
   color: var(--t-text);
+}
+
+/* a floating zone: a window of its own over the layout */
+.dock-matrix .dv-resize-container {
+  border-radius: 12px;
+}
+
+.dock-matrix .dv-resize-container .dv-groupview {
+  border-color: var(--t-faint);
+}
+
+/* a layout's little map: each zone in its main tile's color */
+.dock-picture {
+  width: 100%;
+  height: 52px;
+  display: block;
+}
+
+.dock-picture rect {
+  fill: color-mix(in srgb, var(--tile-hue) 26%, transparent);
+  stroke: color-mix(in srgb, var(--tile-hue) 75%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ---- the Layout menu */
+.layout-menu {
+  position: fixed;
+  top: 44px;
+  right: 10px;
+  z-index: 60;
+  width: 392px;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 14px;
+  background: var(--t-bg3);
+  border: 1px solid var(--t-line);
+  box-shadow: 0 22px 54px color-mix(in srgb, var(--t-bg0) 62%, transparent);
+  animation: menu-in 0.14s ease-out;
+  transform-origin: top right;
+}
+
+.layout-head {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--t-muted);
+  padding: 6px 6px 2px;
+}
+
+.layout-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.layout-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  background: var(--t-bg2);
+  color: var(--t-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    transform 0.12s;
+}
+
+.layout-card:hover {
+  border-color: var(--t-faint);
+  transform: translateY(-1px);
+}
+
+.layout-card .dock-picture {
+  margin-bottom: 4px;
+}
+
+.layout-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.layout-blurb {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--t-muted);
+}
+
+.layout-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.layout-mine {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--t-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.layout-mine .icon {
+  color: var(--t-muted);
+}
+
+.layout-mine:hover {
+  background: var(--t-bg4);
+}
+
+.layout-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--t-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.layout-delete:hover {
+  background: var(--t-bg4);
+  color: var(--t-text);
+}
+
+.layout-delete.is-sure {
+  color: var(--t-red);
+}
+
+.layout-save {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--t-line);
+}
+
+.layout-name-field {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.layout-name-field:focus {
+  border-color: var(--t-faint);
+}
+
+.layout-save-button {
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--t-pink);
+  color: var(--t-bg1);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.layout-save-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.layout-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px 6px 2px;
+  border-top: 1px solid var(--t-line);
+  font-size: 11.5px;
+  color: var(--t-muted);
+}
+
+.layout-tips kbd {
+  font: inherit;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--t-line);
+  background: var(--t-bg2);
+  color: var(--t-subtle);
+}
+
+/* the workspace's saved dot: quiet once it's in its file, pulsing until then */
+.calc-app-saved {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--t-green);
+  opacity: 0.55;
+  transition: opacity 0.3s;
+}
+
+.calc-app-saved.is-saving {
+  background: var(--t-orange);
+  opacity: 1;
+  animation: saving 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes saving {
+  to {
+    opacity: 0.35;
+  }
+}
+
+/* a small window: the bar keeps what matters */
+@media (max-width: 720px) {
+  .calc-app-name,
+  .calc-app-label {
+    display: none;
+  }
+
+  .calc-app-workspaces {
+    max-width: 180px;
+  }
+}
+
+/* moving around by keyboard: whatever has focus says so */
+.calc-app-bar button:focus-visible,
+.dock-action:focus-visible,
+.dock-tab-close:focus-visible,
+.dock-menu-item:focus-visible,
+.dock-card:focus-visible,
+.layout-card:focus-visible,
+.layout-mine:focus-visible,
+.layout-delete:focus-visible,
+.layout-save-button:focus-visible {
+  outline: 2px solid var(--t-pink);
+  outline-offset: 1px;
+}
+
+/* Reduce motion (System Settings → Accessibility): nothing slides or pulses */
+@media (prefers-reduced-motion: reduce) {
+  .dock-menu,
+  .layout-menu,
+  .dock-matrix .dv-groupview.is-landing,
+  .calc-app-saved.is-saving {
+    animation: none;
+  }
+
+  .dock-card:hover,
+  .layout-card:hover {
+    transform: none;
+  }
 }

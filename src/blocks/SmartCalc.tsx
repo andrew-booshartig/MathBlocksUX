@@ -158,12 +158,15 @@ export default function SmartCalc({
   spaces,
   tiled,
   layoutKey,
+  dockRef,
 }: {
   data: CalculatorBlockData;
   /** as tiles in zones you arrange (the calculator app), not tabs */
   tiled?: boolean;
   /** the workspace open: each keeps its own arrangement of tiles */
   layoutKey?: string;
+  /** a hand on the tiles for the app around it (its Layout menu) */
+  dockRef?: { current: CalcDockHandle | null };
   /** each equation in a workspace of its own (the calculator app) */
   spaces?: EquationSpaces;
   /** your saved equations — the app keeps them for every workspace */
@@ -233,8 +236,16 @@ export default function SmartCalc({
   /** the tiles (the calculator app): which are open, and a hand on them */
   const dock = useRef<CalcDockHandle>(null);
   const [openTiles, setOpenTiles] = useState<string[]>([]);
+  /** a tile clicked into (in the app): it's the tab now, without a glow */
+  const fromDock = useRef<string | null>(null);
   const setTab = (smartTab: Tab) => {
     focusOn.current = smartTab;
+    if (tiled && smartTab === tab) {
+      // already the tab, maybe behind another tile: forward it, and its line
+      dock.current?.show(smartTab);
+      if (smartTab !== "work") setTimeout(() => (smartTab === "calc" ? field.current : graphField.current)?.focus(), 40);
+      return;
+    }
     updateBlock(data.id, { smartTab });
   };
 
@@ -849,8 +860,9 @@ export default function SmartCalc({
     const out: Record<string, number | null> = {};
     for (const [name, v] of Object.entries(values)) {
       if (v.params?.length) continue;
-      const n = Number(v.plain);
-      out[name] = Number.isFinite(n) ? n : null;
+      // 1/2 is a number too: its decimal
+      const n = [v.plain, v.decimal].filter((t) => t != null && t.trim() !== "").map(Number).find(Number.isFinite);
+      out[name] = n ?? null;
     }
     return out;
   }, [values]);
@@ -905,9 +917,11 @@ export default function SmartCalc({
   const eqOpen = tiled ? openTiles.includes("equations") : !!data.smartEqSide;
   const setEqOpen = (open: boolean) =>
     tiled ? (open ? dock.current?.show("equations") : dock.current?.close("equations")) : updateBlock(data.id, { smartEqSide: open || undefined });
-  // tiles: a hand-off to another part (→ Work, → Graph) brings its tile forward
+  // tiles: a hand-off to another part (→ Work, → Graph) brings its tile
+  // forward, glowing a moment so the eye can follow it there
   useEffect(() => {
-    if (tiled) dock.current?.show(tab as TileId);
+    if (tiled && fromDock.current !== tab) dock.current?.show(tab as TileId, true);
+    fromDock.current = null;
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (tab !== "calc" && !tiled) return;
@@ -1496,6 +1510,7 @@ export default function SmartCalc({
           vars={vars}
           known={known}
           setVariable={setVariableNumber}
+          fill={tiled}
         />
       )}
       {graphMode === "numberline" && (
@@ -1898,11 +1913,25 @@ export default function SmartCalc({
         {quickCard}
         <CalcDock
           key={layoutKey}
-          ref={dock}
+          ref={(handle) => {
+            dock.current = handle;
+            if (dockRef) dockRef.current = handle;
+          }}
           layout={data.smartLayout}
           onLayout={(smartLayout) => updateBlock(data.id, { smartLayout })}
           onOpen={setOpenTiles}
-          onActive={(id) => TABS.some((t) => t.value === id) && id !== current()?.smartTab && updateBlock(data.id, { smartTab: id as Tab })}
+          onActive={(id) => {
+            if (!TABS.some((t) => t.value === id) || id === current()?.smartTab) return;
+            fromDock.current = id;
+            updateBlock(data.id, { smartTab: id as Tab });
+          }}
+          onJump={(id) => (TABS.some((t) => t.value === id) ? setTab(id as Tab) : dock.current?.show(id))}
+          badges={{
+            variables: sideEntries.length + sideExtras.length + blanks.length,
+            work: (data.smartWork?.lines ?? []).filter((l) => l.trim()).length,
+            graph: graphMode === "xy" ? (data.smartPlot?.xy?.lines ?? []).filter((l) => l.latex.trim()).length : data.smartPlot?.drawn ? 1 : 0,
+            assignment: data.smartWork?.history?.length ?? 0,
+          }}
           tiles={{
             calc: calcMain,
             work: workBody,

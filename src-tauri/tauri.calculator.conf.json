@@ -11,12 +11,15 @@
       {
         "title": "MatrixLab Calculator",
         "url": "calculator.html",
-        "width": 720,
-        "height": 780,
-        "minWidth": 340,
+        "width": 1280,
+        "height": 840,
+        "minWidth": 380,
         "minHeight": 520,
         "acceptFirstMouse": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 16, "y": 18 }
       }
     ]
   }

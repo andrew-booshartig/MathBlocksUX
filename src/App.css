@@ -4864,6 +4864,49 @@ math-field {
   overflow: hidden;
 }
 
+/* in a tile: the plot takes the room that's left */
+.smart-graph:has(> .xy-graph.is-fill) {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.xy-graph.is-fill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.xy-graph.is-fill .xy-plot {
+  flex: 1 1 auto;
+  min-height: 240px;
+}
+
+.xy-zoom {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.xy-zoom-btn {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 6px;
+  background: var(--t-bg2, #17171f);
+  color: var(--t-subtle, #a9a9bd);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.xy-zoom-btn.is-text {
+  font-size: 11px;
+}
+
+.xy-zoom-btn:hover {
+  color: var(--t-text, #e8e8f0);
+  border-color: var(--t-faint, #55606e);
+}
+
 .xy-plot-foot {
   display: flex;
   align-items: center;

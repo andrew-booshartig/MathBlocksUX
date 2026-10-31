@@ -36,6 +36,24 @@ const PATHS: Record<string, string> = {
   trash: "M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13",
   copy: "M9 9h11v11H9zM5 15V4h11",
   toWork: "M4 12h13M12 6l6 6-6 6M20 5v14",
+  // the calculator app's tiles
+  calc: "M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8.5 6.5h7v3h-7zM9 13.5h.01M12 13.5h.01M15 13.5h.01M9 17h.01M12 17h.01M15 17h.01",
+  work: "M4 6h9M4 11h6M4 16h4M14 19.5l.6-3.1 5.4-5.4a1.7 1.7 0 0 1 2.5 2.5L17.1 19z",
+  graph: "M4 4v16h16M7.5 15.5l3.5-4 3 2.5 5-6.5",
+  assignment: "M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM14 3v5h5M9 13h6M9 17h4",
+  reference: "M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5M8.5 7.5h7M8.5 11h5",
+  variables: "M4 7.5l6 9M10 7.5l-6 9M14 10h6M14 14h6",
+  equations: "M14.5 4.2c-1.9-.7-3.6.1-4 2L8.6 17.8c-.4 1.9-2 2.7-4 2M6.5 10h7M15 13l4.5 5.5M19.5 13 15 18.5",
+  // zones
+  close: "M7 7l10 10M17 7 7 17",
+  maximize: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
+  restore: "M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5",
+  splitRight: "M4 5h16v14H4zM12 5v14",
+  splitDown: "M4 5h16v14H4zM4 12h16",
+  float: "M9 9h11v11H9zM5 15V5a1 1 0 0 1 1-1h10",
+  dock: "M4 5h16v14H4zM4 9h16M12 13v4M10 15l2 2 2-2",
+  layout: "M4 5h16v14H4zM10 5v14M10 12h10",
+  more: "M6 12h.01M12 12h.01M18 12h.01",
 };
 
 export default function Icon({ name, size = 17 }: { name: keyof typeof PATHS | string; size?: number }) {

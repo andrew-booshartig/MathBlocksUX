@@ -11,6 +11,10 @@ import { DEFAULT_THEME, type Theme, ThemeError, applyTheme, builtInThemes, readT
 import ThemeMenu from "./ThemeMenu";
 import ThemeEditor from "./ThemeEditor";
 import WorkspaceMenu from "./WorkspaceMenu";
+import LayoutMenu, { type SavedLayout } from "./LayoutMenu";
+import type { CalcDockHandle } from "./CalcDock";
+import Icon from "../Icon";
+import mark from "../assets/mx-mark.png";
 import type { Equation } from "../equations";
 
 const SAVE = "__calculator__";
@@ -53,6 +57,12 @@ export default function CalculatorApp() {
   const activeRef = useRef<string | null>(null);
   const [workspaces, setWorkspaces] = useState<string[]>([]);
   const [wsOpen, setWsOpen] = useState(false);
+  /** the tiles: a hand on them, and the layouts you've saved (every workspace has them) */
+  const dock = useRef<CalcDockHandle | null>(null);
+  const [layouts, setLayouts] = useState<SavedLayout[]>([]);
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  /** a change not yet in the workspace's file (the dot on its name pulses) */
+  const [unsaved, setUnsaved] = useState(false);
   /** the equations that have a workspace of their own (worked on before) */
   const [eqSpaces, setEqSpaces] = useState<string[]>([]);
   const listWorkspaces = useCallback(async () => {
@@ -145,9 +155,10 @@ export default function CalculatorApp() {
     (async () => {
       let open: string | null = null;
       try {
-        const settings = await invoke<{ theme?: string; workspace?: string | null; equations?: Equation[] }>("load_workspace", { name: SETTINGS });
+        const settings = await invoke<{ theme?: string; workspace?: string | null; equations?: Equation[]; layouts?: SavedLayout[] }>("load_workspace", { name: SETTINGS });
         if (settings.theme) setThemeName(settings.theme);
         if (settings.equations) setEquations(settings.equations);
+        if (settings.layouts) setLayouts(settings.layouts);
         open = settings.workspace ?? null;
       } catch {
         // first run: One Dark, Scratch
@@ -168,9 +179,12 @@ export default function CalculatorApp() {
       let timer: ReturnType<typeof setTimeout> | undefined;
       stop = useStore.subscribe(() => {
         clearTimeout(timer);
+        setUnsaved(true);
         timer = setTimeout(() => {
           // into the open workspace (Scratch, or the named one)
-          invoke("save_workspace", { name: wsFile(activeRef.current), data: snapshot() }).catch((e) => console.error("save failed", e));
+          invoke("save_workspace", { name: wsFile(activeRef.current), data: snapshot() })
+            .then(() => setUnsaved(false))
+            .catch((e) => console.error("save failed", e));
         }, 600);
       });
     })();
@@ -183,8 +197,8 @@ export default function CalculatorApp() {
   }, [theme, preview]);
   useEffect(() => {
     if (!loaded.current) return;
-    invoke("save_workspace", { name: SETTINGS, data: { theme: themeName, workspace: active, equations } }).catch(() => {});
-  }, [themeName, active, equations]);
+    invoke("save_workspace", { name: SETTINGS, data: { theme: themeName, workspace: active, equations, layouts } }).catch(() => {});
+  }, [themeName, active, equations, layouts]);
 
   const openFolder = async () => {
     try {
@@ -196,24 +210,59 @@ export default function CalculatorApp() {
 
   return (
     <div className="calc-app">
-      <header className="calc-app-bar">
-        <span className="calc-app-title">Calculator</span>
-        <span className="calc-app-tools">
-        <button className={`calc-app-workspaces${wsOpen ? " is-on" : ""}`} title="Workspaces — problems saved to come back to" onClick={() => setWsOpen((o) => !o)}>
-          {active === null ? "Scratch" : active.startsWith(EQ) ? active.slice(EQ.length) : active} ▾
-        </button>
-        <button className={`calc-app-theme${menuOpen ? " is-on" : ""}`} title="Theme" onClick={() => setMenuOpen((open) => !open)}>
-          <span className="calc-app-swatch" style={{ background: `linear-gradient(135deg, ${theme.ui.raised} 0 50%, ${theme.numberline.solution} 50% 100%)` }} />
-          {theme.name}
-        </button>
+      {/* the window's title bar too: drag it to move the window, double-click to zoom */}
+      <header className="calc-app-bar" data-tauri-drag-region>
+        <span className="calc-app-brand" data-tauri-drag-region>
+          <img className="calc-app-mark" src={mark} alt="" draggable={false} data-tauri-drag-region />
+          <span className="calc-app-name" data-tauri-drag-region>
+            MatrixLab
+          </span>
+        </span>
+        <span className="calc-app-center" data-tauri-drag-region>
+          <button className={`calc-app-workspaces${wsOpen ? " is-on" : ""}`} title="Workspaces — problems saved to come back to" onClick={() => setWsOpen((o) => !o)}>
+            <Icon name={active?.startsWith(EQ) ? "equations" : "folder"} size={14} />
+            <span className="calc-app-ws-name">{active === null ? "Scratch" : active.startsWith(EQ) ? active.slice(EQ.length) : active}</span>
+            <span className={`calc-app-saved${unsaved ? " is-saving" : ""}`} title={unsaved ? "Saving…" : "Saved"} />
+            <Icon name="chevron" size={13} />
+          </button>
+        </span>
+        <span className="calc-app-tools" data-tauri-drag-region>
+          <button className={`calc-app-layout${layoutOpen ? " is-on" : ""}`} title="Layouts — ready-made arrangements of the tiles, and yours" onClick={() => setLayoutOpen((o) => !o)}>
+            <Icon name="layout" size={15} />
+            <span className="calc-app-label">Layout</span>
+          </button>
+          <button className={`calc-app-theme${menuOpen ? " is-on" : ""}`} title="Theme" onClick={() => setMenuOpen((open) => !open)}>
+            <span className="calc-app-swatch" style={{ background: `linear-gradient(135deg, ${theme.ui.raised} 0 50%, ${theme.numberline.solution} 50% 100%)` }} />
+            {theme.name}
+          </button>
         </span>
       </header>
+      {layoutOpen && (
+        <LayoutMenu
+          saved={layouts}
+          onPreset={(id) => {
+            dock.current?.preset(id);
+            setLayoutOpen(false);
+          }}
+          onLoad={(l) => {
+            dock.current?.load(l.layout);
+            setLayoutOpen(false);
+          }}
+          onSave={(name) => {
+            const layout = dock.current?.layout();
+            if (layout) setLayouts((list) => [...list.filter((l) => l.name !== name), { name, layout }]);
+          }}
+          onDelete={(name) => setLayouts((list) => list.filter((l) => l.name !== name))}
+          onClose={() => setLayoutOpen(false)}
+        />
+      )}
       {wsOpen && <WorkspaceMenu names={workspaces} active={active} onOpen={openWorkspace} onSaveAs={saveAs} onDelete={deleteWorkspace} onClose={() => setWsOpen(false)} />}
       <main className="calc-app-main">{block && (
           <SmartCalc
             data={block}
             tiled
             layoutKey={active ?? "scratch"}
+            dockRef={dock}
             equations={equations}
             onEquations={setEquations}
             spaces={{

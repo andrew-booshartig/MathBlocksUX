@@ -4,7 +4,7 @@
  * here: one Variables already has is changed in Variables itself, the rest
  * (m and b in y = mx + b) belong to the graph. */
 import { useCallback, useMemo, useRef, useState } from "react";
-import GraphView, { DEFAULT_WINDOW, THEMES } from "../GraphView";
+import GraphView, { DEFAULT_WINDOW, THEMES, useAppGraphColors } from "../GraphView";
 import type { GraphResult } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { type XYPlot, newId } from "../store";
@@ -79,7 +79,10 @@ export default function XYGraph({
   vars,
   known,
   setVariable,
+  fill,
 }: {
+  /** the plot takes all the room there is (a tile), not a fixed size */
+  fill?: boolean;
   plot: XYPlot;
   update: (patch: Partial<XYPlot>) => void;
   /** the calculator's variables, as the engine reads them */
@@ -91,6 +94,9 @@ export default function XYGraph({
   // a blank line to type in, its id kept so the field stays put once typed in
   const firstId = useRef(newId("xy"));
   const lines = plot.lines?.length ? plot.lines : [{ id: firstId.current, latex: "" }];
+  // drawn in the app theme's colors, its lines' dots matching
+  const colors = useAppGraphColors();
+  const palette = colors.palette?.length ? colors.palette : PALETTE;
   const fields = useRef<Record<string, MathInputHandle | null>>({});
   // a new field needs a moment before it takes the cursor
   const focusLine = (id: string) => setTimeout(() => fields.current[id]?.focus(), 60);
@@ -121,16 +127,25 @@ export default function XYGraph({
     setLines(next);
     if (next.length) focusLine(next[Math.max(0, i - 1)].id);
   };
+  /** zoom about the middle of what's showing */
+  const zoomBy = (factor: number) => {
+    const w = plot.window ?? DEFAULT_WINDOW;
+    const cx = (w.xmin + w.xmax) / 2;
+    const cy = (w.ymin + w.ymax) / 2;
+    const hx = ((w.xmax - w.xmin) / 2) * factor;
+    const hy = ((w.ymax - w.ymin) / 2) * factor;
+    update({ window: { xmin: cx - hx, xmax: cx + hx, ymin: cy - hy, ymax: cy + hy } });
+  };
   const errorOf = (i: number) => {
     const s = result?.series.find((x) => x.index === i);
     return s?.kind === "error" && !s.missing?.length && lines[i]?.latex.trim() ? s.error : null;
   };
 
   return (
-    <div className="xy-graph">
+    <div className={`xy-graph${fill ? " is-fill" : ""}`}>
       <div className="xy-lines">
         {lines.map((line, i) => {
-          const color = PALETTE[i % PALETTE.length];
+          const color = palette[i % palette.length];
           const error = errorOf(i);
           return (
             <div key={line.id} className={`xy-line${line.hidden ? " is-hidden" : ""}`}>
@@ -190,13 +205,23 @@ export default function XYGraph({
           styles={lines.map((l) => ({ hidden: l.hidden }))}
           width={320}
           height={300}
+          fill={fill}
+          colors={colors}
           onResult={onResult}
         />
         <div className="xy-plot-foot">
-          <span>Drag to move · scroll to zoom</span>
-          <button className="smart-vars-action" title="Back to −10 … 10" onClick={() => update({ window: undefined })}>
-            ±10
-          </button>
+          <span>Drag the graph to move around</span>
+          <span className="xy-zoom">
+            <button className="xy-zoom-btn" title="Zoom out" onClick={() => zoomBy(1.5)}>
+              −
+            </button>
+            <button className="xy-zoom-btn" title="Zoom in" onClick={() => zoomBy(1 / 1.5)}>
+              +
+            </button>
+            <button className="xy-zoom-btn is-text" title="Back to −10 … 10" onClick={() => update({ window: undefined })}>
+              ±10
+            </button>
+          </span>
         </div>
       </div>
     </div>

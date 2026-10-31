@@ -11,6 +11,9 @@ import type { GraphAppearance, GraphDrawing, GraphLineStyle, GraphTheme, GraphWi
 import { minorStep, niceStep } from "./GraphDraw";
 import { Tex } from "./ui";
 
+/** the colors a graph is drawn in */
+export type GraphColors = { bg: string; grid: string; minor: string; axis: string; ink: string; palette: string[] };
+
 export const SERIES_COLORS = ["#7c9bf7", "#e07ce0", "#55d6be", "#f0a35c", "#8fd694", "#f08787", "#e0b25c", "#c98cf0"];
 export const DEFAULT_WINDOW: GraphWindow = { xmin: -10, xmax: 10, ymin: -10, ymax: 10 };
 const FAR = 1e5;
@@ -111,7 +114,7 @@ function seriesTraces(s: GraphSeries, color: string, style: GraphLineStyle, outl
 
 const fmt = (n: number) => String(Math.round(n * 100) / 100);
 
-function markerTrace(markers: GraphMarker[], outline: string): Trace[] {
+function markerTrace(markers: GraphMarker[], outline: string, ink: string): Trace[] {
   if (!markers.length) return [];
   return [
     {
@@ -120,7 +123,8 @@ function markerTrace(markers: GraphMarker[], outline: string): Trace[] {
       type: "scatter",
       mode: "markers",
       marker: {
-        color: markers.map((m) => MARKER_STYLE[m.kind].color),
+        // a crossing's star in the ink's color: white on dark paper, dark on light
+        color: markers.map((m) => (m.kind === "intersection" ? ink : MARKER_STYLE[m.kind].color)),
         symbol: markers.map((m) => MARKER_STYLE[m.kind].symbol),
         size: markers.map((m) => (m.kind === "intersection" ? 13 : 10)),
         line: { color: outline, width: 1.5 },
@@ -130,6 +134,85 @@ function markerTrace(markers: GraphMarker[], outline: string): Trace[] {
     },
   ];
 }
+
+type LabelSide = "top right" | "bottom right" | "top left" | "bottom left";
+const RANK: Record<GraphMarker["kind"], number> = { intersection: 0, vertex: 1, "x-intercept": 2, "y-intercept": 2 };
+
+/** Where each point's label goes: beside it, on whichever side keeps it off
+ * every other label and point — crossings placed first. A label with no
+ * free side is left off (its point still says it when hovered), so points
+ * close together never print on top of each other. `px` is screen pixels
+ * per unit across and up. */
+export function placeLabels(markers: GraphMarker[], px: [number, number]): (LabelSide | null)[] {
+  type Box = { x0: number; x1: number; y0: number; y1: number; owner: number };
+  const at = (m: GraphMarker) => [m.x * px[0], -m.y * px[1]];
+  // every point is in the way of every label but its own
+  const taken: Box[] = markers.map((m, i) => {
+    const [x, y] = at(m);
+    return { x0: x - 6, x1: x + 6, y0: y - 6, y1: y + 6, owner: i };
+  });
+  const out: (LabelSide | null)[] = markers.map(() => null);
+  const order = markers.map((_, i) => i).sort((a, b) => RANK[markers[a].kind] - RANK[markers[b].kind]);
+  for (const i of order) {
+    const [x, y] = at(markers[i]);
+    const w = markers[i].label.length * 5.4 + 4;
+    const h = 12;
+    for (const side of ["top right", "bottom right", "top left", "bottom left"] as LabelSide[]) {
+      const x0 = side.endsWith("right") ? x + 4 : x - 4 - w;
+      const y0 = side.startsWith("top") ? y - 4 - h : y + 4;
+      const box = { x0, x1: x0 + w, y0, y1: y0 + h, owner: i };
+      if (taken.some((b) => b.owner !== i && box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0)) continue;
+      taken.push(box);
+      out[i] = side;
+      break;
+    }
+  }
+  return out;
+}
+
+/** a graph in the app's own colors (whichever theme is on), not one of the
+ * graph themes — read from the page, and again whenever the theme changes */
+export function useAppGraphColors(): Partial<GraphColors> {
+  const read = (): Partial<GraphColors> => {
+    const css = getComputedStyle(document.documentElement);
+    const v = (name: string) => css.getPropertyValue(name).trim();
+    if (!v("--t-bg1")) return {};
+    const light = luminance(v("--t-bg2")) > 0.5;
+    const bg = light ? v("--t-bg0") || v("--t-bg1") : v("--t-bg1");
+    return {
+      bg,
+      grid: v("--t-line"),
+      minor: mix(v("--t-line"), bg, 0.55),
+      axis: v("--t-muted"),
+      ink: v("--t-subtle"),
+      palette: ["blue", "pink", "teal", "orange", "green", "red", "yellow", "purple"].map((h) => v(`--t-${h}`)).filter(Boolean),
+    };
+  };
+  const [colors, setColors] = useState(read);
+  useEffect(() => {
+    const watch = new MutationObserver(() => setColors(read()));
+    watch.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
+    return () => watch.disconnect();
+  }, []);
+  return colors;
+}
+
+const hexRgb = (hex: string) => {
+  const m = hex.match(/^#([0-9a-f]{6})$/i);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const luminance = (hex: string) => {
+  const rgb = hexRgb(hex);
+  return rgb ? (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 : 0;
+};
+/** a, part of the way (t) toward b */
+const mix = (a: string, b: string, t: number) => {
+  const [x, y] = [hexRgb(a), hexRgb(b)];
+  if (!x || !y) return a;
+  return `rgb(${x.map((c, i) => Math.round(c + (y[i] - c) * t)).join(", ")})`;
+};
 
 /** Pen strokes and segments as lines; arrows and text as annotations. */
 function drawingLayers(drawings: GraphDrawing[]): { traces: Trace[]; annotations: Trace[] } {
@@ -214,6 +297,7 @@ export default function GraphView({
   drawings = [],
   live = false,
   latex = false,
+  colors,
   onResult,
   onPlot,
   overlay,
@@ -240,13 +324,15 @@ export default function GraphView({
   live?: boolean;
   /** the lines are LaTeX, as typed in a math field */
   latex?: boolean;
+  /** colors of its own, over the graph theme's (the app's theme — useAppGraphColors) */
+  colors?: Partial<GraphColors>;
   onResult?: (result: GraphResult | null, error: string | null) => void;
   /** the Plotly element, once drawn — for exporting and for drawing tools */
   onPlot?: (plot: PlotDiv) => void;
   /** drawn over the plot, the same size as it */
   overlay?: (plot: PlotDiv, size: { width: number; height: number }, grid: { x?: number; y?: number }) => ReactNode;
 }) {
-  const theme = THEMES[appearance.theme ?? "dark"];
+  const theme = useMemo(() => ({ ...THEMES[appearance.theme ?? "dark"], ...colors }), [appearance.theme, colors]);
 
   // follow the container: its width (height scales along), or both in `fill` mode
   const box = useRef<HTMLDivElement>(null);
@@ -312,22 +398,26 @@ export default function GraphView({
     const visible = (result?.markers ?? []).filter(
       (m) => owned(m) && m.x >= window.xmin - 1e-9 && m.x <= window.xmax + 1e-9 && m.y >= window.ymin - span && m.y <= window.ymax + span,
     );
-    traces.push(...markerTrace(visible, theme.bg));
-    if (showLabels) {
+    traces.push(...markerTrace(visible, theme.bg, theme.ink));
+    if (showLabels && visible.length) {
+      // pixels per unit, near enough: the plot's inside over the window
+      const across = Math.max(1, plotWidth - 42) / (window.xmax - window.xmin);
+      const up = Math.max(1, plotHeight - 34) / (window.ymax - window.ymin);
+      const sides = placeLabels(visible, equalAspect ? [Math.min(across, up), Math.min(across, up)] : [across, up]);
       traces.push({
         x: visible.map((m) => m.x),
         y: visible.map((m) => m.y),
         type: "scatter",
         mode: "text",
-        text: visible.map((m) => m.label),
-        textposition: "top right",
+        text: visible.map((m, i) => (sides[i] ? m.label : "")),
+        textposition: sides.map((side) => side ?? "top right"),
         textfont: { color: theme.ink, size: 9 },
         hoverinfo: "skip",
       });
     }
     return traces;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, extraTraces, drawn, styles, theme, window.xmin, window.xmax, window.ymin, window.ymax, span, showLabels]);
+  }, [result, extraTraces, drawn, styles, theme, window.xmin, window.xmax, window.ymin, window.ymax, span, showLabels, plotWidth, plotHeight, equalAspect]);
 
   // the equation written next to each curve that asked for a label
   const curveLabels = useMemo(() => {
