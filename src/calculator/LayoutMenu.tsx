@@ -31,7 +31,7 @@ export default function LayoutMenu({
   useEffect(() => {
     const away = (e: PointerEvent) => {
       const target = e.target as HTMLElement;
-      if (!box.current?.contains(target) && !target.closest(".calc-app-layout")) onClose();
+      if (!box.current?.contains(target) && !target.closest(".calc-app-layout:not(.calc-app-cmd)")) onClose();
     };
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("pointerdown", away, true);

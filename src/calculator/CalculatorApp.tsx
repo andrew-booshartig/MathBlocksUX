@@ -259,7 +259,7 @@ export default function CalculatorApp() {
           </button>
         </span>
         <span className="calc-app-tools" data-tauri-drag-region>
-          <button className="calc-app-layout" title="Commands — anything, by name (⌘K)" onClick={() => setPalette(true)}>
+          <button className="calc-app-layout calc-app-cmd" title="Commands — anything, by name (⌘K)" onClick={() => setPalette(true)}>
             <Icon name="zoom" size={15} />
             <kbd className="calc-app-kbd">⌘K</kbd>
           </button>
