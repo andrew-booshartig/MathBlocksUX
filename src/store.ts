@@ -479,6 +479,8 @@ export interface CalculatorBlockData extends BlockBase {
   smartPlot?: { mode?: "numberline" | "xy" | "xyz"; drawn?: NumberLineGraph; xy?: XYPlot };
   /** the calculator app's tiles: how its zones are split and what's in each */
   smartLayout?: object;
+  /** the notebook open in its Notebook tile (a file in Documents/MatrixLab/Notebooks) */
+  smartNotebook?: string;
   /** its Work section: the same data as a Show-your-work block */
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
   ti?: TIState;

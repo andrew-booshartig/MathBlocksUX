@@ -44,6 +44,12 @@ const PATHS: Record<string, string> = {
   reference: "M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5M8.5 7.5h7M8.5 11h5",
   variables: "M4 7.5l6 9M10 7.5l-6 9M14 10h6M14 14h6",
   equations: "M14.5 4.2c-1.9-.7-3.6.1-4 2L8.6 17.8c-.4 1.9-2 2.7-4 2M6.5 10h7M15 13l4.5 5.5M19.5 13 15 18.5",
+  notebook: "M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7zM7 3v18M10.5 8h5M10.5 12h5M10.5 16h3M5 7h2M5 12h2M5 17h2",
+  run: "M8 5.5v13l10.5-6.5z",
+  print: "M7 9V4h10v5M7 17H5a1.5 1.5 0 0 1-1.5-1.5V10.5A1.5 1.5 0 0 1 5 9h14a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 19 17h-2M7 14h10v6H7z",
+  source: "M9 7l-5 5 5 5M15 7l5 5-5 5",
+  up: "M12 19V5M6 11l6-6 6 6",
+  down: "M12 5v14M6 13l6 6 6-6",
   // zones
   close: "M7 7l10 10M17 7 7 17",
   maximize: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",

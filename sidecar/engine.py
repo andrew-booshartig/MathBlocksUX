@@ -28,6 +28,7 @@ from mathcore.reference import op_reference, op_refconvert  # noqa: E402
 from mathcore.smartcalc import op_formula, op_numberline, op_smart, op_smart_console, op_smart_lint, op_smart_vars  # noqa: E402
 from mathcore.lang import op_languages, op_translate  # noqa: E402
 from mathcore.analyze import op_line_public, op_quadratic, op_sequence, op_stats  # noqa: E402
+from mathcore.notebook import op_pyrun  # noqa: E402
 from mathcore.graphing import op_fit, op_graph, op_table  # noqa: E402
 from mathcore.parsing import TRANSFORMS, MathInputError  # noqa: E402
 from mathcore.practice import op_check, op_practice, op_topics  # noqa: E402
@@ -93,6 +94,7 @@ OPS = {
     "translate": op_translate,
     "languages": op_languages,
     "custom": op_custom,
+    "pyrun": op_pyrun,
 }
 
 

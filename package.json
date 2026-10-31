@@ -18,6 +18,7 @@
     "dockview": "8.5.1",
     "dockview-react": "8.5.1",
     "katex": "^0.18.9",
+    "marked": "18.1.1",
     "mathlive": "^0.110.0",
     "plotly.js-dist-min": "^4.1.1",
     "react": "^19.1.0",

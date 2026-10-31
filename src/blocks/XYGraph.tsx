@@ -80,7 +80,10 @@ export default function XYGraph({
   known,
   setVariable,
   fill,
+  onNotebook,
 }: {
+  /** the graph, sent to the notebook as a graph cell */
+  onNotebook?: (code: string) => void;
   /** the plot takes all the room there is (a tile), not a fixed size */
   fill?: boolean;
   plot: XYPlot;
@@ -126,6 +129,16 @@ export default function XYGraph({
     const next = lines.filter((_, j) => j !== i);
     setLines(next);
     if (next.length) focusLine(next[Math.max(0, i - 1)].id);
+  };
+  /** the graph as a notebook graph cell: its lines, each letter's value, the window */
+  const notebookCode = () => {
+    const w = plot.window;
+    const r = (n: number) => String(Math.round(n * 100) / 100);
+    return [
+      ...lines.filter((l) => l.latex.trim() && !l.hidden).map((l) => l.latex),
+      ...used.map((n) => `${n} = ${r(n in fromVars ? (known[n] ?? 1) : own(n))}`),
+      ...(w ? [`window: ${r(w.xmin)} ${r(w.xmax)} ${r(w.ymin)} ${r(w.ymax)}`] : []),
+    ].join("\n");
   };
   /** zoom about the middle of what's showing */
   const zoomBy = (factor: number) => {
@@ -212,6 +225,11 @@ export default function XYGraph({
         <div className="xy-plot-foot">
           <span>Drag the graph to move around</span>
           <span className="xy-zoom">
+            {onNotebook && (
+              <button className="xy-zoom-btn is-text" title="Put this graph in the notebook — its lines, letters and window" onClick={() => onNotebook(notebookCode())}>
+                → Notebook
+              </button>
+            )}
             <button className="xy-zoom-btn" title="Zoom out" onClick={() => zoomBy(1.5)}>
               −
             </button>

@@ -60,7 +60,7 @@ const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;
 /** Math as MathML for a printable page. A minus right after another
  * operator ("< −7", "= −2") is a negative sign: drawn tight to its number,
  * the way it's written (browsers would space it like subtraction). */
-const pageMath = (latex: string, display = false) =>
+export const pageMath = (latex: string, display = false) =>
   katex
     .renderToString(latex, { output: "mathml", displayMode: display, throwOnError: false })
     .replace(/(<mo[^>]*>([^<]*)<\/mo>)<mo>−<\/mo>/g, (all, before: string, op: string) => (/^[)\]}|∣]$/.test(op) ? all : `${before}<mo lspace="0em" rspace="0em">−</mo>`));
@@ -70,7 +70,7 @@ const pageMath = (latex: string, display = false) =>
  * column alignment — the work would come out centered, not lined up at its
  * = signs — so the page lines it up itself. Columns pair up right | left,
  * the way aligned does; a reason sits in the fourth. */
-function workTable(aligned: string, notes: (string | null)[] = [], answer?: { latex: string; note: string | null }): string {
+export function workTable(aligned: string, notes: (string | null)[] = [], answer?: { latex: string; note: string | null }): string {
   const rows = aligned
     .replace(/^\\begin\{aligned\}\s*/, "")
     .replace(/\s*\\end\{aligned\}$/, "")
@@ -89,7 +89,7 @@ function workTable(aligned: string, notes: (string | null)[] = [], answer?: { la
   return `<table class="steps">${body.join("")}</table>`;
 }
 
-const STEPS_CSS = `
+export const STEPS_CSS = `
   .steps { margin: 6px auto; border-collapse: collapse; }
   .steps td { padding: 3px 0; vertical-align: baseline; white-space: nowrap; }
   .steps td.r { text-align: right; }

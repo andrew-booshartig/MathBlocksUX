@@ -1,3 +1,4 @@
+mod notebook;
 mod sidecar;
 mod workspace;
 
@@ -32,6 +33,15 @@ pub fn run() {
             workspace::theme_folder,
             workspace::list_themes,
             workspace::save_theme,
+            notebook::notebook_folder,
+            notebook::list_notebooks,
+            notebook::read_notebook,
+            notebook::write_notebook,
+            notebook::notebook_modified,
+            notebook::rename_notebook,
+            notebook::trash_notebook,
+            notebook::list_templates,
+            notebook::save_template,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

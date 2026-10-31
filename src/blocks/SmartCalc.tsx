@@ -28,6 +28,9 @@ import UnitPicker from "./UnitPicker";
 import EquationsPanel from "./EquationsPanel";
 import XYGraph from "./XYGraph";
 import CalcDock, { type CalcDockHandle, type TileId } from "../calculator/CalcDock";
+import NotebookTile from "../notebook/NotebookTile";
+import { sendToNotebook } from "../notebook/inbox";
+import { cellText } from "../notebook/format";
 import { type Equation, type EquationSpaces, spaceName } from "../equations";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
@@ -502,6 +505,18 @@ export default function SmartCalc({
       retype(entry, `${nameTex(parts.name)}=${scaled}${parts.rest}`);
     }
   };
+  /** something sent to the notebook (→ Notebook): onto the end of the open
+   * one (a new "Notes" one if none is open), and the notebook comes forward */
+  const toNotebook = async (markdown: string) => {
+    try {
+      const where = await sendToNotebook(markdown, current()?.smartNotebook);
+      if (where !== current()?.smartNotebook) updateBlock(data.id, { smartNotebook: where });
+      dock.current?.show("notebook", true);
+    } catch (err) {
+      setNote(`Couldn't add it to the notebook: ${String(err).replace(/^Error:\s*/, "")}`);
+    }
+  };
+
   /** a variable set to a number from elsewhere (the xy graph's letters):
    * its line retyped, like typing in its box — the sidebar, its links and
    * everything using it follow */
@@ -1511,6 +1526,7 @@ export default function SmartCalc({
           known={known}
           setVariable={setVariableNumber}
           fill={tiled}
+          onNotebook={tiled ? (code) => toNotebook(cellText("graph", code)) : undefined}
         />
       )}
       {graphMode === "numberline" && (
@@ -1562,9 +1578,16 @@ export default function SmartCalc({
             ) : (
               <span className="smart-graph-kept">Not in a document — start a problem in Work to keep it with that problem</span>
             )}
-            <button className="smart-vars-action" onClick={clearGraph}>
-              Clear
-            </button>
+            <span className="smart-graph-foot-tools">
+              {tiled && (
+                <button className="smart-vars-action" title="Put this number line in the notebook" onClick={() => toNotebook(cellText("numberline", drawn.latex))}>
+                  → Notebook
+                </button>
+              )}
+              <button className="smart-vars-action" onClick={clearGraph}>
+                Clear
+              </button>
+            </span>
           </div>
         </div>
       ) : (
@@ -1589,6 +1612,7 @@ export default function SmartCalc({
         setTab("calc");
         if (typed && typed !== latex.trim()) setNote("Put in place of what was on the line");
       }}
+      onNotebook={tiled ? (problem, lines) => toNotebook(cellText("work", [`problem: ${problem}`, ...lines.filter((l) => l.replace(/\s/g, "") !== problem.replace(/\s/g, ""))].join("\n"))) : undefined}
       onGraph={(latex) => {
         if (/y/.test(latex.replace(/\\[a-zA-Z]+/g, ""))) {
           // an equation in x and y: a line of its own on the xy graph
@@ -1815,6 +1839,11 @@ export default function SmartCalc({
                     <button className="chip is-handoff" title="Add this answer to the Work tab as your next step" onClick={() => answerToWork(r)}>
                       → Add to Work
                     </button>
+                    {tiled && (
+                      <button className="chip is-handoff" title="Put this line in the notebook — it's worked out there too" onClick={() => toNotebook(cellText("calc", entry.latex))}>
+                        → Notebook
+                      </button>
+                    )}
                   </div>
                 )}
                 {openSteps === entry.id && r.steps && <StepList steps={r.steps} wrap />}
@@ -1936,6 +1965,9 @@ export default function SmartCalc({
             calc: calcMain,
             work: workBody,
             graph: graphBody,
+            notebook: (
+              <NotebookTile name={data.smartNotebook} onOpen={(smartNotebook) => updateBlock(data.id, { smartNotebook })} work={data.smartWork?.history ?? []} />
+            ),
             assignment: assignmentBody,
             reference: referenceBody,
             variables: sidebar,

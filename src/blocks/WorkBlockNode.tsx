@@ -100,6 +100,7 @@ export function WorkPad({
   onReset,
   onGraph,
   onCalculate,
+  onNotebook,
   autoFocus,
   insert,
 }: {
@@ -114,6 +115,8 @@ export function WorkPad({
   onGraph?: (latex: string) => void;
   /** a step, sent to be worked out (the calculator's Calculate tab) */
   onCalculate?: (latex: string) => void;
+  /** the problem and its steps, sent to the notebook (the calculator app) */
+  onNotebook?: (problem: string, lines: string[]) => void;
   /** opened on purpose (its tab clicked): the cursor goes where you'd type next */
   autoFocus?: boolean;
   /** something to put in the line being typed (a unit, from the Reference
@@ -492,6 +495,16 @@ export function WorkPad({
           <button className={`block-icon-btn${paper ? " is-active" : ""}`} title="Paper view — the finished work, lined up" onClick={() => setPaper(!paper)}>
             📄
           </button>
+          {onNotebook && (
+            <button
+              className="block-icon-btn work-to-notebook"
+              title="Put this problem and its steps in the notebook"
+              disabled={!(data.problem ?? "").trim()}
+              onClick={() => onNotebook(data.problem ?? "", (data.lines ?? []).filter((l) => l.trim()))}
+            >
+              → Notebook
+            </button>
+          )}
           <button className={`block-icon-btn${settings ? " is-active" : ""}`} title="Teacher settings" onClick={() => setSettings(!settings)}>
             ⚙
           </button>

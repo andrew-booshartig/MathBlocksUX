@@ -1,0 +1,956 @@
+/* The Notebook tile: a page to read (Markdown, math, worked cells), with
+   its bar on top. Colors are the app theme's (--t-*). */
+
+.dock-tile.is-notebook {
+  padding: 0;
+  overflow: hidden;
+}
+
+.nb {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ---- the bar: which notebook, and what to do with it */
+.nb-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--t-line);
+}
+
+.nb-switch {
+  position: relative;
+  min-width: 0;
+}
+
+.nb-switch-btn,
+.nb-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--t-subtle);
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.nb-switch-btn {
+  max-width: 100%;
+  color: var(--t-text);
+  font-weight: 550;
+  background: var(--t-bg1);
+  border-color: var(--t-line);
+}
+
+.nb-switch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nb-switch-btn .icon,
+.nb-tool .icon {
+  flex: 0 0 auto;
+}
+
+.nb-switch-btn:hover,
+.nb-switch-btn.is-on {
+  border-color: var(--t-faint);
+}
+
+.nb-tool:hover,
+.nb-tool.is-on {
+  background: var(--t-bg4);
+  color: var(--t-text);
+}
+
+.nb-tool.is-icon {
+  padding: 0 6px;
+}
+
+.nb-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.nb-saving {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--t-orange);
+  animation: saving 0.9s ease-in-out infinite alternate;
+}
+
+/* small menus under the bar's buttons */
+.nb-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 240px;
+  max-width: 340px;
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--t-bg3);
+  border: 1px solid var(--t-line);
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--t-bg0) 60%, transparent);
+  animation: menu-in 0.12s ease-out;
+}
+
+.nb-pop.is-right {
+  left: auto;
+  right: 0;
+}
+
+.nb-pop-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--t-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nb-pop-item .icon {
+  flex: 0 0 auto;
+  color: var(--t-muted);
+}
+
+.nb-pop-item:hover {
+  background: var(--t-bg4);
+}
+
+.nb-pop-item.is-here {
+  color: var(--t-pink);
+}
+
+.nb-pop-item.is-new {
+  font-weight: 600;
+}
+
+.nb-pop-item.is-danger:hover {
+  color: var(--t-red);
+}
+
+.nb-pop-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-pop-line {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--t-line);
+}
+
+.nb-prompt {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+}
+
+.nb-prompt input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--t-line);
+  border-radius: 7px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.nb-prompt button {
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background: var(--t-pink);
+  color: var(--t-bg1);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* messages: a quiet line under the bar */
+.nb-notice,
+.nb-error,
+.nb-elsewhere {
+  flex: 0 0 auto;
+  margin: 8px 12px 0;
+  padding: 7px 12px;
+  border-radius: 9px;
+  font-size: 12.5px;
+}
+
+.nb-notice {
+  align-self: center;
+  background: var(--t-bg3);
+  color: var(--t-subtle);
+  animation: menu-in 0.15s ease-out;
+}
+
+.nb-notice.is-undo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nb-notice.is-undo button {
+  border: none;
+  background: none;
+  color: var(--t-pink);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.nb-error {
+  background: color-mix(in srgb, var(--t-red) 14%, transparent);
+  color: var(--t-red);
+  cursor: pointer;
+}
+
+.nb-elsewhere {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: color-mix(in srgb, var(--t-orange) 14%, transparent);
+  color: var(--t-text);
+}
+
+.nb-elsewhere button {
+  border: 1px solid var(--t-line);
+  border-radius: 7px;
+  background: var(--t-bg2);
+  color: var(--t-text);
+  font-size: 12px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+/* ---- the page */
+.nb-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 26px max(20px, calc((100% - 760px) / 2)) 90px;
+  font: 15.5px/1.65 -apple-system, "Inter", "Helvetica Neue", sans-serif;
+  color: var(--t-text);
+}
+
+.nb-header {
+  margin: 0 0 22px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--t-line);
+}
+
+.nb-header-view {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 8px;
+  margin: 0 -8px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--t-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.nb-header-view:hover {
+  background: color-mix(in srgb, var(--t-bg4) 60%, transparent);
+}
+
+.nb-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.nb-meta {
+  font-size: 13.5px;
+  color: var(--t-muted);
+}
+
+.nb-header-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px 12px;
+  align-items: end;
+}
+
+.nb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--t-muted);
+}
+
+.nb-field input {
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font: 14px -apple-system, "Inter", sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+  outline: none;
+}
+
+.nb-field input:focus {
+  border-color: var(--t-faint);
+}
+
+.nb-link {
+  justify-self: start;
+  align-self: center;
+  border: none;
+  background: none;
+  color: var(--t-pink);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+/* a block: a piece of the page; its tools show on hover */
+.nb-block {
+  position: relative;
+  margin: 0 -10px 4px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  transition: background 0.12s;
+}
+
+.nb-block.is-text:hover:not(.is-editing) {
+  background: color-mix(in srgb, var(--t-bg4) 45%, transparent);
+  cursor: text;
+}
+
+.nb-block-tools {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.nb-block:hover > .nb-block-tools {
+  opacity: 1;
+}
+
+.nb-block-tools button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--t-bg3);
+  color: var(--t-muted);
+  cursor: pointer;
+}
+
+.nb-block-tools button:hover {
+  color: var(--t-text);
+  background: var(--t-bg4);
+}
+
+/* Markdown, as a page */
+.nb-md > :first-child {
+  margin-top: 0;
+}
+
+.nb-md > :last-child {
+  margin-bottom: 0;
+}
+
+.nb-md p {
+  margin: 6px 0;
+}
+
+.nb-md h1,
+.nb-md h2,
+.nb-md h3,
+.nb-md h4 {
+  line-height: 1.3;
+  margin: 18px 0 6px;
+  letter-spacing: -0.01em;
+}
+
+.nb-md h1 {
+  font-size: 24px;
+}
+
+.nb-md h2 {
+  font-size: 19px;
+}
+
+.nb-md h3 {
+  font-size: 16.5px;
+}
+
+.nb-md ul,
+.nb-md ol {
+  margin: 6px 0;
+  padding-left: 24px;
+}
+
+.nb-md li {
+  margin: 2px 0;
+}
+
+.nb-md li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -20px;
+}
+
+.nb-md input[type="checkbox"] {
+  accent-color: var(--t-pink);
+  margin-right: 6px;
+}
+
+.nb-md a {
+  color: var(--t-blue);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--t-blue) 40%, transparent);
+}
+
+.nb-md a.nb-wikilink {
+  color: var(--t-purple);
+  border-bottom-color: color-mix(in srgb, var(--t-purple) 40%, transparent);
+}
+
+.nb-md code {
+  font: 13.5px ui-monospace, "SF Mono", Menlo, monospace;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--t-bg1);
+}
+
+.nb-md pre {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--t-bg1);
+  overflow-x: auto;
+}
+
+.nb-md pre code {
+  padding: 0;
+  background: none;
+}
+
+.nb-md blockquote {
+  margin: 8px 0;
+  padding: 2px 14px;
+  border-left: 3px solid var(--t-faint);
+  color: var(--t-subtle);
+}
+
+.nb-md table {
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 14px;
+}
+
+.nb-md th,
+.nb-md td {
+  border: 1px solid var(--t-line);
+  padding: 5px 12px;
+  text-align: left;
+}
+
+.nb-md th {
+  background: var(--t-bg1);
+  font-weight: 600;
+}
+
+.nb-md hr {
+  border: none;
+  border-top: 1px solid var(--t-line);
+  margin: 18px 0;
+}
+
+.nb-md img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.nb-math {
+  margin: 10px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.nb-missing {
+  color: var(--t-muted);
+  font-style: italic;
+}
+
+/* editing a block: its Markdown (or code) */
+.nb-edit {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--t-pink) 45%, var(--t-line));
+  border-radius: 9px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font: inherit;
+  line-height: 1.55;
+  outline: none;
+}
+
+.nb-edit.is-mono {
+  font: 13.5px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ---- cells: a card each, in its kind's color */
+.nb-block.is-cell {
+  margin: 10px -10px 12px;
+  padding: 0;
+  border: 1px solid var(--t-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--t-bg1) 70%, var(--t-bg2));
+  --cell-hue: var(--t-teal);
+  overflow: hidden;
+}
+
+.nb-block.is-graph {
+  --cell-hue: var(--t-blue);
+}
+
+.nb-block.is-numberline {
+  --cell-hue: var(--t-green);
+}
+
+.nb-block.is-work {
+  --cell-hue: var(--t-orange);
+}
+
+.nb-block.is-python {
+  --cell-hue: var(--t-purple);
+}
+
+.nb-block.is-cell.is-editing {
+  border-color: color-mix(in srgb, var(--cell-hue) 55%, var(--t-line));
+}
+
+.nb-cell-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 0 12px;
+  min-height: 24px;
+}
+
+.nb-cell-lang {
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cell-hue) 85%, var(--t-text));
+}
+
+.nb-cell-edit,
+.nb-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--t-line);
+  border-radius: 6px;
+  background: var(--t-bg2);
+  color: var(--t-subtle);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.nb-cell-edit {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.nb-block:hover .nb-cell-edit {
+  opacity: 1;
+}
+
+.nb-run {
+  color: color-mix(in srgb, var(--cell-hue) 85%, var(--t-text));
+  border-color: color-mix(in srgb, var(--cell-hue) 40%, var(--t-line));
+}
+
+.nb-run:hover,
+.nb-cell-edit:hover {
+  color: var(--t-text);
+  border-color: var(--t-faint);
+}
+
+.nb-block.is-cell .nb-block-tools {
+  top: 5px;
+  right: 8px;
+}
+
+/* the cell's tools sit where its own buttons don't */
+.nb-block.is-cell:hover .nb-cell-head {
+  padding-right: 84px;
+}
+
+.nb-block.is-cell > .nb-edit {
+  margin: 6px 10px 10px;
+  width: calc(100% - 20px);
+}
+
+.nb-code {
+  margin: 6px 10px 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--t-bg1);
+  font: 13.5px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--t-text);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  cursor: text;
+}
+
+.nb-cell-result {
+  padding: 6px 14px 12px;
+  overflow-x: auto;
+}
+
+.nb-cell-wait {
+  font-size: 13px;
+  color: var(--t-muted);
+  padding: 2px 0;
+}
+
+.nb-cell-error {
+  font-size: 13px;
+  color: var(--t-red);
+}
+
+.nb-cell-error.is-code {
+  font: 12.5px/1.5 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  margin: 4px 0;
+}
+
+.nb-calc {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 18px;
+  align-items: baseline;
+  font-size: 16px;
+}
+
+.nb-calc-row {
+  display: contents;
+}
+
+.nb-calc-out {
+  color: var(--t-subtle);
+}
+
+.nb-calc-saved {
+  justify-self: start;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: var(--t-green);
+  background: color-mix(in srgb, var(--t-green) 14%, transparent);
+}
+
+.nb-graph {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.nb-numberline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+}
+
+.nb-numberline-together {
+  font-size: 13px;
+  color: var(--t-muted);
+}
+
+.nb-work {
+  position: relative;
+  font-size: 16.5px;
+}
+
+.nb-work-answer .katex-display {
+  margin: 4px 0 0;
+}
+
+.nb-work-status {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: var(--t-orange);
+  background: color-mix(in srgb, var(--t-orange) 14%, transparent);
+}
+
+.nb-work-status.is-solved {
+  color: var(--t-green);
+  background: color-mix(in srgb, var(--t-green) 14%, transparent);
+}
+
+.nb-py-out {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nb-py-text {
+  margin: 0;
+  font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--t-subtle);
+  white-space: pre-wrap;
+}
+
+.nb-py-text.is-value {
+  color: var(--t-text);
+}
+
+.nb-py-image {
+  max-width: 100%;
+  align-self: center;
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* ---- adding: every kind of block, under the last one */
+.nb-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--t-line);
+}
+
+.nb-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--t-line);
+  border-radius: 999px;
+  background: none;
+  color: var(--t-subtle);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.nb-add-btn:hover {
+  border-color: var(--t-faint);
+  color: var(--t-text);
+  background: var(--t-bg1);
+}
+
+.nb-empty {
+  color: var(--t-muted);
+  font-size: 14px;
+  padding: 10px 0;
+}
+
+.nb-foot {
+  margin-top: 26px;
+  font-size: 11.5px;
+  color: var(--t-faint);
+  text-align: center;
+}
+
+/* ---- Source: the whole file as text */
+.nb-source {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding: 12px;
+}
+
+.nb-source-text {
+  flex: 1;
+  resize: none;
+  padding: 16px 18px;
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font: 13.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+  outline: none;
+  tab-size: 4;
+}
+
+/* ---- a new notebook: pick its template */
+.nb-gallery {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px max(20px, calc((100% - 760px) / 2)) 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.nb-gallery-head h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.nb-gallery-head p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--t-muted);
+}
+
+.nb-gallery-name {
+  width: 100%;
+  max-width: 420px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--t-line);
+  border-radius: 9px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font: 14px -apple-system, "Inter", sans-serif;
+  outline: none;
+}
+
+.nb-gallery-name:focus {
+  border-color: var(--t-faint);
+}
+
+.nb-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.nb-template {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 4px 12px;
+  padding: 14px;
+  border: 1px solid var(--t-line);
+  border-radius: 12px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    transform 0.12s,
+    background 0.12s;
+}
+
+.nb-template:hover {
+  border-color: color-mix(in srgb, var(--tile-hue) 60%, var(--t-line));
+  background: color-mix(in srgb, var(--tile-hue) 6%, var(--t-bg1));
+  transform: translateY(-1px);
+}
+
+.nb-template-icon {
+  grid-row: span 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: var(--tile-hue);
+  background: color-mix(in srgb, var(--tile-hue) 15%, transparent);
+}
+
+.nb-template-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.nb-template-note {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: var(--tile-hue);
+  background: color-mix(in srgb, var(--tile-hue) 15%, transparent);
+}
+
+.nb-template-blurb {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--t-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-template:hover {
+    transform: none;
+  }
+  .nb-pop,
+  .nb-notice,
+  .nb-saving {
+    animation: none;
+  }
+}
