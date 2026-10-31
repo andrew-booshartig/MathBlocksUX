@@ -99,5 +99,22 @@ export function setMeta(doc: NotebookDoc, key: string, value: string): NotebookD
   return { ...doc, meta };
 }
 
+/** How the printed page shows worked problems (the header's switches):
+ * checkmarks off, the rest on, unless the header says otherwise. */
+export const PRINT_SWITCHES = [
+  { key: "checkmarks", label: "Checkmarks", title: "The app's ✓ / ✗ beside each step", on: false },
+  { key: "box answers", label: "Box answers", title: "Each finished problem's final answer, boxed", on: true },
+  { key: "number lines", label: "Number lines", title: "The number lines drawn for problems", on: true },
+  { key: "step notes", label: "Step notes", title: "The notes beside steps and under problems", on: true },
+] as const;
+
+export function printSwitches(doc: NotebookDoc) {
+  const on = (key: string, fallback: boolean) => {
+    const v = metaValue(doc, key).trim().toLowerCase();
+    return v ? ["yes", "on", "true"].includes(v) : fallback;
+  };
+  return { marks: on("checkmarks", false), box: on("box answers", true), numberLines: on("number lines", true), notes: on("step notes", true) };
+}
+
 /** a cell as Markdown, to drop into a notebook (from Calculate, Work, Graph) */
 export const cellText = (lang: CellLang, code: string) => writeNotebook({ meta: [], blocks: [{ id: "", kind: "cell", lang, info: "", code }] }).trim();

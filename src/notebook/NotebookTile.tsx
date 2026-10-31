@@ -13,22 +13,45 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../Icon";
 import { mathRequest } from "../mathSidecar";
-import type { WorkHistoryEntry } from "../store";
+import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
-import { type CalcLine, CalcCell, GraphCell, NumberLineCell, type PyOutput, PythonOutput, WorkCell, runCalcCells } from "./cells";
-import { type Block, type CellLang, type NotebookDoc, blockId, metaValue, parseNotebook, setMeta, writeNotebook } from "./format";
+import { type CalcLine, CalcCell, GraphCell, NumberLineCell, type PyOutput, PythonOutput, WorkCell, WorkCellEditor, readWorkCell, runCalcCells } from "./cells";
+import { type Block, type CellLang, type NotebookDoc, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, setMeta, writeNotebook } from "./format";
 import { setNotebookInbox } from "./inbox";
+import { notebookLatex } from "./latex";
 import { renderMarkdown } from "./markdown";
+import Preview from "./Preview";
 import { notebookHtml } from "./print";
 import { TEMPLATES, type Template, problemSection, userTemplate } from "./templates";
 import "./notebook.css";
 
 type Listing = { name: string; modified: number }[];
 
+/** what the notebook does with Work: the problems finished there come in
+ * (and leave Work's list — Undo puts them back), the one being worked on
+ * can be added as it stands, and a problem can go back to Work to fix */
+export interface NotebookWork {
+  finished: WorkHistoryEntry[];
+  take: (ids: string[]) => void;
+  giveBack: (entries: WorkHistoryEntry[]) => void;
+  inProgress: boolean;
+  fileInProgress: () => Promise<WorkHistoryEntry | null>;
+  /** false: Work has a problem going (finish or clear it first) */
+  reopen: (problem: string, lines: string[], reasons: string[]) => boolean;
+  /** who hands it in (name, class, teacher) — last time's, kept for next */
+  me: AssignmentInfo;
+  rememberMe: (patch: AssignmentInfo) => void;
+}
+
 const errorText = (err: unknown) => String(err).replace(/^Error:\s*/, "");
 /** "Nov 1" — for a new notebook's name */
 const shortDate = () => new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" });
 const DEFAULT_NAMES: Record<string, string> = { blank: "Notebook", assignment: "Homework", lab: "Lab report", notes: "Notes", script: "Script" };
+
+/** the header's fields that are the print switches (shown as switches) */
+const SWITCH_KEYS: string[] = PRINT_SWITCHES.map((p) => p.key);
+/** the header's fields kept for the next assignment */
+const ME_KEYS: Record<string, keyof AssignmentInfo> = { name: "name", course: "course", instructor: "instructor" };
 
 /** the header's fields, labelled; any others the file has follow */
 const HEADER_FIELDS: [string, string][] = [
@@ -81,7 +104,7 @@ function AutoText({ value, onChange, onKeyDown, onBlur, mono, placeholder }: { v
   );
 }
 
-export default function NotebookTile({ name, onOpen, work }: { name?: string; onOpen: (name: string | undefined) => void; work: WorkHistoryEntry[] }) {
+export default function NotebookTile({ name, onOpen, work }: { name?: string; onOpen: (name: string | undefined) => void; work: NotebookWork }) {
   const [doc, setDoc] = useState<NotebookDoc | null>(null);
   const [view, setView] = useState<"doc" | "source" | "new">(name ? "doc" : "new");
   const [listing, setListing] = useState<Listing>([]);
@@ -91,13 +114,14 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
   const [prompt, setPrompt] = useState<{ kind: "rename" | "template"; value: string } | null>(null);
   const [newName, setNewName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
-  /** a block just deleted, to put back (for a few seconds) */
-  const [undo, setUndo] = useState<{ block: Block; at: number } | null>(null);
+  /** what was just done, to take back (for a few seconds) */
+  const [undo, setUndo] = useState<{ label: string; button: string; run: () => void } | null>(null);
   useEffect(() => {
     if (!undo) return;
-    const t = setTimeout(() => setUndo(null), 7000);
+    const t = setTimeout(() => setUndo(null), 8000);
     return () => clearTimeout(t);
   }, [undo]);
+  const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -274,15 +298,20 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     if (!doc) return;
     const at = doc.blocks.findIndex((b) => b.id === id);
     if (at < 0) return;
-    if (!quiet) setUndo({ block: doc.blocks[at], at });
+    const gone = doc.blocks[at];
+    if (!quiet)
+      setUndo({
+        label: `Deleted a ${gone.kind === "text" ? "text block" : `${LANG_LABEL[gone.lang] ?? gone.lang} cell`}`,
+        button: "Undo",
+        run: () => {
+          const now = docRef.current;
+          if (!now) return;
+          const blocks = [...now.blocks];
+          blocks.splice(Math.min(at, blocks.length), 0, gone);
+          commit({ ...now, blocks });
+        },
+      });
     commit({ ...doc, blocks: doc.blocks.filter((b) => b.id !== id) });
-  };
-  const putBack = () => {
-    if (!doc || !undo) return;
-    const blocks = [...doc.blocks];
-    blocks.splice(Math.min(undo.at, blocks.length), 0, undo.block);
-    commit({ ...doc, blocks });
-    setUndo(null);
   };
   const moveBlock = (id: string, by: number) => {
     if (!doc) return;
@@ -302,6 +331,7 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     setDraft(kind.start);
   };
   const startEditing = (b: Block) => {
+    if (editing && editing !== b.id) finishEditing();
     setEditing(b.id);
     setDraft(b.kind === "text" ? b.text : b.code);
   };
@@ -358,11 +388,17 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     const base = newName.trim() || `${DEFAULT_NAMES[template.id] ?? template.name} — ${shortDate()}`;
     const fresh = uniqueName(base.replace(/[/\\:]/g, "-"));
     try {
-      await invoke("write_notebook", { name: fresh, text: template.build(fresh, work) });
+      await invoke("write_notebook", { name: fresh, text: template.build(fresh, work.finished, work.me) });
       setNewName("");
       await refreshListing();
       setView("doc");
       onOpen(fresh);
+      // the finished problems are in this notebook now — out of Work's list
+      const moved = template.id === "assignment" ? work.finished : [];
+      if (moved.length) {
+        work.take(moved.map((e) => e.id));
+        setUndo({ label: `Moved ${moved.length} finished problem${moved.length === 1 ? "" : "s"} here from Work`, button: "Keep them in Work too", run: () => work.giveBack(moved) });
+      }
     } catch (err) {
       setError(errorText(err));
     }
@@ -370,7 +406,7 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
   const openOrCreate = async (which: string) => {
     setSwitcher(false);
     if (!listing.some((l) => l.name === which)) {
-      await invoke("write_notebook", { name: which, text: TEMPLATES[0].build(which, work) }).catch(() => {});
+      await invoke("write_notebook", { name: which, text: TEMPLATES[0].build(which, [], work.me) }).catch(() => {});
       await refreshListing();
     }
     setView("doc");
@@ -403,13 +439,67 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     onOpen(undefined);
     setNotice(`Moved “${name}” to the trash folder (Notebooks/.trash)`);
   };
+  /** problems as sections at the end (numbered on from the ones there) —
+   * the ids of the blocks added */
+  const appendProblems = (entries: WorkHistoryEntry[]) => {
+    const current = docRef.current;
+    if (!current) return [];
+    const have = current.blocks.filter((b) => b.kind === "text" && /^## Problem/m.test(b.text)).length;
+    const added = parseNotebook(entries.map((e, i) => problemSection(e, have + i + 1)).join("\n\n")).blocks;
+    commit({ ...current, blocks: [...current.blocks, ...added] });
+    setTimeout(() => page.current?.scrollTo({ top: page.current.scrollHeight, behavior: "smooth" }), 120);
+    return added.map((b) => b.id);
+  };
+  /** the problems finished in Work: in here, out of Work's list (one
+   * that's already here, same problem, isn't added twice) */
   const addFinished = () => {
     if (!doc) return;
     setMenu(false);
-    const have = doc.blocks.filter((b) => b.kind === "text" && /^## Problem/m.test(b.text)).length;
-    const added = work.map((e, i) => problemSection(e, have + i + 1)).join("\n\n");
-    commit({ ...doc, blocks: [...doc.blocks, ...parseNotebook(added).blocks] });
-    setNotice(`Added ${work.length} finished problem${work.length === 1 ? "" : "s"} from Work`);
+    const here = new Set(doc.blocks.filter((b) => b.kind === "cell" && b.lang === "work").map((b) => readWorkCell((b as { code: string }).code).problem.replace(/\s/g, "")));
+    const fresh = work.finished.filter((e) => !here.has(e.problem.replace(/\s/g, "")));
+    work.take(work.finished.map((e) => e.id));
+    const ids = appendProblems(fresh);
+    const moved = work.finished;
+    setUndo({
+      label: `Moved ${moved.length} finished problem${moved.length === 1 ? "" : "s"} here from Work`,
+      button: "Undo",
+      run: () => {
+        work.giveBack(moved);
+        const now = docRef.current;
+        if (now) commit({ ...now, blocks: now.blocks.filter((b) => !ids.includes(b.id)) });
+      },
+    });
+  };
+  /** the problem being worked on in Work, as it stands — Work's ready for the next */
+  const addInProgress = async () => {
+    setMenu(false);
+    const e = await work.fileInProgress();
+    if (!e) return setError("Couldn't add it — check the problem in Work");
+    work.take([e.id]);
+    appendProblems([e]);
+    setNotice("Added — Work is ready for the next problem");
+  };
+  const copyLatex = async () => {
+    setMenu(false);
+    if (!doc || !name) return;
+    const tex = await notebookLatex(doc, name, calc, py);
+    await navigator.clipboard.writeText(tex).then(
+      () => setNotice("Copied as LaTeX"),
+      () => setError("Couldn't copy"),
+    );
+  };
+  const showPreview = async () => {
+    if (!doc || !name) return;
+    try {
+      setPreview(await notebookHtml(doc, name, calc, py));
+    } catch (err) {
+      setError(`Couldn't make the page: ${errorText(err)}`);
+    }
+  };
+  /** a work cell's problem back in Work, to fix there */
+  const reopen = (code: string) => {
+    const { problem, steps } = readWorkCell(code);
+    if (!work.reopen(problem, [problem, ...steps.map((s) => s.latex)], ["", ...steps.map((s) => s.note?.text ?? "")])) setNotice("Finish (or clear) the problem in Work first");
   };
   const reveal = async () => {
     setMenu(false);
@@ -499,6 +589,9 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
           >
             <Icon name="source" size={14} /> Source
           </button>
+          <button className="nb-tool" title="The page as it prints" onClick={showPreview}>
+            <Icon name="eye" size={14} /> Preview
+          </button>
           <button className="nb-tool" title="Print it, or ⌘P → Save as PDF" onClick={print}>
             <Icon name="print" size={14} /> Print / PDF
           </button>
@@ -508,11 +601,19 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
             </button>
             {menu && (
               <div className="nb-pop is-right" onMouseLeave={() => (setMenu(false), setPrompt(null))}>
-                {work.length > 0 && (
-                  <button className="nb-pop-item" onClick={addFinished}>
-                    <Icon name="work" size={14} /> Add the {work.length} finished problem{work.length === 1 ? "" : "s"} from Work
+                {work.inProgress && (
+                  <button className="nb-pop-item" onClick={addInProgress}>
+                    <Icon name="work" size={14} /> Add the problem in Work
                   </button>
                 )}
+                {work.finished.length > 0 && (
+                  <button className="nb-pop-item" onClick={addFinished}>
+                    <Icon name="work" size={14} /> Move in the {work.finished.length} finished problem{work.finished.length === 1 ? "" : "s"} from Work
+                  </button>
+                )}
+                <button className="nb-pop-item" onClick={copyLatex}>
+                  <Icon name="copy" size={14} /> Copy as LaTeX
+                </button>
                 {prompt ? (
                   <div className="nb-prompt">
                     <input
@@ -567,7 +668,7 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
             </span>
             <span className="nb-template-name">
               {t.name}
-              {t.id === "assignment" && work.length > 0 && <span className="nb-template-note">{work.length} from Work</span>}
+              {t.id === "assignment" && work.finished.length > 0 && <span className="nb-template-note">{work.finished.length} from Work</span>}
             </span>
             <span className="nb-template-blurb">{t.blurb}</span>
           </button>
@@ -585,12 +686,31 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     <div className="nb-header">
       {headerOpen ? (
         <div className="nb-header-form">
-          {[...HEADER_FIELDS, ...doc.meta.filter(([k]) => !HEADER_FIELDS.some(([f]) => f === k.toLowerCase()) && k !== "template").map(([k]) => [k, k] as [string, string])].map(([key, label]) => (
+          {[...HEADER_FIELDS, ...doc.meta.filter(([k]) => !HEADER_FIELDS.some(([f]) => f === k.toLowerCase()) && k !== "template" && !SWITCH_KEYS.includes(k.toLowerCase())).map(([k]) => [k, k] as [string, string])].map(([key, label]) => (
             <label key={key} className="nb-field">
               <span>{label}</span>
-              <input value={metaValue(doc, key)} onChange={(e) => commit(setMeta(doc, key, e.target.value))} />
+              <input
+                value={metaValue(doc, key)}
+                onChange={(e) => {
+                  commit(setMeta(doc, key, e.target.value));
+                  // name, class, teacher: there next time too
+                  if (ME_KEYS[key]) work.rememberMe({ [ME_KEYS[key]]: e.target.value });
+                }}
+              />
             </label>
           ))}
+          <div className="nb-switches">
+            <span className="nb-switches-label">On the printed page</span>
+            {PRINT_SWITCHES.map((sw) => {
+              const on = { checkmarks: printSwitches(doc).marks, "box answers": printSwitches(doc).box, "number lines": printSwitches(doc).numberLines, "step notes": printSwitches(doc).notes }[sw.key];
+              return (
+                <label key={sw.key} className="nb-switch-toggle" title={sw.title}>
+                  <input type="checkbox" checked={on} onChange={(e) => commit(setMeta(doc, sw.key, e.target.checked ? "yes" : "no"))} />
+                  {sw.label}
+                </label>
+              );
+            })}
+          </div>
           <button className="nb-link" onClick={() => setHeaderOpen(false)}>
             Done
           </button>
@@ -647,6 +767,7 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
         <PythonOutput output={py[b.code]} running={running.has(b.code)} />
       ) : null;
     const showCode = isEditing || b.lang === "python" || !result;
+    // a work cell being edited: its fields, with the checked work under them
     return (
       <div key={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}`}>
         <div className="nb-cell-head">
@@ -661,9 +782,16 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
               edit
             </button>
           )}
+          {!isEditing && b.lang === "work" && (
+            <button className="nb-cell-edit" title="Put it back in Work, to fix it there" onClick={() => reopen(b.code)}>
+              open in Work
+            </button>
+          )}
         </div>
         {showCode &&
-          (isEditing ? (
+          (isEditing && b.lang === "work" ? (
+            <WorkCellEditor code={draft} onChange={setDraft} onDone={finishEditing} />
+          ) : isEditing ? (
             <AutoText value={draft} onChange={setDraft} onBlur={finishEditing} onKeyDown={(e) => editKeys(e, b)} mono />
           ) : (
             <pre className="nb-code" onClick={() => startEditing(b)}>
@@ -700,10 +828,11 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
       {notice && !undo && <div className="nb-notice">{notice}</div>}
       {undo && (
         <div className="nb-notice is-undo">
-          Deleted a {undo.block.kind === "text" ? "text block" : `${LANG_LABEL[undo.block.lang] ?? undo.block.lang} cell`}
-          <button onClick={putBack}>Undo</button>
+          {undo.label}
+          <button onClick={() => (undo.run(), setUndo(null))}>{undo.button}</button>
         </div>
       )}
+      {preview && <Preview html={preview} onClose={() => setPreview(null)} onPrint={print} />}
       {view === "new" || !doc ? (
         gallery
       ) : view === "source" ? (

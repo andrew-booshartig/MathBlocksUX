@@ -5,8 +5,9 @@
  * Assignment is the old Assignment tab's job, as a notebook: a header (your
  * name, the class, the date), then each problem finished in Work — its
  * instructions, its steps (checked, the answer boxed), its number line. */
-import type { WorkHistoryEntry } from "../store";
-import { defaultInstructions, todayLabel } from "../workHistory";
+import type { AssignmentInfo, WorkHistoryEntry } from "../store";
+import { defaultInstructions, stepNote, todayLabel } from "../workHistory";
+import { writeWorkCell } from "./cells";
 import { cellText } from "./format";
 
 export interface Template {
@@ -15,20 +16,23 @@ export interface Template {
   blurb: string;
   icon: string;
   hue: string;
-  /** the notebook's text, given its title and the problems finished in Work */
-  build: (title: string, work: WorkHistoryEntry[]) => string;
+  /** the notebook's text, given its title, the problems finished in Work
+   * and who's handing it in (name, class, teacher — the last ones used) */
+  build: (title: string, work: WorkHistoryEntry[], me?: AssignmentInfo) => string;
   /** one of yours (from the Templates folder) */
   mine?: boolean;
 }
 
 const fill = (text: string, title: string) => text.replace(/\{\{\s*title\s*\}\}/g, title).replace(/\{\{\s*date\s*\}\}/g, todayLabel());
 
-/** a finished Work problem as a section of an assignment */
+/** a finished Work problem as a section of an assignment: its number and
+ * instructions, its steps with their notes (a reason written in Work is
+ * one), the note under it, its number line */
 export function problemSection(e: WorkHistoryEntry, n: number): string {
-  const steps = e.lines.filter((l) => l.trim());
-  // Work starts you off with the problem as line 1 — not a step of yours
-  if (steps[0] && steps[0].replace(/\s/g, "") === e.problem.replace(/\s/g, "")) steps.shift();
-  const parts = [`## Problem ${e.number?.trim() || n}`, e.instructions?.trim() || defaultInstructions(e), cellText("work", [`problem: ${e.problem}`, ...steps].join("\n"))];
+  const written = e.lines.filter((l) => l.trim());
+  // a step's note lines up with its line when every line was read
+  const steps = written.map((latex, k) => ({ latex, note: written.length === e.steps.length ? stepNote(e, k) : null }));
+  const parts = [`## Problem ${e.number?.trim() || n}`, e.instructions?.trim() || defaultInstructions(e), cellText("work", writeWorkCell({ problem: e.problem, steps, note: e.note ?? null }))];
   if (e.graph) parts.push(cellText("numberline", e.graph.latex));
   return parts.join("\n\n");
 }
@@ -50,8 +54,8 @@ export const TEMPLATES: Template[] = [
     blurb: "Your name and class on top, then each problem finished in Work — steps checked, answers boxed. Print it or save a PDF.",
     icon: "assignment",
     hue: "purple",
-    build: (title, work) => {
-      const head = header([["title", title], ["name", ""], ["course", ""], ["instructor", ""], ["date", todayLabel()], ["template", "assignment"]]);
+    build: (title, work, me = {}) => {
+      const head = header([["title", title], ["name", me.name ?? ""], ["course", me.course ?? ""], ["instructor", me.instructor ?? ""], ["date", todayLabel()], ["template", "assignment"]]);
       if (!work.length)
         return `${head}Show your work for each problem. Final answers are boxed.
 

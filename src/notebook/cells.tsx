@@ -6,16 +6,19 @@
  *               "window: -5 5 -5 5" sets what's shown
  *   numberline  an inequality on a number line
  *   work        "problem: …" and the steps under it, each checked, the
- *               answer boxed when it's done
+ *               answer boxed when it's done; a note after a step's % (its
+ *               look in braces: {hand yellow}), "note: …" under it
  *   python      code, run on ▶ (with every Python cell above it), its
  *               printout, plots and last line's answer under it */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import GraphView, { DEFAULT_WINDOW, type PlotDiv, useAppGraphColors } from "../GraphView";
 import { mathRequest } from "../mathSidecar";
-import type { GraphWindow, NumberLineGraph, SmartResult, WorkHistoryEntry } from "../store";
+import MathInput, { type MathInputHandle } from "../MathInput";
+import type { GraphWindow, Note, NumberLineGraph, SmartResult, WorkHistoryEntry } from "../store";
 import { NumberLine, Tex } from "../ui";
 import { sameWritten } from "../numberLine";
-import { alignedWork, snapshot } from "../workHistory";
+import { alignedRows, alignedWork, cellLatex, snapshot } from "../workHistory";
+import { NoteField, NoteView, readNote, writeNote } from "./notes";
 
 // ---- calc
 
@@ -169,67 +172,264 @@ export function NumberLineCell({ code }: { code: string }) {
 /** the same math, written however (spaces, \\left/\\right) */
 const sameMath = (a: string, b: string) => a.replace(/\\left|\\right|\s/g, "") === b.replace(/\\left|\\right|\s/g, "");
 
-/** a work cell's problem and steps (the problem copied down as the first
- * step — the way Work starts you off — isn't a step) */
-export function readWorkCell(code: string): { problem: string; lines: string[] } {
-  const all = code.split("\n").map((l) => l.trim());
-  const at = all.findIndex((l) => /^problem:/i.test(l));
-  const problem = at >= 0 ? all[at].replace(/^problem:\s*/i, "") : all[0] ?? "";
-  const lines = all.filter((l, i) => l && i !== (at >= 0 ? at : 0));
-  while (lines.length && sameMath(lines[0], problem)) lines.shift();
-  return { problem, lines };
+export interface WorkStep {
+  latex: string;
+  note: Note | null;
+}
+export interface WorkCellData {
+  problem: string;
+  steps: WorkStep[];
+  /** the note under the problem */
+  note: Note | null;
 }
 
+/** a step's line: its math, then — after a % that isn't LaTeX's own \\% — its note */
+function splitStep(line: string): WorkStep {
+  const at = line.search(/(?<!\\)%/);
+  return at < 0 ? { latex: line.trim(), note: null } : { latex: line.slice(0, at).trim(), note: readNote(line.slice(at + 1)) };
+}
+
+/** a work cell: "problem: …", a step a line (each with its note), and
+ * "note: …" for the note under it. The problem copied down as the first
+ * step — the way Work starts you off — isn't a step. */
+export function readWorkCell(code: string): WorkCellData {
+  let problem = "";
+  const steps: WorkStep[] = [];
+  const under: string[] = [];
+  let first = true;
+  for (const raw of code.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^problem:/i.test(line)) problem = line.replace(/^problem:\s*/i, "");
+    else if (/^note:/i.test(line)) under.push(line.replace(/^note:\s*/i, ""));
+    else if (first && !problem && !/%/.test(line)) problem = line; // an old cell: the problem on the first line
+    else steps.push(splitStep(line));
+    first = false;
+  }
+  while (steps.length && sameMath(steps[0].latex, problem)) steps.shift();
+  const note = readNote(under.join("\n"));
+  return { problem, steps: steps.filter((s) => s.latex), note };
+}
+
+export function writeWorkCell(d: WorkCellData): string {
+  const lines = [`problem: ${d.problem.trim()}`];
+  for (const step of d.steps) {
+    if (!step.latex.trim()) continue;
+    const note = writeNote(step.note).replace(/\n+/g, " ");
+    lines.push(note ? `${step.latex.trim()} % ${note}` : step.latex.trim());
+  }
+  const under = writeNote(d.note);
+  if (under) {
+    const [look, ...rest] = [under.match(/^\{[^}]*\} /)?.[0] ?? "", under.replace(/^\{[^}]*\} /, "")];
+    rest[0].split("\n").forEach((text, i) => lines.push(`note: ${i === 0 ? look : ""}${text}`));
+  }
+  return lines.join("\n");
+}
+
+/** a work cell checked: each step's ✓ / ✗, and each step's note (lined up
+ * with the steps the checker read) */
 export function useWorkCell(code: string) {
-  const { problem, lines } = useMemo(() => readWorkCell(code), [code]);
+  const data = useMemo(() => readWorkCell(code), [code]);
   const [entry, setEntry] = useState<WorkHistoryEntry | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
-    if (!problem.trim() || !lines.length) {
+    if (!data.problem.trim() || !data.steps.length) {
       setEntry(null);
       return;
     }
-    snapshot(problem, lines, [], "latex", []).then(
-      (e) => live && (setError(null), setEntry(e)),
+    snapshot(
+      data.problem,
+      data.steps.map((s) => s.latex),
+      data.steps.map(() => ""),
+      "latex",
+      [],
+    ).then(
+      (e) => live && (setError(null), setEntry(e && { ...e, stepNotes: alignNotes(e, data.steps) })),
       (err) => live && setError(String(err).replace(/^Error:\s*/, "")),
     );
     return () => {
       live = false;
     };
-  }, [problem, lines]);
-  return { problem, lines, entry, error };
+  }, [data]);
+  return { ...data, entry, error };
 }
 
-/** the steps lined up at their = signs with ✓ / ✗, the answer boxed */
-export function workLatex(e: WorkHistoryEntry): { work: string; answer: string | null } {
-  const boxed = e.solved && e.steps.length > 0;
+/** each checked step's note: by position when every line was read, else by
+ * its math */
+function alignNotes(e: WorkHistoryEntry, steps: WorkStep[]): (Note | null)[] {
+  if (e.steps.length === steps.length) return steps.map((s) => s.note);
+  const left = [...steps];
+  return e.steps.map((st) => {
+    const at = left.findIndex((s) => sameMath(s.latex, st.latex));
+    return at < 0 ? null : left.splice(at, 1)[0].note;
+  });
+}
+
+/** the steps lined up at their = signs (with ✓ / ✗ when `marks`), the
+ * answer boxed (when `box` and it's done), and each row's note */
+export function workLatex(e: WorkHistoryEntry, { marks = true, box = true } = {}): { work: string; answer: string | null; rowNotes: (Note | null)[]; answerNote: Note | null } {
+  const boxed = box && e.solved && e.steps.length > 0;
   const steps = boxed ? e.steps.slice(0, -1) : e.steps;
-  return { work: alignedWork(e.kind, e.problemLatex, e.problemParts, steps), answer: boxed ? e.steps[e.steps.length - 1].latex : null };
+  const notes = e.stepNotes ?? [];
+  return {
+    work: alignedWork(e.kind, e.problemLatex, e.problemParts, steps, marks),
+    answer: boxed ? e.steps[e.steps.length - 1].latex : null,
+    rowNotes: [null, ...steps.map((_, i) => notes[i] ?? null)],
+    answerNote: boxed ? notes[e.steps.length - 1] ?? null : null,
+  };
+}
+
+/** the work as a table: lined up at its = signs, notes in a column beside */
+function StepsTable({ e }: { e: WorkHistoryEntry }) {
+  const { work, answer, rowNotes, answerNote } = workLatex(e);
+  const rows = alignedRows(work);
+  const noted = rowNotes.some((n) => n?.text.trim()) || !!answerNote?.text.trim();
+  return (
+    <table className="nb-steps">
+      <tbody>
+        {rows.map((cells, k) => (
+          <tr key={k}>
+            {cells.map((c, i) => (
+              <td key={i} className={i % 2 ? "l" : "r"}>
+                {c && <Tex math={cellLatex(c, i)} />}
+              </td>
+            ))}
+            {noted && (
+              <td className="note">
+                <NoteView note={rowNotes[k]} />
+              </td>
+            )}
+          </tr>
+        ))}
+        {answer && (
+          <tr>
+            <td className="ans" colSpan={2}>
+              <span className="nb-box">
+                <Tex math={`\\displaystyle ${answer}`} />
+              </span>
+            </td>
+            {noted && (
+              <td className="note">
+                <NoteView note={answerNote} />
+              </td>
+            )}
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
 }
 
 export function WorkCell({ code }: { code: string }) {
-  const { problem, lines, entry, error } = useWorkCell(code);
-  if (!problem.trim()) return <div className="nb-cell-wait">problem: 2x + 3 = 11 — then a step on each line under it</div>;
+  const { problem, steps, note, entry, error } = useWorkCell(code);
+  if (!problem.trim()) return <div className="nb-cell-wait">The problem, then a step on each line — edit to start</div>;
   if (error) return <div className="nb-cell-error">{error}</div>;
-  if (!lines.length)
+  if (!steps.length)
     return (
       <div className="nb-work">
         <Tex math={problem} block />
-        <div className="nb-cell-wait">Write your steps on the lines under the problem</div>
+        <div className="nb-cell-wait">Add your steps under the problem</div>
       </div>
     );
   if (!entry) return <div className="nb-cell-wait">checking…</div>;
-  const { work, answer } = workLatex(entry);
   return (
     <div className="nb-work">
-      <Tex math={work} block />
-      {answer && (
-        <div className="nb-work-answer">
-          <Tex math={`\\boxed{${answer}}`} block />
+      <StepsTable e={entry} />
+      {note && (
+        <div className="nb-work-note">
+          <NoteView note={note} />
         </div>
       )}
       <span className={`nb-work-status${entry.solved ? " is-solved" : ""}`}>{entry.solved ? "✓ solved" : "not finished"}</span>
+    </div>
+  );
+}
+
+/** Editing a work cell: the problem and each step in math fields (like
+ * Work), a note beside each step and one under the problem. Enter goes
+ * on to a new step; Backspace in an empty one takes it away. */
+export function WorkCellEditor({ code, onChange, onDone }: { code: string; onChange: (code: string) => void; onDone: () => void }) {
+  const [problem, setProblem] = useState(() => readWorkCell(code).problem);
+  const [steps, setSteps] = useState<(WorkStep & { id: number })[]>(() => {
+    const read = readWorkCell(code).steps;
+    return (read.length ? read : [{ latex: "", note: null }]).map((s, i) => ({ ...s, id: i }));
+  });
+  const [note, setNote] = useState<Note | null>(() => readWorkCell(code).note);
+  const nextId = useRef(steps.length);
+  const fields = useRef(new Map<number, MathInputHandle | null>());
+  const focusStep = (id: number) => setTimeout(() => fields.current.get(id)?.focus(), 40);
+  // every change is the cell's code straight away (and the result under it)
+  const changed = (p = problem, s = steps, n = note) => onChange(writeWorkCell({ problem: p, steps: s, note: n }));
+  const setStep = (id: number, patch: Partial<WorkStep>) => {
+    const next = steps.map((s) => (s.id === id ? { ...s, ...patch } : s));
+    setSteps(next);
+    changed(problem, next);
+  };
+  const addAfter = (id: number) => {
+    const at = steps.findIndex((s) => s.id === id);
+    const step = { latex: "", note: null, id: nextId.current++ };
+    const next = [...steps.slice(0, at + 1), step, ...steps.slice(at + 1)];
+    setSteps(next);
+    focusStep(step.id);
+  };
+  const remove = (id: number) => {
+    if (steps.length < 2) return;
+    const at = steps.findIndex((s) => s.id === id);
+    const next = steps.filter((s) => s.id !== id);
+    setSteps(next);
+    changed(problem, next);
+    focusStep(next[Math.max(0, at - 1)].id);
+  };
+  return (
+    <div
+      className="nb-work-edit"
+      onKeyDownCapture={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onDone();
+        }
+      }}
+    >
+      <div className="nb-work-edit-row is-problem">
+        <span className="nb-work-edit-label">Problem</span>
+        <MathInput
+          className="nb-work-math"
+          value={problem}
+          placeholder="2x + 3 = 11"
+          onChange={(latex) => (setProblem(latex), changed(latex))}
+          onEnter={() => focusStep(steps[0].id)}
+        />
+      </div>
+      {steps.map((step, i) => (
+        <div key={step.id} className="nb-work-edit-row">
+          <span className="nb-work-edit-label">{i + 1}</span>
+          <MathInput
+            ref={(h) => void fields.current.set(step.id, h)}
+            className="nb-work-math"
+            value={step.latex}
+            placeholder={i === 0 ? "first step…" : "next step…"}
+            onChange={(latex) => setStep(step.id, { latex })}
+            onEnter={() => addAfter(step.id)}
+            onBackspaceEmpty={() => remove(step.id)}
+          />
+          <NoteField note={step.note} placeholder="a note beside this step" onChange={(n) => setStep(step.id, { note: n })} />
+          <button className="nb-work-edit-x" title="Take this step out" disabled={steps.length < 2} onClick={() => remove(step.id)}>
+            ×
+          </button>
+        </div>
+      ))}
+      <div className="nb-work-edit-foot">
+        <button className="nb-add-btn" onClick={() => addAfter(steps[steps.length - 1].id)}>
+          + step
+        </button>
+        <div className="nb-work-edit-under">
+          <NoteField note={note} placeholder="a note under the problem" multiline onChange={(n) => (setNote(n), changed(problem, steps, n))} />
+        </div>
+        <button className="nb-work-edit-done" onClick={onDone}>
+          Done
+        </button>
+      </div>
     </div>
   );
 }

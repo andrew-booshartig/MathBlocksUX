@@ -99,7 +99,7 @@ export default function LayoutMenu({
           <kbd>drag</kbd> a tab onto any zone or edge
         </span>
         <span>
-          <kbd>⌘1</kbd>–<kbd>⌘8</kbd> jump to a tile
+          <kbd>⌘1</kbd>–<kbd>⌘7</kbd> jump to a tile
         </span>
         <span>
           <kbd>⌘⇧F</kbd> or double-click a tab: fill the window

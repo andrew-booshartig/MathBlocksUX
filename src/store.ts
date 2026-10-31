@@ -447,7 +447,7 @@ export interface CalculatorBlockData extends BlockBase {
   /** the smart calculator's history (pretty math in, answers out) */
   smart?: SmartEntry[];
   /** which of its sections is showing */
-  smartTab?: "calc" | "work" | "graph" | "assignment" | "reference";
+  smartTab?: "calc" | "work" | "graph" | "notebook" | "reference";
   /** a note at the top of Calculate: what this problem is, in plain words */
   smartNote?: string;
   /** fractions typed and shown on one line (3/4), not stacked */

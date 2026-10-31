@@ -954,3 +954,247 @@
     animation: none;
   }
 }
+
+/* ---- worked problems: lined up at their = signs, notes beside them */
+.nb-steps {
+  border-collapse: collapse;
+  margin: 2px 0;
+}
+
+.nb-steps td {
+  padding: 3px 0;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+.nb-steps td.r {
+  text-align: right;
+}
+
+.nb-steps td.l {
+  text-align: left;
+}
+
+.nb-steps td.note {
+  padding-left: 22px;
+  white-space: normal;
+  max-width: 300px;
+}
+
+.nb-steps td.ans {
+  text-align: center;
+  padding-top: 10px;
+  vertical-align: middle;
+}
+
+.nb-box {
+  display: inline-block;
+  padding: 3px 14px;
+  border: 1.5px solid var(--t-text);
+  border-radius: 4px;
+}
+
+.nb-note {
+  font: 14.5px/1.45 "Iowan Old Style", "Palatino", Georgia, serif;
+  color: var(--t-subtle);
+}
+
+.nb-work-note {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--t-line);
+}
+
+/* editing a work cell: the problem and each step in math fields, a note
+   beside each (its look bar shows while you're in it) */
+.nb-work-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 10px 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--t-bg2);
+  border: 1px solid color-mix(in srgb, var(--cell-hue) 40%, var(--t-line));
+}
+
+.nb-work-edit-row {
+  display: grid;
+  grid-template-columns: 56px minmax(160px, 1.3fr) minmax(140px, 1fr) 24px;
+  align-items: start;
+  gap: 8px;
+}
+
+.nb-work-edit-row.is-problem {
+  grid-template-columns: 56px 1fr;
+}
+
+.nb-work-edit-label {
+  padding-top: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--t-muted);
+  text-align: right;
+}
+
+.nb-work-math math-field {
+  border: 1px solid var(--t-line) !important;
+  background: var(--t-bg1) !important;
+  font-size: 18px;
+}
+
+.nb-work-math math-field:focus-within {
+  border-color: color-mix(in srgb, var(--cell-hue) 60%, var(--t-line)) !important;
+}
+
+.nb-work-edit .note-text {
+  min-height: 34px;
+}
+
+.nb-work-edit-x {
+  margin-top: 6px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.nb-work-edit-x:hover:not(:disabled) {
+  background: var(--t-bg4);
+  color: var(--t-text);
+}
+
+.nb-work-edit-x:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.nb-work-edit-foot {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 10px;
+  margin-top: 4px;
+  padding-left: 64px;
+}
+
+.nb-work-edit-done {
+  height: 28px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--cell-hue);
+  color: var(--t-bg1);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+/* ---- the header's print switches */
+.nb-switches {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  padding-top: 4px;
+}
+
+.nb-switches-label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--t-muted);
+}
+
+.nb-switch-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--t-subtle);
+  cursor: pointer;
+}
+
+.nb-switch-toggle input {
+  accent-color: var(--t-pink);
+  margin: 0;
+}
+
+/* ---- the preview: the page itself, white like paper */
+.nb-tool.is-primary {
+  background: var(--t-pink);
+  color: var(--t-bg1);
+  font-weight: 600;
+}
+
+.nb-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--t-bg0) 55%, transparent);
+  animation: menu-in 0.15s ease-out;
+}
+
+.nb-preview {
+  width: min(860px, 100%);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--t-line);
+  border-radius: 14px;
+  background: var(--t-bg2);
+  box-shadow: 0 30px 70px color-mix(in srgb, var(--t-bg0) 70%, transparent);
+  overflow: hidden;
+}
+
+.nb-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid var(--t-line);
+  color: var(--t-text);
+  font-size: 13px;
+}
+
+.nb-preview-buttons {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.nb-preview-page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: none;
+  background: #fff;
+}
+
+/* a note's look bar floats under it (it doesn't push the rows down, so
+   nothing moves when you click away to another field or to Done) */
+.nb-work-edit .note-field {
+  position: relative;
+}
+
+.nb-work-edit .note-tools {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 6;
+  padding: 4px 6px;
+  border: 1px solid var(--t-line);
+  border-radius: 9px;
+  background: var(--t-bg3);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--t-bg0) 45%, transparent);
+}

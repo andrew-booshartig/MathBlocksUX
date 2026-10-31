@@ -2,7 +2,7 @@
  * tab in a zone, and zones split, resized, floated and rearranged however
  * you like — drag a tab onto another zone (or one of its edges, to split
  * it) and a highlight shows where it lands; drag the gaps between zones.
- * Each tile has its own icon and color; ⌘1–⌘8 jump to one, ⌘⇧F (or a
+ * Each tile has its own icon and color; ⌘1–⌘7 jump to one, ⌘⇧F (or a
  * double-click on a tab) fills the window with its zone. Something sent
  * from one tile to another (→ Work, → Graph) makes the tile it lands in
  * glow, so your eye can follow it. The layout is saved with the workspace;
@@ -30,14 +30,13 @@ export const TILES = [
   { id: "reference", title: "Reference", hue: "yellow", blurb: "Any unit conversion, looked up and shown how" },
   { id: "variables", title: "Variables", hue: "green", blurb: "Your saved values — change one and everything follows" },
   { id: "equations", title: "Equations", hue: "pink", blurb: "Formulas ready to fill in, and your own" },
-  { id: "assignment", title: "Assignment", hue: "red", blurb: "The old way to print finished problems — a notebook's Assignment template does it now" },
 ] as const;
 export type TileId = (typeof TILES)[number]["id"];
 
 const tileOf = (id: string) => TILES.find((t) => t.id === id) ?? TILES[0];
 /** a tile's color, for whatever's inside the element it's set on */
 export const hueStyle = (id: string) => ({ "--tile-hue": `var(--t-${tileOf(id).hue})` }) as CSSProperties;
-/** ⌘1 … ⌘8 */
+/** ⌘1 … ⌘7 */
 const shortcut = (id: string) => `⌘${TILES.findIndex((t) => t.id === id) + 1}`;
 
 const THEME = { ...themeDark, name: "matrix", className: "dockview-theme-dark dock-matrix", gap: 6 };
@@ -123,7 +122,7 @@ export const PRESETS: Preset[] = [
     name: "Classic",
     blurb: "Variables · Calculate · Graph over Equations",
     zones: [
-      { tiles: ["calc", "work", "notebook", "assignment"] },
+      { tiles: ["calc", "work", "notebook"] },
       { tiles: ["variables"], from: "calc", dir: "left", share: 0.19 },
       { tiles: ["graph"], from: "calc", dir: "right", share: 0.34 },
       { tiles: ["equations", "reference"], from: "graph", dir: "below", share: 0.38 },
@@ -141,7 +140,7 @@ export const PRESETS: Preset[] = [
     blurb: "Calculate beside Work, the graph under it",
     zones: [
       { tiles: ["calc"] },
-      { tiles: ["work", "notebook", "assignment"], from: "calc", dir: "right", share: 0.42 },
+      { tiles: ["work", "notebook"], from: "calc", dir: "right", share: 0.42 },
       { tiles: ["variables", "equations"], from: "calc", dir: "left", share: 0.19 },
       { tiles: ["graph", "reference"], from: "work", dir: "below", share: 0.42 },
     ],
@@ -158,7 +157,7 @@ export const PRESETS: Preset[] = [
     blurb: "A big graph, Calculate and Variables beside it",
     zones: [
       { tiles: ["graph"] },
-      { tiles: ["calc", "work", "notebook", "assignment"], from: "graph", dir: "right", share: 0.36 },
+      { tiles: ["calc", "work", "notebook"], from: "graph", dir: "right", share: 0.36 },
       { tiles: ["variables", "equations", "reference"], from: "calc", dir: "below", share: 0.42 },
     ],
     boxes: [
@@ -172,7 +171,7 @@ export const PRESETS: Preset[] = [
     name: "Notebook",
     blurb: "The notebook big, Calculate and Work beside it, the graph under them",
     zones: [
-      { tiles: ["notebook", "assignment"] },
+      { tiles: ["notebook"] },
       { tiles: ["calc", "work", "reference"], from: "notebook", dir: "right", share: 0.42 },
       { tiles: ["graph", "variables", "equations"], from: "calc", dir: "below", share: 0.45 },
     ],
@@ -186,16 +185,23 @@ export const PRESETS: Preset[] = [
     id: "focus",
     name: "Focus",
     blurb: "Calculate alone — every other tile a tab away",
-    zones: [{ tiles: ["calc", "work", "graph", "notebook", "variables", "equations", "reference", "assignment"] }],
+    zones: [{ tiles: ["calc", "work", "graph", "notebook", "variables", "equations", "reference"] }],
     boxes: [[0, 0, 100, 100, "calc"]],
   },
 ];
 
 /** a smaller window gets fewer, bigger zones */
 const COMPACT: Zone[] = [
-  { tiles: ["calc", "work", "notebook", "assignment", "reference"] },
+  { tiles: ["calc", "work", "notebook", "reference"] },
   { tiles: ["graph", "variables", "equations"], from: "calc", dir: "right", share: 0.45 },
 ];
+
+/** a saved layout from before a tile was retired (Assignment): its tab goes,
+ * and a zone it leaves empty goes with it */
+function dropRetired(api: DockviewApi) {
+  for (const panel of [...api.panels]) if (!TILES.some((t) => t.id === panel.id)) panel.api.close();
+  for (const group of [...api.groups]) if (!group.panels.length && api.groups.length > 1) api.removeGroup(group);
+}
 
 function build(api: DockviewApi, zones: Zone[]) {
   api.clear();
@@ -432,7 +438,7 @@ export default function CalcDock({
   onOpen: (ids: string[]) => void;
   /** a tile clicked into (or brought forward) */
   onActive: (id: string) => void;
-  /** ⌘1 … ⌘8 */
+  /** ⌘1 … ⌘7 */
   onJump: (id: TileId) => void;
   ref?: Ref<CalcDockHandle>;
 }) {
@@ -473,6 +479,7 @@ export default function CalcDock({
       if (!a) return;
       try {
         a.fromJSON(saved as SerializedDockview);
+        dropRetired(a);
       } catch {
         startLayout(a);
       }
@@ -480,7 +487,7 @@ export default function CalcDock({
     layout: () => api.current?.toJSON() ?? null,
   }));
 
-  // ⌘1–⌘8: to a tile; ⌘⇧F: the zone in use fills the window (and back)
+  // ⌘1–⌘7: to a tile; ⌘⇧F: the zone in use fills the window (and back)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
@@ -514,8 +521,10 @@ export default function CalcDock({
         onReady={({ api: a }) => {
           api.current = a;
           try {
-            if (layout) a.fromJSON(layout as SerializedDockview);
-            else startLayout(a);
+            if (layout) {
+              a.fromJSON(layout as SerializedDockview);
+              dropRetired(a);
+            } else startLayout(a);
           } catch {
             startLayout(a); // a saved layout from an older version: start fresh
           }

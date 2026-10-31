@@ -7,9 +7,9 @@ import { Plotly } from "../PlotlyChart";
 import { mathRequest } from "../mathSidecar";
 import { PRINT_PALETTE, numberLineSvg, sameWritten } from "../numberLine";
 import type { NumberLineGraph } from "../store";
-import { STEPS_CSS, pageMath, snapshot, todayLabel, workTable } from "../workHistory";
+import { STEPS_CSS, noteHtml, pageMath, snapshot, todayLabel, workTable } from "../workHistory";
 import { type CalcLine, type PyOutput, calcAnswer, plots, readWorkCell, workLatex } from "./cells";
-import { type NotebookDoc, metaValue } from "./format";
+import { type NotebookDoc, metaValue, printSwitches } from "./format";
 import { renderMarkdown } from "./markdown";
 
 const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -39,14 +39,24 @@ async function numberLinePicture(latex: string): Promise<string> {
   }
 }
 
-async function workPicture(code: string): Promise<string> {
-  const { problem, lines } = readWorkCell(code);
+async function workPicture(code: string, o: ReturnType<typeof printSwitches>): Promise<string> {
+  const { problem, steps, note } = readWorkCell(code);
   if (!problem.trim()) return "";
-  if (!lines.length) return `<div class="work">${pageMath(`\\displaystyle ${problem}`, true)}</div>`;
-  const entry = await snapshot(problem, lines, [], "latex", []).catch(() => null);
-  if (!entry) return `<div class="work">${pageMath(`\\displaystyle ${problem}`, true)}</div>`;
-  const { work, answer } = workLatex(entry);
-  return `<div class="work">${workTable(work, [], answer ? { latex: answer, note: null } : undefined)}</div>`;
+  const under = o.notes && noteHtml(note) ? `<div class="note-under">${noteHtml(note)}</div>` : "";
+  if (!steps.length) return `<div class="work">${pageMath(`\\displaystyle ${problem}`, true)}</div>${under}`;
+  const entry = await snapshot(
+    problem,
+    steps.map((s) => s.latex),
+    steps.map(() => ""),
+    "latex",
+    [],
+  ).catch(() => null);
+  if (!entry) return `<div class="work">${pageMath(`\\displaystyle ${problem}`, true)}</div>${under}`;
+  // the notes beside the steps the checker read
+  const notes = entry.steps.length === steps.length ? steps.map((s) => s.note) : [];
+  const { work, answer, rowNotes, answerNote } = workLatex({ ...entry, stepNotes: notes }, { marks: o.marks, box: o.box });
+  const html = (n: (typeof rowNotes)[number]) => (o.notes ? noteHtml(n) : null);
+  return `<div class="work">${workTable(work, rowNotes.map(html), answer ? { latex: answer, note: html(answerNote) } : undefined)}</div>${under}`;
 }
 
 function pythonPicture(code: string, out?: PyOutput): string {
@@ -64,6 +74,7 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
   const who = metaValue(doc, "name");
   const meta = [metaValue(doc, "course"), metaValue(doc, "instructor")].filter(Boolean).join(" · ");
   const date = metaValue(doc, "date") || todayLabel();
+  const o = printSwitches(doc);
   let calcAt = 0;
   const body: string[] = [];
   for (const b of doc.blocks) {
@@ -75,8 +86,9 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
       const lines = calc?.[calcAt++] ?? [];
       body.push(`<table class="calc">${lines.map((l) => `<tr><td>${pageMath(l.result?.input_latex ?? l.latex)}</td><td>${l.error ? `<span class="missing">${escape(l.error)}</span>` : pageMath(calcAnswer(l) ?? "")}</td></tr>`).join("")}</table>`);
     } else if (b.lang === "graph") body.push(await graphPicture(b.id));
-    else if (b.lang === "numberline") body.push(await numberLinePicture(b.code.trim().split("\n")[0] ?? ""));
-    else if (b.lang === "work") body.push(await workPicture(b.code));
+    else if (b.lang === "numberline") {
+      if (o.numberLines) body.push(await numberLinePicture(b.code.trim().split("\n")[0] ?? ""));
+    } else if (b.lang === "work") body.push(await workPicture(b.code, o));
     else if (b.lang === "python") body.push(pythonPicture(b.code, py[b.code]));
     else body.push(`<pre class="code">${escape(b.code)}</pre>`);
   }
@@ -105,6 +117,10 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
   .nb-math { margin: 10px 0; text-align: center; }
   .work { break-inside: avoid; overflow-x: auto; font-size: 17px; margin: 8px 0 18px; }
   .box { display: inline-block; border: 1.5px solid #1d2330; border-radius: 3px; padding: 3px 14px; font-size: 18px; }
+  .nt { font-size: 15px; line-height: 1.45; }
+  /* a highlighter prints too (browsers leave backgrounds out unless asked) */
+  .nt.hl { padding: 1px 4px; border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .note-under { margin: -8px 0 18px; padding: 8px 0 0; border-top: 1px dashed #d4d8e0; }
   .calc { border-collapse: collapse; margin: 8px 0 14px; } .calc td { padding: 3px 18px 3px 0; }
   img.graph { display: block; width: 100%; max-width: 560px; margin: 8px auto 16px; break-inside: avoid; }
   .numberline { margin: 8px 0 16px; display: flex; flex-direction: column; align-items: center; gap: 2px; break-inside: avoid; }

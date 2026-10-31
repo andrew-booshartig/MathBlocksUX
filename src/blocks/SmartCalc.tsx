@@ -16,7 +16,6 @@ import {
   useVariables,
 } from "../store";
 import { WorkPad } from "./WorkBlockNode";
-import AssignmentTab from "./AssignmentTab";
 import ReferenceTab, { type CalcLine } from "./ReferenceTab";
 import { mathRequest, useLiveMath } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
@@ -28,7 +27,8 @@ import UnitPicker from "./UnitPicker";
 import EquationsPanel from "./EquationsPanel";
 import XYGraph from "./XYGraph";
 import CalcDock, { type CalcDockHandle, type TileId } from "../calculator/CalcDock";
-import NotebookTile from "../notebook/NotebookTile";
+import NotebookTile, { type NotebookWork } from "../notebook/NotebookTile";
+import { snapshot, withCarriedNotes } from "../workHistory";
 import { sendToNotebook } from "../notebook/inbox";
 import { cellText } from "../notebook/format";
 import { type Equation, type EquationSpaces, spaceName } from "../equations";
@@ -136,7 +136,7 @@ const TABS: { value: Tab; label: string }[] = [
   { value: "calc", label: "Calculate" },
   { value: "work", label: "Work" },
   { value: "graph", label: "Graph" },
-  { value: "assignment", label: "Assignment" },
+  { value: "notebook", label: "Notebook" },
   { value: "reference", label: "Reference" },
 ];
 
@@ -177,6 +177,7 @@ export default function SmartCalc({
   onEquations?: (next: Equation[]) => void;
 }) {
   const updateBlock = useStore((state) => state.updateBlock<CalculatorBlockData>);
+  const languages = useStore((state) => state.languages);
   const entries = data.smart ?? [];
   const variables = data.smartVars ?? [];
   const tab: Tab = data.smartTab && TABS.some((t) => t.value === data.smartTab) ? data.smartTab : "calc";
@@ -511,7 +512,8 @@ export default function SmartCalc({
     try {
       const where = await sendToNotebook(markdown, current()?.smartNotebook);
       if (where !== current()?.smartNotebook) updateBlock(data.id, { smartNotebook: where });
-      dock.current?.show("notebook", true);
+      if (tiled) dock.current?.show("notebook", true);
+      else setTab("notebook");
     } catch (err) {
       setNote(`Couldn't add it to the notebook: ${String(err).replace(/^Error:\s*/, "")}`);
     }
@@ -1526,7 +1528,7 @@ export default function SmartCalc({
           known={known}
           setVariable={setVariableNumber}
           fill={tiled}
-          onNotebook={tiled ? (code) => toNotebook(cellText("graph", code)) : undefined}
+          onNotebook={(code) => toNotebook(cellText("graph", code))}
         />
       )}
       {graphMode === "numberline" && (
@@ -1579,11 +1581,9 @@ export default function SmartCalc({
               <span className="smart-graph-kept">Not in a document — start a problem in Work to keep it with that problem</span>
             )}
             <span className="smart-graph-foot-tools">
-              {tiled && (
-                <button className="smart-vars-action" title="Put this number line in the notebook" onClick={() => toNotebook(cellText("numberline", drawn.latex))}>
-                  → Notebook
-                </button>
-              )}
+              <button className="smart-vars-action" title="Put this number line in the notebook" onClick={() => toNotebook(cellText("numberline", drawn.latex))}>
+                → Notebook
+              </button>
               <button className="smart-vars-action" onClick={clearGraph}>
                 Clear
               </button>
@@ -1612,7 +1612,7 @@ export default function SmartCalc({
         setTab("calc");
         if (typed && typed !== latex.trim()) setNote("Put in place of what was on the line");
       }}
-      onNotebook={tiled ? (problem, lines) => toNotebook(cellText("work", [`problem: ${problem}`, ...lines.filter((l) => l.replace(/\s/g, "") !== problem.replace(/\s/g, ""))].join("\n"))) : undefined}
+      onNotebook={(problem, lines) => toNotebook(cellText("work", [`problem: ${problem}`, ...lines.filter((l) => l.replace(/\s/g, "") !== problem.replace(/\s/g, ""))].join("\n")))}
       onGraph={(latex) => {
         if (/y/.test(latex.replace(/\\[a-zA-Z]+/g, ""))) {
           // an equation in x and y: a line of its own on the xy graph
@@ -1651,13 +1651,39 @@ export default function SmartCalc({
       }}
     />
   );
-  const assignmentBody = (
-    <AssignmentTab
-      work={data.smartWork ?? {}}
-      update={(patch) => updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), ...patch } })}
-      onReopen={() => setTab("work")}
-    />
-  );
+  // ---- the notebook, and what it does with Work: the problems finished
+  // there come in (leaving Work's list), the one in progress can be added
+  // as it stands, a problem can go back to Work to fix — it's where an
+  // assignment is put together now
+  const setWork = (patch: Partial<NonNullable<CalculatorBlockData["smartWork"]>>) => updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), ...patch } });
+  const workNow = data.smartWork ?? {};
+  const notebookWork: NotebookWork = {
+    finished: workNow.history ?? [],
+    take: (ids) => setWork({ history: (current()?.smartWork?.history ?? []).filter((h) => !ids.includes(h.id)) }),
+    giveBack: (entries) => {
+      const have = new Set((current()?.smartWork?.history ?? []).map((h) => h.id));
+      setWork({ history: [...entries.filter((e) => !have.has(e.id)), ...(current()?.smartWork?.history ?? [])] });
+    },
+    inProgress: !!((workNow.lines ?? []).some((l) => l.trim()) && (workNow.workFor ?? workNow.problem ?? "").trim()),
+    fileInProgress: async () => {
+      const w = current()?.smartWork ?? {};
+      const syntax = !w.input || w.input === "visual" ? "latex" : w.input;
+      const entry = await snapshot(w.workFor ?? w.problem ?? "", w.lines ?? [], w.reasons ?? [], syntax, languages).catch(() => null);
+      if (!entry) return null;
+      setWork({ problem: "", lines: [""], reasons: [""], workFor: undefined, graph: undefined, carriedNotes: undefined, guide: undefined });
+      return withCarriedNotes({ ...entry, ...(w.graph ? { graph: w.graph } : {}) }, w.carriedNotes);
+    },
+    reopen: (problem, lines, reasons) => {
+      const w = current()?.smartWork ?? {};
+      if ((w.problem ?? "").trim() || (w.lines ?? []).some((l) => l.trim())) return false;
+      setWork({ problem, lines: lines.length ? lines : [""], reasons, workFor: problem, graph: undefined, carriedNotes: undefined, guide: undefined });
+      setTab("work");
+      return true;
+    },
+    me: workNow.assignment ?? {},
+    rememberMe: (patch) => setWork({ assignment: { ...(current()?.smartWork?.assignment ?? {}), ...patch } }),
+  };
+  const notebookBody = <NotebookTile name={data.smartNotebook} onOpen={(smartNotebook) => updateBlock(data.id, { smartNotebook })} work={notebookWork} />;
   const equationsBody = (
     <EquationsPanel
       mine={myEquations}
@@ -1839,11 +1865,9 @@ export default function SmartCalc({
                     <button className="chip is-handoff" title="Add this answer to the Work tab as your next step" onClick={() => answerToWork(r)}>
                       → Add to Work
                     </button>
-                    {tiled && (
-                      <button className="chip is-handoff" title="Put this line in the notebook — it's worked out there too" onClick={() => toNotebook(cellText("calc", entry.latex))}>
-                        → Notebook
-                      </button>
-                    )}
+                    <button className="chip is-handoff" title="Put this line in the notebook — it's worked out there too" onClick={() => toNotebook(cellText("calc", entry.latex))}>
+                      → Notebook
+                    </button>
                   </div>
                 )}
                 {openSteps === entry.id && r.steps && <StepList steps={r.steps} wrap />}
@@ -1959,16 +1983,13 @@ export default function SmartCalc({
             variables: sideEntries.length + sideExtras.length + blanks.length,
             work: (data.smartWork?.lines ?? []).filter((l) => l.trim()).length,
             graph: graphMode === "xy" ? (data.smartPlot?.xy?.lines ?? []).filter((l) => l.latex.trim()).length : data.smartPlot?.drawn ? 1 : 0,
-            assignment: data.smartWork?.history?.length ?? 0,
+            notebook: data.smartWork?.history?.length ?? 0,
           }}
           tiles={{
             calc: calcMain,
             work: workBody,
             graph: graphBody,
-            notebook: (
-              <NotebookTile name={data.smartNotebook} onOpen={(smartNotebook) => updateBlock(data.id, { smartNotebook })} work={data.smartWork?.history ?? []} />
-            ),
-            assignment: assignmentBody,
+            notebook: notebookBody,
             reference: referenceBody,
             variables: sidebar,
             equations: equationsBody,
@@ -1978,13 +1999,13 @@ export default function SmartCalc({
     );
 
   return (
-    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" || tab === "reference" ? " is-assignment" : ""}`} ref={root}>
+    <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "notebook" || tab === "reference" ? " is-tall" : ""}`} ref={root}>
       {tabs}
 
       {tab === "graph" && graphBody}
       {tab === "work" && workBody}
       {tab === "reference" && referenceBody}
-      {tab === "assignment" && assignmentBody}
+      {tab === "notebook" && <div className="smart-notebook">{notebookBody}</div>}
       {tab === "calc" && (
         <div className="smart-calc-split">
           {sideOpen && sidebar}
