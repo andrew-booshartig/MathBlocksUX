@@ -42,6 +42,7 @@ pub fn run() {
             notebook::trash_notebook,
             notebook::list_templates,
             notebook::save_template,
+            notebook::open_in_neovim,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

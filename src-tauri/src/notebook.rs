@@ -129,6 +129,29 @@ pub fn trash_notebook(app: AppHandle, name: String) -> Result<(), String> {
     fs::rename(dir.join(format!("{name}.md")), trash.join(format!("{name} ({stamp}).md"))).map_err(|e| e.to_string())
 }
 
+/// Opens the notebook in Neovim, in your own terminal (Ghostty, or
+/// Terminal) with your own config — and since the app watches the file,
+/// every :w shows up in the Notebook tile.
+#[tauri::command]
+pub fn open_in_neovim(app: AppHandle, name: String) -> Result<(), String> {
+    use std::process::Command;
+    let path = notebooks_dir(&app)?.join(format!("{}.md", safe_name(&name)?));
+    let nvim = ["/opt/homebrew/bin/nvim", "/usr/local/bin/nvim", "/usr/bin/nvim"]
+        .into_iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .ok_or("Neovim isn't installed (brew install neovim)")?;
+    let path = path.to_string_lossy().into_owned();
+    if std::path::Path::new("/Applications/Ghostty.app").exists() {
+        Command::new("open").args(["-na", "Ghostty.app", "--args", "-e", nvim, &path]).spawn().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    // Terminal: the path quoted for the shell, then for AppleScript
+    let shell = format!("{nvim} '{}'", path.replace('\'', "'\\''"));
+    let script = format!("tell application \"Terminal\"\n  activate\n  do script \"{}\"\nend tell", shell.replace('\\', "\\\\").replace('"', "\\\""));
+    Command::new("osascript").args(["-e", &script]).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Your templates: every .md in the Templates folder, as (name, text).
 #[tauri::command]
 pub fn list_templates(app: AppHandle) -> Result<Vec<(String, String)>, String> {

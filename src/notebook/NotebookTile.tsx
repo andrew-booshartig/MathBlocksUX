@@ -416,6 +416,16 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     const folder = await invoke<string>("notebook_folder").catch(() => null);
     if (folder) revealItemInDir(name ? `${folder}/${name}.md` : folder).catch(() => {});
   };
+  const neovim = async () => {
+    setMenu(false);
+    if (!name) return;
+    try {
+      await invoke("open_in_neovim", { name });
+      setNotice("Opened in Neovim — every :w shows up here");
+    } catch (err) {
+      setError(errorText(err));
+    }
+  };
   const copyPath = async () => {
     setMenu(false);
     const folder = await invoke<string>("notebook_folder").catch(() => null);
@@ -472,6 +482,9 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
               <Icon name="run" size={14} /> Run all
             </button>
           )}
+          <button className="nb-tool" title="Edit this notebook in Neovim, in your own terminal — every :w shows up here" onClick={neovim}>
+            <Icon name="pen" size={14} /> Neovim
+          </button>
           <button
             className={`nb-tool${view === "source" ? " is-on" : ""}`}
             title="The whole file as Markdown, to edit as text"
