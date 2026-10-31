@@ -317,3 +317,25 @@ def test_ans_shows_as_its_decimal():
     assert "40069" not in nxt["input_latex"] and "801.38" in nxt["input_latex"]
     # but worked with exact: √8 squared is 8
     assert op_smart({"latex": r"\mathrm{Ans}^{2}", "ans": op_smart({"latex": r"\sqrt{8}"})["ans"]})["result_latex"] == "8"
+
+
+def test_two_equations_at_once_are_a_system():
+    from mathcore.smartcalc import op_smart
+
+    r = op_smart({"latex": r"2x+y=7\text{ and }x-y=2"})
+    assert r["kind"] == "result" and r["result_latex"] == r"(x, y) = \left(3, 1\right)"
+    assert r["system_lines"] == ["2x + y = 7", "x - y = 2"]
+    assert [o["label"] for o in r["others"]] == ["By elimination"]
+    # the other way: elimination, step by step, checked
+    e = op_smart({"latex": r"2x+y=7,x-y=2", "action": {"kind": "system", "method": "elimination"}})
+    notes = [s["note"] for s in e["steps"]]
+    assert any("Add the equations" in n for n in notes) and notes[-1].startswith("Check")
+    assert e["action"]["method"] == "elimination"
+
+
+def test_a_system_on_two_lines_and_the_same_line_twice():
+    from mathcore.smartcalc import op_smart
+
+    assert op_smart({"latex": r"y=2x+1\\y=-x+4"})["result_latex"] == r"(x, y) = \left(1, 3\right)"
+    same = op_smart({"latex": "x+y=2,2x+2y=4"})
+    assert "infinitely many" in same["result_latex"] and same["others"] == []

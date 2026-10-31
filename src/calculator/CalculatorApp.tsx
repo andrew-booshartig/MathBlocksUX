@@ -12,7 +12,8 @@ import ThemeMenu from "./ThemeMenu";
 import ThemeEditor from "./ThemeEditor";
 import WorkspaceMenu from "./WorkspaceMenu";
 import LayoutMenu, { type SavedLayout } from "./LayoutMenu";
-import type { CalcDockHandle } from "./CalcDock";
+import { type CalcDockHandle, PRESETS, TILES } from "./CalcDock";
+import { type Command, CommandPalette, ShortcutSheet } from "./CommandPalette";
 import Icon from "../Icon";
 import mark from "../assets/mx-mark.png";
 import type { Equation } from "../equations";
@@ -61,6 +62,25 @@ export default function CalculatorApp() {
   const dock = useRef<CalcDockHandle | null>(null);
   const [layouts, setLayouts] = useState<SavedLayout[]>([]);
   const [layoutOpen, setLayoutOpen] = useState(false);
+  /** ⌘K: commands; ⌘?: the shortcut sheet */
+  const [palette, setPalette] = useState(false);
+  const [sheet, setSheet] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      if (e.key.toLowerCase() === "k" && !e.shiftKey) {
+        e.preventDefault();
+        setSheet(false);
+        setPalette((open) => !open);
+      } else if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+        e.preventDefault();
+        setPalette(false);
+        setSheet((open) => !open);
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
   /** a change not yet in the workspace's file (the dot on its name pulses) */
   const [unsaved, setUnsaved] = useState(false);
   /** the equations that have a workspace of their own (worked on before) */
@@ -200,6 +220,18 @@ export default function CalculatorApp() {
     invoke("save_workspace", { name: SETTINGS, data: { theme: themeName, workspace: active, equations, layouts } }).catch(() => {});
   }, [themeName, active, equations, layouts]);
 
+  /** everything ⌘K offers */
+  const commands = (): Command[] => [
+    ...TILES.map((t, i) => ({ id: `tile:${t.id}`, label: `Go to ${t.title}`, group: "Tile", icon: t.id, keys: `⌘${i + 1}`, run: () => dock.current?.show(t.id, true) })),
+    { id: "fill", label: "Fill the window with this zone (or bring the rest back)", group: "Tiles", icon: "maximize", keys: "⌘⇧F", run: () => dock.current?.fill() },
+    ...PRESETS.map((p) => ({ id: `preset:${p.id}`, label: `${p.name} layout`, group: "Layout", icon: "layout", run: () => dock.current?.preset(p.id) })),
+    ...layouts.map((l) => ({ id: `mine:${l.name}`, label: `${l.name} layout`, group: "Your layout", icon: "layout", run: () => dock.current?.load(l.layout) })),
+    { id: "ws:scratch", label: "Open Scratch", group: "Workspace", icon: "folder", run: () => openWorkspace(null) },
+    ...workspaces.map((w) => ({ id: `ws:${w}`, label: `Open ${w}`, group: "Workspace", icon: "folder", run: () => openWorkspace(w) })),
+    ...themes.map((t) => ({ id: `theme:${t.name}`, label: `${t.name} theme`, group: "Theme", icon: "eye", run: () => setThemeName(t.name) })),
+    { id: "sheet", label: "Keyboard shortcuts", group: "Help", icon: "text", keys: "⌘?", run: () => setSheet(true) },
+  ];
+
   const openFolder = async () => {
     try {
       await revealItemInDir(await invoke<string>("theme_folder"));
@@ -227,6 +259,10 @@ export default function CalculatorApp() {
           </button>
         </span>
         <span className="calc-app-tools" data-tauri-drag-region>
+          <button className="calc-app-layout" title="Commands — anything, by name (⌘K)" onClick={() => setPalette(true)}>
+            <Icon name="zoom" size={15} />
+            <kbd className="calc-app-kbd">⌘K</kbd>
+          </button>
           <button className={`calc-app-layout${layoutOpen ? " is-on" : ""}`} title="Layouts — ready-made arrangements of the tiles, and yours" onClick={() => setLayoutOpen((o) => !o)}>
             <Icon name="layout" size={15} />
             <span className="calc-app-label">Layout</span>
@@ -237,6 +273,8 @@ export default function CalculatorApp() {
           </button>
         </span>
       </header>
+      {palette && <CommandPalette commands={commands()} onClose={() => setPalette(false)} />}
+      {sheet && <ShortcutSheet onClose={() => setSheet(false)} />}
       {layoutOpen && (
         <LayoutMenu
           saved={layouts}

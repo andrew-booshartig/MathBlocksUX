@@ -506,6 +506,17 @@ export default function SmartCalc({
       retype(entry, `${nameTex(parts.name)}=${scaled}${parts.rest}`);
     }
   };
+  /** lines onto the xy graph (ones already there aren't added twice), and
+   * the graph comes forward */
+  const graphXY = (latexes: string[]) => {
+    const plot = current()?.smartPlot ?? {};
+    const kept = (plot.xy?.lines ?? []).filter((l) => l.latex.trim());
+    const plain = (t: string) => t.replace(/\s/g, "");
+    const fresh = latexes.filter((t) => !kept.some((l) => plain(l.latex) === plain(t))).map((latex) => ({ id: newId("xy"), latex }));
+    updateBlock(data.id, { smartPlot: { ...plot, mode: "xy", xy: { ...(plot.xy ?? {}), lines: [...kept, ...fresh] } } });
+    setTab("graph");
+  };
+
   /** something sent to the notebook (→ Notebook): onto the end of the open
    * one (a new "Notes" one if none is open), and the notebook comes forward */
   const toNotebook = async (markdown: string) => {
@@ -1616,10 +1627,7 @@ export default function SmartCalc({
       onGraph={(latex) => {
         if (/y/.test(latex.replace(/\\[a-zA-Z]+/g, ""))) {
           // an equation in x and y: a line of its own on the xy graph
-          const plot = current()?.smartPlot ?? {};
-          const kept = (plot.xy?.lines ?? []).filter((l) => l.latex.trim());
-          updateBlock(data.id, { smartPlot: { ...plot, mode: "xy", xy: { ...(plot.xy ?? {}), lines: [...kept, { id: newId("xy"), latex }] } } });
-          setTab("graph");
+          graphXY([latex]);
           return;
         }
         // into the Graph tab's line — drawn when Graph is pressed
@@ -1763,6 +1771,11 @@ export default function SmartCalc({
             {r.work && (
               <button className="chip is-handoff" title="Into the Work tab, with how it's solved beside your lines" onClick={() => showWork(r.work_latex ?? entry.latex, r.steps)}>
                 ✎ Show work
+              </button>
+            )}
+            {r.system_lines && (
+              <button className="chip is-handoff" title="Both lines on the xy graph — they cross at the answer" onClick={() => graphXY(r.system_lines!)}>
+                → Graph
               </button>
             )}
           </>

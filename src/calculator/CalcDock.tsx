@@ -418,6 +418,8 @@ export interface CalcDockHandle {
   load: (layout: object) => void;
   /** the layout as it is now, to save */
   layout: () => object | null;
+  /** the zone in use fills the window (or everything comes back) */
+  fill: () => void;
 }
 
 export default function CalcDock({
@@ -485,6 +487,10 @@ export default function CalcDock({
       }
     },
     layout: () => api.current?.toJSON() ?? null,
+    fill: () => {
+      const group = api.current?.activeGroup;
+      if (group && group.api.location.type === "grid") toggleMaximize(group.api);
+    },
   }));
 
   // ⌘1–⌘7: to a tile; ⌘⇧F: the zone in use fills the window (and back)

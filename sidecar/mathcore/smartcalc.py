@@ -25,7 +25,7 @@ from .calculator import _fmt_decimal, op_calc
 from .parsing import MathInputError, build_scope, parse, step, tex
 from . import chain, units
 from .arith import arithmetic_steps
-from .solve import interval_tex, op_solve, set_relational_tex, set_to_segments
+from .solve import interval_tex, op_solve, set_relational_tex, set_to_segments, solve_system
 from .transform import op_transform
 
 # how the engines above read text: 2*x, x^2, one "=" for equals
@@ -480,6 +480,11 @@ def _smart(req: dict) -> dict:
         raise MathInputError("one → per line")
     if len(arrow) == 2:
         return _convert_line(req, arrow[0], arrow[1])
+    # two equations at once — 2x + y = 7, x − y = 2 — a system: solved
+    # together, by substitution or by elimination
+    parts = _system_parts(latex)
+    if parts:
+        return _system_line(req, parts)
     vars_ = req.get("vars") or {}
     functions = [k.split("(")[0] for k in vars_ if "(" in k]
     saving = _NEW_NAME.match(latex)
@@ -628,6 +633,54 @@ def _smart(req: dict) -> dict:
         "ans": result if action["kind"] != "solve" else None,
         # the other things this line could do, offered as one-tap chips
         "others": [a for a in actions if a != action],
+    }
+
+
+_ORDERING = re.compile(r"\\(le|ge|lt|gt|leq|geq|neq?)(?![a-zA-Z])|[<>]")
+
+
+def _system_parts(latex: str) -> list[str] | None:
+    """equations side by side — split at a comma, ;, "and" or a new line
+    that isn't inside brackets — when there are two or more, each with one =
+    (a point like (2, 5) isn't two equations)"""
+    text = re.sub(r"\\text\{\s*and\s*\}", "\x00", latex)
+    text = re.sub(r"\\\\", "\x00", text)
+    parts, depth, start = [], 0, 0
+    for i, ch in enumerate(text):
+        if ch in "({[":
+            depth += 1
+        elif ch in ")}]":
+            depth -= 1
+        elif depth == 0 and ch in ",;\x00":
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    parts = [p.strip().strip("\\,").strip() for p in parts if p.strip()]
+    if len(parts) < 2 or any(p.count("=") != 1 or _ORDERING.search(p) for p in parts):
+        return None
+    return parts
+
+
+def _system_line(req: dict, parts: list[str]) -> dict:
+    vars_ = req.get("vars") or {}
+    nodes = [lang.parse(p, "latex") for p in parts]
+    want = (req.get("action") or {}).get("method", "auto")
+    out = solve_system([lang.write(n, "plain", PLAIN) for n in nodes], vars_, want)
+    steps = out.get("steps", [])
+    used = "elimination" if any("Add the equations" in s.get("note", "") for s in steps) else "substitution"
+    # the other way to solve it, one tap away (a 2×2 with one answer)
+    two_by_two = len(parts) == 2 and len(out.get("variables", [])) == 2 and len(out.get("points") or []) == 1
+    method = lambda m: {"kind": "system", "method": m, "label": f"By {m}"}  # noqa: E731
+    lines = [lang.latex(n) for n in nodes]
+    return {
+        "kind": "result",
+        "input_latex": "\\begin{cases} " + " \\\\ ".join(lines) + " \\end{cases}",
+        "result_latex": out.get("solution_latex", ""),
+        "steps": steps,
+        "action": method(used),
+        "others": [method(m) for m in ("substitution", "elimination") if m != used] if two_by_two else [],
+        "ans": None,
+        "system_lines": lines,
     }
 
 

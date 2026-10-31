@@ -388,6 +388,8 @@ export interface SmartResult {
   value_latex?: string;
   /** can it go to the Work tab? */
   work?: boolean;
+  /** a system: its equations, each to graph (they cross at its answer) */
+  system_lines?: string[];
   /** the line with the variables' values filled in, for the Work tab */
   work_latex?: string;
 }
