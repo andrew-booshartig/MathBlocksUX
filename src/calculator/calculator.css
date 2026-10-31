@@ -427,3 +427,237 @@ body {
   opacity: 0.4;
   cursor: default;
 }
+
+/* ---- tiles: the app's parts in zones you split, resize and rearrange */
+.calc-app-main:has(> .smart-calc.is-tiled) {
+  padding: 4px;
+  overflow: hidden;
+}
+
+.smart-calc.is-tiled {
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+.calc-dock {
+  flex: 1;
+  min-height: 0;
+}
+
+.dock-matrix {
+  --dv-group-view-background-color: var(--t-bg2);
+  --dv-tabs-and-actions-container-background-color: var(--t-bg1);
+  --dv-tabs-and-actions-container-height: 32px;
+  --dv-tabs-and-actions-container-font-size: 12.5px;
+  --dv-activegroup-visiblepanel-tab-background-color: var(--t-bg2);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--t-bg2);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--t-text);
+  --dv-activegroup-hiddenpanel-tab-color: var(--t-muted);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--t-subtle);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--t-muted);
+  --dv-tab-divider-color: transparent;
+  --dv-separator-border: transparent;
+  --dv-paneview-header-border-color: var(--t-line);
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--t-pink);
+  --dv-icon-hover-background-color: var(--t-bg4);
+  --dv-drag-over-background-color: color-mix(in srgb, var(--t-pink) 22%, transparent);
+  --dv-drag-over-border-color: var(--t-pink);
+  --dv-border-radius: 10px;
+  --dv-tab-border-radius: 8px 8px 0 0;
+  --dv-scrollbar-background-color: var(--t-bg4);
+  --dv-tabs-container-scrollbar-color: var(--t-bg4);
+  --dv-context-menu-background-color: var(--t-bg3);
+  --dv-context-menu-color: var(--t-text);
+  --dv-floating-box-shadow: 0 10px 34px color-mix(in srgb, var(--t-bg0) 60%, transparent);
+  background: var(--t-bg1);
+  color: var(--t-text);
+}
+
+/* each zone: a rounded card, its tabs on top */
+.dock-matrix .dv-groupview {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--t-line);
+}
+
+.dock-matrix .dv-groupview.dv-active-group {
+  border-color: color-mix(in srgb, var(--t-pink) 35%, var(--t-line));
+}
+
+.dock-matrix .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--t-line);
+}
+
+.dock-matrix .dv-tab {
+  padding: 0 12px;
+}
+
+/* a tile: its part, filling the zone, scrolling on its own */
+.dock-tile {
+  height: 100%;
+  overflow: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.dock-tile.is-calc {
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.dock-tile.is-calc > .smart-calc-main {
+  flex: 1 1 auto;
+}
+
+/* Variables and Equations were side columns; as tiles they're the whole tile */
+.dock-tile > .smart-side {
+  flex: 1 1 auto;
+  padding-right: 0;
+  border-right: none;
+  animation: none;
+}
+
+.dock-tile > .eq-side {
+  position: static;
+  flex: 1 1 auto;
+  width: auto;
+  padding: 0;
+  border-left: none;
+  box-shadow: none;
+  background: none;
+  animation: none;
+}
+
+/* the tile's own name says what it is; its old tuck-away arrow closes the tile */
+.dock-tile > .smart-side > .smart-side-head,
+.dock-tile > .eq-side > .smart-side-head {
+  display: none;
+}
+
+.dock-tile.is-assignment > *,
+.dock-tile.is-reference > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ＋ and ⤢ at the right of each zone's tabs */
+.dock-actions {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+.dock-action {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--t-muted);
+  font-size: 14px;
+  line-height: 22px;
+  padding: 0 7px;
+  cursor: pointer;
+}
+
+.dock-action:hover {
+  background: var(--t-bg4);
+  color: var(--t-text);
+}
+
+.dock-menu {
+  position: fixed;
+  z-index: 1000;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--t-bg3);
+  border: 1px solid var(--t-line);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--t-bg0) 55%, transparent);
+}
+
+.dock-menu-head {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-muted);
+  padding: 4px 8px 2px;
+}
+
+.dock-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  color: var(--t-text);
+  font-size: 13px;
+  text-align: left;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.dock-menu-item:hover {
+  background: var(--t-bg4);
+}
+
+.dock-menu-item.is-here {
+  color: var(--t-muted);
+}
+
+.dock-menu-note {
+  font-size: 11px;
+  color: var(--t-muted);
+}
+
+.dock-menu-line {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--t-line);
+}
+
+/* an empty zone: every tile, to pick one for it */
+.dock-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--t-bg2);
+}
+
+.dock-empty-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  max-width: 320px;
+}
+
+.dock-empty-list .dock-menu-item {
+  border: 1px solid var(--t-line);
+}
+
+.dock-empty-close {
+  margin-top: 6px;
+  background: none;
+  border: none;
+  color: var(--t-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dock-empty-close:hover {
+  color: var(--t-text);
+}

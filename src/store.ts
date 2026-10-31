@@ -477,6 +477,8 @@ export interface CalculatorBlockData extends BlockBase {
   /** its Graph tab: which kind of graph, and the last one drawn (only when
    * Graph is pressed) */
   smartPlot?: { mode?: "numberline" | "xy" | "xyz"; drawn?: NumberLineGraph; xy?: XYPlot };
+  /** the calculator app's tiles: how its zones are split and what's in each */
+  smartLayout?: object;
   /** its Work section: the same data as a Show-your-work block */
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
   ti?: TIState;

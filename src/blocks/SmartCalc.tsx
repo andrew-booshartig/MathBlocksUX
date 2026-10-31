@@ -27,6 +27,7 @@ import { nameOf } from "../calcNames";
 import UnitPicker from "./UnitPicker";
 import EquationsPanel from "./EquationsPanel";
 import XYGraph from "./XYGraph";
+import CalcDock, { type CalcDockHandle, type TileId } from "../calculator/CalcDock";
 import { type Equation, type EquationSpaces, spaceName } from "../equations";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
@@ -155,8 +156,14 @@ export default function SmartCalc({
   equations,
   onEquations,
   spaces,
+  tiled,
+  layoutKey,
 }: {
   data: CalculatorBlockData;
+  /** as tiles in zones you arrange (the calculator app), not tabs */
+  tiled?: boolean;
+  /** the workspace open: each keeps its own arrangement of tiles */
+  layoutKey?: string;
   /** each equation in a workspace of its own (the calculator app) */
   spaces?: EquationSpaces;
   /** your saved equations — the app keeps them for every workspace */
@@ -223,6 +230,9 @@ export default function SmartCalc({
   /** a tab opened on purpose (clicked, or a hand-off): put the cursor there —
    * never on load, so a canvas full of calculators doesn't fight for it */
   const focusOn = useRef<Tab | null>(null);
+  /** the tiles (the calculator app): which are open, and a hand on them */
+  const dock = useRef<CalcDockHandle>(null);
+  const [openTiles, setOpenTiles] = useState<string[]>([]);
   const setTab = (smartTab: Tab) => {
     focusOn.current = smartTab;
     updateBlock(data.id, { smartTab });
@@ -888,25 +898,31 @@ export default function SmartCalc({
   }
 
   /** the variables sidebar pops out and tucks away (⌘B) — open unless tucked */
-  const sideOpen = data.smartSide !== false;
-  const setSideOpen = (open: boolean) => updateBlock(data.id, { smartSide: open ? undefined : false });
+  const sideOpen = tiled ? openTiles.includes("variables") : data.smartSide !== false;
+  const setSideOpen = (open: boolean) =>
+    tiled ? (open ? dock.current?.show("variables") : dock.current?.close("variables")) : updateBlock(data.id, { smartSide: open ? undefined : false });
+  /** the Equations sidebar, on the right (⌘E) */
+  const eqOpen = tiled ? openTiles.includes("equations") : !!data.smartEqSide;
+  const setEqOpen = (open: boolean) =>
+    tiled ? (open ? dock.current?.show("equations") : dock.current?.close("equations")) : updateBlock(data.id, { smartEqSide: open || undefined });
+  // tiles: a hand-off to another part (→ Work, → Graph) brings its tile forward
   useEffect(() => {
-    if (tab !== "calc") return;
+    if (tiled) dock.current?.show(tab as TileId);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (tab !== "calc" && !tiled) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       const key = e.key.toLowerCase();
-      if (key === "b") updateBlock(data.id, { smartSide: current()?.smartSide === false ? undefined : false });
-      else if (key === "e") updateBlock(data.id, { smartEqSide: current()?.smartEqSide ? undefined : true });
+      if (key === "b") setSideOpen(!sideOpen);
+      else if (key === "e") setEqOpen(!eqOpen);
       else return;
       e.preventDefault();
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, sideOpen, eqOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** the Equations sidebar, on the right (⌘E) */
-  const eqOpen = !!data.smartEqSide;
-  const setEqOpen = (open: boolean) => updateBlock(data.id, { smartEqSide: open || undefined });
   const myEquations = equations ?? data.smartEquations ?? [];
   const saveEquations = (next: Equation[]) => (onEquations ? onEquations(next) : updateBlock(data.id, { smartEquations: next.length ? next : undefined }));
   const blanks = data.smartBlanks ?? [];
@@ -1455,435 +1471,465 @@ export default function SmartCalc({
     </aside>
   );
 
+  const graphBody = (
+    <div className="smart-graph">
+      <div className="smart-graph-modes" role="tablist">
+        {GRAPH_MODES.map((m) => (
+          <button
+            key={m.value}
+            className={`smart-graph-mode${graphMode === m.value ? " is-on" : ""}`}
+            disabled={m.soon}
+            title={m.soon ? "Coming next" : undefined}
+            onClick={() => updateBlock(data.id, { smartPlot: { ...(current()?.smartPlot ?? {}), mode: m.value } })}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {graphMode === "xy" && (
+        <XYGraph
+          plot={data.smartPlot?.xy ?? {}}
+          update={(patch) => {
+            const plot = current()?.smartPlot ?? {};
+            updateBlock(data.id, { smartPlot: { ...plot, xy: { ...(plot.xy ?? {}), ...patch } } });
+          }}
+          vars={vars}
+          known={known}
+          setVariable={setVariableNumber}
+        />
+      )}
+      {graphMode === "numberline" && (
+      <>
+      <div className="smart-graph-line">
+        <MathInput
+          ref={graphField}
+          className="smart-graph-field"
+          value={graphLine}
+          placeholder="x < −2 or x > 5"
+          onChange={(latex) => {
+            setGraphLine(latex);
+            setGraphError(null);
+          }}
+          onEnter={drawGraph}
+        />
+        <button className="smart-graph-go" onClick={drawGraph}>
+          Graph
+        </button>
+      </div>
+      {graphError && <div className="smart-graph-error">{graphError}</div>}
+      {drawn ? (
+        <div className="smart-graph-result">
+          <div className="smart-graph-label">
+            <Tex math={drawn.latex} />
+          </div>
+          <NumberLine segments={drawn.segments} width={320} parts={drawn.parts} />
+          {/* the picture already says it for no solution (∅) */}
+          {drawn.segments.length > 0 && (!sameWritten(drawn.latex, drawn.solution) || drawn.interval) && (
+            <div className="smart-graph-together">
+              {!sameWritten(drawn.latex, drawn.solution) && (
+                <span>
+                  together: <Tex math={drawn.solution} />
+                </span>
+              )}
+              {drawn.interval && (
+                // single values ({4}) are a set, not an interval
+                <span title="The same solution set, written as a set">
+                  {drawn.interval.includes("\\{") ? "set notation" : "interval notation"}: <Tex math={drawn.interval} />
+                </span>
+              )}
+            </div>
+          )}
+          <div className="smart-graph-foot">
+            {drawnForWork ? (
+              <span className="smart-graph-kept" title="When this work is saved as a document, this problem has its number line">
+                Kept with your Work problem <Tex math={data.smartWork?.problem ?? ""} />
+              </span>
+            ) : (
+              <span className="smart-graph-kept">Not in a document — start a problem in Work to keep it with that problem</span>
+            )}
+            <button className="smart-vars-action" onClick={clearGraph}>
+              Clear
+            </button>
+          </div>
+        </div>
+      ) : (
+        !graphError && <div className="smart-graph-hint">Simplify it first, type it here, then press Graph.</div>
+      )}
+      </>
+      )}
+    </div>
+  );
+  const workBody = (
+    <WorkPad
+      data={workData}
+      update={(patch) => updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), ...patch } })}
+      frame={tabFrame("smart-tab-work")}
+      autoFocus={focusOn.current === "work"}
+      onReset={clearOwnVariables}
+      insert={workInsert ?? undefined}
+      onCalculate={(latex) => {
+        // onto the Calculate line (in place of anything half-typed there)
+        const typed = draft.trim();
+        setDraft(latex);
+        setTab("calc");
+        if (typed && typed !== latex.trim()) setNote("Put in place of what was on the line");
+      }}
+      onGraph={(latex) => {
+        if (/y/.test(latex.replace(/\\[a-zA-Z]+/g, ""))) {
+          // an equation in x and y: a line of its own on the xy graph
+          const plot = current()?.smartPlot ?? {};
+          const kept = (plot.xy?.lines ?? []).filter((l) => l.latex.trim());
+          updateBlock(data.id, { smartPlot: { ...plot, mode: "xy", xy: { ...(plot.xy ?? {}), lines: [...kept, { id: newId("xy"), latex }] } } });
+          setTab("graph");
+          return;
+        }
+        // into the Graph tab's line — drawn when Graph is pressed
+        setGraphLine(latex);
+        setGraphError(null);
+        setTab("graph");
+        setTimeout(() => graphField.current?.focus(), 60);
+      }}
+    />
+  );
+  const referenceBody = (
+    <ReferenceTab
+      lookup={data.smartReference}
+      update={(smartReference) => updateBlock(data.id, { smartReference })}
+      onTry={playLines}
+      onUnit={(symbol, to) => {
+        // a unit from the sheet, onto the line in Calculate or Work
+        const latex = `\\,\\mathrm{${symbol}}`;
+        if (to === "work") {
+          setWorkInsert((w) => ({ latex, n: (w?.n ?? 0) + 1 }));
+          setTab("work");
+        } else {
+          setTab("calc");
+          setTimeout(() => {
+            field.current?.insert(latex);
+            field.current?.focus();
+          }, 80);
+        }
+      }}
+    />
+  );
+  const assignmentBody = (
+    <AssignmentTab
+      work={data.smartWork ?? {}}
+      update={(patch) => updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), ...patch } })}
+      onReopen={() => setTab("work")}
+    />
+  );
+  const equationsBody = (
+    <EquationsPanel
+      mine={myEquations}
+      onSave={saveEquations}
+      spaces={spaces}
+      onLoad={async (eq) => {
+        // its own workspace: back to where you were, or fresh with its letters
+        if (spaces && !(await spaces.open(spaceName(eq)))) return updateBlock(data.id, { smartEqSide: true, smartSide: undefined });
+        if (spaces) updateBlock(data.id, { smartEqSide: true });
+        await loadEquation(eq);
+      }}
+      onClose={() => setEqOpen(false)}
+    />
+  );
+  const calcMain = (
+    <div className="smart-calc-main">
+    {/* a quiet bar: the variables fold away behind a count (type a name
+        and Enter to see its value), and Clear all */}
+    <div className="smart-bar">
+      {!sideOpen && (
+        <button className="smart-vars-toggle" title="Show your variables (⌘B)" onClick={() => setSideOpen(true)}>
+          Variables · {sideEntries.length + sideExtras.length + blanks.length} ›
+        </button>
+      )}
+      {data.smartNote === undefined && !noting && (
+        <button className="smart-vars-action" title="A note at the top — what this problem is, in plain words" onClick={() => setNoting(true)}>
+          + Note
+        </button>
+      )}
+      {wiped ? (
+        <button className="smart-vars-action is-undo" title="Bring back what was just cleared" onClick={undoClear}>
+          ↶ Undo
+        </button>
+      ) : (
+        (entries.length > 0 || variables.length > 0) && (
+          <button className="smart-vars-action" title="Clear every answer and this calculator's variables (or type clear) — Undo brings them back" onClick={clearEverything}>
+            Clear all
+          </button>
+        )
+      )}
+      {!eqOpen && (
+        <button className="smart-vars-toggle smart-eq-toggle" title="Equations — click one to load its letters into Variables (⌘E)" onClick={() => setEqOpen(true)}>
+          ‹ Equations
+        </button>
+      )}
+    </div>
+    {/* the history: a fixed-height window that scrolls, so the calculator
+        stays one size however many answers there are */}
+    {(data.smartNote !== undefined || noting) && (
+      <div className="smart-note-box">
+        {noting ? (
+          <textarea
+            className="smart-note-edit nodrag"
+            autoFocus
+            defaultValue={data.smartNote ?? ""}
+            placeholder="What's this problem? In your own words…"
+            onBlur={(e) => {
+              const text = e.currentTarget.value.trim();
+              updateBlock(data.id, { smartNote: text || undefined });
+              setNoting(false);
+            }}
+            onKeyDown={(e) => e.key === "Escape" && e.currentTarget.blur()}
+          />
+        ) : (
+          <button className="smart-note-text" title="Click to edit the note" onClick={() => setNoting(true)}>
+            <RichText text={data.smartNote ?? ""} />
+          </button>
+        )}
+      </div>
+    )}
+    <div className={`smart-tape${tapeScrolled ? " is-scrolled" : ""}`} ref={tape} onScroll={(e) => setTapeScrolled(e.currentTarget.scrollTop > 4)}>
+      {!tapeEntries.length && <div className="smart-empty">Type math — numbers, x, an equation, or r = 4 to save a value — and press Enter.</div>}
+      {tapeEntries.map((entry) => {
+        const r = entry.result;
+        const handoffs = (
+          <>
+            {r.work && (
+              <button className="chip is-handoff" title="Into the Work tab, with how it's solved beside your lines" onClick={() => showWork(r.work_latex ?? entry.latex, r.steps)}>
+                ✎ Show work
+              </button>
+            )}
+          </>
+        );
+        // on hover: name it, or put its answer on the line with + − × ÷
+        const tools = (
+          <span className="smart-tape-tools">
+            {lockButton(entry)}
+            <button className="smart-tape-tool" title={entry.label ? "Rename it" : "Name it — rent, tip…"} onClick={() => setLabeling(entry.id)}>
+              🏷
+            </button>
+            {r.ans &&
+              TAPE_OPS.map((op) => (
+                <button
+                  key={op.label}
+                  className="smart-tape-tool is-op"
+                  title={`${op.title} ${plainMath(decimalTex(r) ?? r.ans!)} — onto the end of the line`}
+                  onPointerDown={(e) => e.preventDefault() /* keep the cursor in the line */}
+                  onClick={() => combine(op, decimalTex(r) ?? r.ans!)}
+                >
+                  {op.label}
+                </button>
+              ))}
+          </span>
+        );
+        const label = labelView(entry);
+        return (
+          <div key={entry.id} className={`smart-entry${isLocked(entry) ? " is-locked" : ""}`}>
+            {tools}
+            {isLocked(entry) && lockButton(entry)}
+            {label}
+            <button
+              className="smart-in"
+              title="Put this in the line (at the cursor)"
+              onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
+              onClick={() => reuse(entry.latex)}
+            >
+              <Tex math={fullSize(asLine(r.input_latex))} />
+            </button>
+            {ansFrom.get(entry.id) && (
+              <span className="smart-ans-from" title="What Ans was on this line — the named answer before it">
+                Ans = <Tex math={decimalTex(ansFrom.get(entry.id)!.result) ?? ansFrom.get(entry.id)!.result.ans ?? ""} /> {ansFrom.get(entry.id)!.label}
+              </span>
+            )}
+            {r.kind === "choose" ? (
+              <div className="smart-choose">
+                <span>What should I do?</span>
+                {(r.choices ?? []).map((c) => (
+                  <button key={c.label} className="chip" onClick={() => run(entry.latex, c, entry.id)}>
+                    {c.label}
+                  </button>
+                ))}
+                {handoffs}
+              </div>
+            ) : (
+              <>
+                {(() => {
+                  const exact = r.action?.kind === "solve" ? asStep(r).replace(/^[a-zA-Z]\s*=\s*/, "") : asStep(r);
+                  // two answers side by side — the exact one and its decimal — each its own click
+                  const decimal = showsDecimal(r) || (r.kind === "result" && /\\approx/.test(r.result_latex ?? "")) ? decimalOf(r) : null;
+                  const keep = (e: React.PointerEvent) => e.preventDefault(); /* keep the cursor where it is */
+                  return decimal ? (
+                    <div className="smart-out is-split">
+                      <button className="smart-part" title="Put the exact answer in the line" onPointerDown={keep} onClick={() => reuse(exact)}>
+                        <Tex math={fullSize(asLine(asStep(r)))} />
+                        {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
+                      </button>
+                      <button className="smart-part smart-decimal" title="Put the decimal in the line" onPointerDown={keep} onClick={() => reuse(decimal)}>
+                        <Tex math={`\\approx ${decimal}`} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="smart-out"
+                      title="Put this answer in the line (at the cursor)"
+                      onPointerDown={keep}
+                      onClick={() => r.result_latex && reuse(decimalOnly(r) ? decimalTex(r)! : exact)}
+                    >
+                      <Tex math={fullSize(decimalOnly(r) ? `\\approx ${decimalTex(r)}` : asLine(r.result_latex ?? ""))} />
+                      {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
+                    </button>
+                  );
+                })()}
+                {r.kind !== "truth" && (
+                  <div className="smart-more">
+                    {(r.others ?? []).map((o) => (
+                      <button key={o.label} className="chip" onClick={() => run(entry.latex, o, entry.id)}>
+                        {o.label}
+                      </button>
+                    ))}
+                    {!!r.steps?.length && (
+                      <button className="chip" onClick={() => setOpenSteps(openSteps === entry.id ? null : entry.id)}>
+                        {openSteps === entry.id ? "Hide steps" : "Steps"}
+                      </button>
+                    )}
+                    {handoffs}
+                    <button className="chip is-handoff" title="Copy this answer — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
+                      ⧉ Copy
+                    </button>
+                    <button className="chip is-handoff" title="Add this answer to the Work tab as your next step" onClick={() => answerToWork(r)}>
+                      → Add to Work
+                    </button>
+                  </div>
+                )}
+                {openSteps === entry.id && r.steps && <StepList steps={r.steps} wrap />}
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+
+    <div className="smart-line" onKeyDownCapture={continueFromAns}>
+      <MathInput
+        ref={field}
+        className="smart-field"
+        value={draft}
+        placeholder="type math, then Enter"
+        onChange={(latex) => {
+          setDraft(latex);
+          setError(null);
+        }}
+        onEnter={enter}
+        onArrow={cycle}
+        linear={!!data.smartLinear}
+      />
+      <div className={`smart-preview${error ? " is-error" : ""}`}>
+        {error ? error : note ? <span className="smart-note">{note}</span> : previewText ? (
+          <>
+            <Tex math={asLine(previewText)} />
+            {preview?.kind !== "assign" && answerName(preview) && <span className="smart-unit-word">{answerName(preview)}</span>}
+          </>
+        ) : null}
+      </div>
+      {draft.trim() && lint && (lint.units.length > 0 || lint.letters.length > 0) && (
+        <div className="smart-lint">
+          {lint.units.map((u) => (
+            <button
+              key={u.symbol}
+              className="lint-unit"
+              title={`Read as a unit: ${u.name}. Click to make it letters (a variable each) instead`}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => flipUnit(u.typed, false)}
+            >
+              <b>{u.symbol}</b> {u.name}
+            </button>
+          ))}
+          {lint.letters.map((l) => (
+            <button
+              key={l.text}
+              className="lint-letters"
+              title={`Read as letters ${l.text} (a variable each). Click to make it ${l.name}`}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => flipUnit(l.text.replace(/·/g, ""), true)}
+            >
+              <b>{l.text}</b> letters, not {l.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+
+    {unitsOpen && (
+      <UnitPicker
+        onPick={(symbol) => {
+          // a thin space first: 900 km reads as 900 of a unit
+          field.current?.insert(`\\,\\mathrm{${symbol}}`);
+          setUnitsOpen(false);
+          field.current?.focus();
+        }}
+        onClose={() => setUnitsOpen(false)}
+      />
+    )}
+    <div className="smart-keys">
+      {KEYS.map((key) => (
+        <button
+          key={key.label}
+          className={`smart-key${"run" in key && key.run === "enter" ? " is-enter" : ""}${"run" in key && key.run === "linear" && data.smartLinear ? " is-on" : ""}${key.wide ? " is-wide" : ""}${"command" in key || ("run" in key && key.run === "clear") ? " is-tool" : ""}`}
+          title={key.title}
+          // act on press, like a real calculator (and keep the line focused)
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            press(key);
+          }}
+        >
+          {key.tex ? <Tex math={key.label} /> : key.label}
+        </button>
+      ))}
+    </div>
+    </div>
+  );
+
+  // the calculator app: every part a tile, docked wherever you put it
+  if (tiled)
+    return (
+      <div className="smart-calc nodrag is-tiled" ref={root}>
+        {quickCard}
+        <CalcDock
+          key={layoutKey}
+          ref={dock}
+          layout={data.smartLayout}
+          onLayout={(smartLayout) => updateBlock(data.id, { smartLayout })}
+          onOpen={setOpenTiles}
+          onActive={(id) => TABS.some((t) => t.value === id) && id !== current()?.smartTab && updateBlock(data.id, { smartTab: id as Tab })}
+          tiles={{
+            calc: calcMain,
+            work: workBody,
+            graph: graphBody,
+            assignment: assignmentBody,
+            reference: referenceBody,
+            variables: sidebar,
+            equations: equationsBody,
+          }}
+        />
+      </div>
+    );
+
   return (
     <div className={`smart-calc nodrag${tab === "calc" ? " is-calc" : tab === "assignment" || tab === "reference" ? " is-assignment" : ""}`} ref={root}>
       {tabs}
 
-      {tab === "graph" && (
-        <div className="smart-graph">
-          <div className="smart-graph-modes" role="tablist">
-            {GRAPH_MODES.map((m) => (
-              <button
-                key={m.value}
-                className={`smart-graph-mode${graphMode === m.value ? " is-on" : ""}`}
-                disabled={m.soon}
-                title={m.soon ? "Coming next" : undefined}
-                onClick={() => updateBlock(data.id, { smartPlot: { ...(current()?.smartPlot ?? {}), mode: m.value } })}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-          {graphMode === "xy" && (
-            <XYGraph
-              plot={data.smartPlot?.xy ?? {}}
-              update={(patch) => {
-                const plot = current()?.smartPlot ?? {};
-                updateBlock(data.id, { smartPlot: { ...plot, xy: { ...(plot.xy ?? {}), ...patch } } });
-              }}
-              vars={vars}
-              known={known}
-              setVariable={setVariableNumber}
-            />
-          )}
-          {graphMode === "numberline" && (
-          <>
-          <div className="smart-graph-line">
-            <MathInput
-              ref={graphField}
-              className="smart-graph-field"
-              value={graphLine}
-              placeholder="x < −2 or x > 5"
-              onChange={(latex) => {
-                setGraphLine(latex);
-                setGraphError(null);
-              }}
-              onEnter={drawGraph}
-            />
-            <button className="smart-graph-go" onClick={drawGraph}>
-              Graph
-            </button>
-          </div>
-          {graphError && <div className="smart-graph-error">{graphError}</div>}
-          {drawn ? (
-            <div className="smart-graph-result">
-              <div className="smart-graph-label">
-                <Tex math={drawn.latex} />
-              </div>
-              <NumberLine segments={drawn.segments} width={320} parts={drawn.parts} />
-              {/* the picture already says it for no solution (∅) */}
-              {drawn.segments.length > 0 && (!sameWritten(drawn.latex, drawn.solution) || drawn.interval) && (
-                <div className="smart-graph-together">
-                  {!sameWritten(drawn.latex, drawn.solution) && (
-                    <span>
-                      together: <Tex math={drawn.solution} />
-                    </span>
-                  )}
-                  {drawn.interval && (
-                    // single values ({4}) are a set, not an interval
-                    <span title="The same solution set, written as a set">
-                      {drawn.interval.includes("\\{") ? "set notation" : "interval notation"}: <Tex math={drawn.interval} />
-                    </span>
-                  )}
-                </div>
-              )}
-              <div className="smart-graph-foot">
-                {drawnForWork ? (
-                  <span className="smart-graph-kept" title="When this work is saved as a document, this problem has its number line">
-                    Kept with your Work problem <Tex math={data.smartWork?.problem ?? ""} />
-                  </span>
-                ) : (
-                  <span className="smart-graph-kept">Not in a document — start a problem in Work to keep it with that problem</span>
-                )}
-                <button className="smart-vars-action" onClick={clearGraph}>
-                  Clear
-                </button>
-              </div>
-            </div>
-          ) : (
-            !graphError && <div className="smart-graph-hint">Simplify it first, type it here, then press Graph.</div>
-          )}
-          </>
-          )}
-        </div>
-      )}
-
-      {tab === "work" && (
-        <WorkPad
-          data={workData}
-          update={(patch) => updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), ...patch } })}
-          frame={tabFrame("smart-tab-work")}
-          autoFocus={focusOn.current === "work"}
-          onReset={clearOwnVariables}
-          insert={workInsert ?? undefined}
-          onCalculate={(latex) => {
-            // onto the Calculate line (in place of anything half-typed there)
-            const typed = draft.trim();
-            setDraft(latex);
-            setTab("calc");
-            if (typed && typed !== latex.trim()) setNote("Put in place of what was on the line");
-          }}
-          onGraph={(latex) => {
-            if (/y/.test(latex.replace(/\\[a-zA-Z]+/g, ""))) {
-              // an equation in x and y: a line of its own on the xy graph
-              const plot = current()?.smartPlot ?? {};
-              const kept = (plot.xy?.lines ?? []).filter((l) => l.latex.trim());
-              updateBlock(data.id, { smartPlot: { ...plot, mode: "xy", xy: { ...(plot.xy ?? {}), lines: [...kept, { id: newId("xy"), latex }] } } });
-              setTab("graph");
-              return;
-            }
-            // into the Graph tab's line — drawn when Graph is pressed
-            setGraphLine(latex);
-            setGraphError(null);
-            setTab("graph");
-            setTimeout(() => graphField.current?.focus(), 60);
-          }}
-        />
-      )}
-
-      {tab === "reference" && (
-        <ReferenceTab
-          lookup={data.smartReference}
-          update={(smartReference) => updateBlock(data.id, { smartReference })}
-          onTry={playLines}
-          onUnit={(symbol, to) => {
-            // a unit from the sheet, onto the line in Calculate or Work
-            const latex = `\\,\\mathrm{${symbol}}`;
-            if (to === "work") {
-              setWorkInsert((w) => ({ latex, n: (w?.n ?? 0) + 1 }));
-              setTab("work");
-            } else {
-              setTab("calc");
-              setTimeout(() => {
-                field.current?.insert(latex);
-                field.current?.focus();
-              }, 80);
-            }
-          }}
-        />
-      )}
-
-      {tab === "assignment" && (
-        <AssignmentTab
-          work={data.smartWork ?? {}}
-          update={(patch) => updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), ...patch } })}
-          onReopen={() => setTab("work")}
-        />
-      )}
-
+      {tab === "graph" && graphBody}
+      {tab === "work" && workBody}
+      {tab === "reference" && referenceBody}
+      {tab === "assignment" && assignmentBody}
       {tab === "calc" && (
         <div className="smart-calc-split">
           {sideOpen && sidebar}
           {quickCard}
-          {eqOpen && (
-            <EquationsPanel
-              mine={myEquations}
-              onSave={saveEquations}
-              spaces={spaces}
-              onLoad={async (eq) => {
-                // its own workspace: back to where you were, or fresh with its letters
-                if (spaces && !(await spaces.open(spaceName(eq)))) return updateBlock(data.id, { smartEqSide: true, smartSide: undefined });
-                if (spaces) updateBlock(data.id, { smartEqSide: true });
-                await loadEquation(eq);
-              }}
-              onClose={() => setEqOpen(false)}
-            />
-          )}
-          <div className="smart-calc-main">
-          {/* a quiet bar: the variables fold away behind a count (type a name
-              and Enter to see its value), and Clear all */}
-          <div className="smart-bar">
-            {!sideOpen && (
-              <button className="smart-vars-toggle" title="Show your variables (⌘B)" onClick={() => setSideOpen(true)}>
-                Variables · {sideEntries.length + sideExtras.length + blanks.length} ›
-              </button>
-            )}
-            {data.smartNote === undefined && !noting && (
-              <button className="smart-vars-action" title="A note at the top — what this problem is, in plain words" onClick={() => setNoting(true)}>
-                + Note
-              </button>
-            )}
-            {wiped ? (
-              <button className="smart-vars-action is-undo" title="Bring back what was just cleared" onClick={undoClear}>
-                ↶ Undo
-              </button>
-            ) : (
-              (entries.length > 0 || variables.length > 0) && (
-                <button className="smart-vars-action" title="Clear every answer and this calculator's variables (or type clear) — Undo brings them back" onClick={clearEverything}>
-                  Clear all
-                </button>
-              )
-            )}
-            {!eqOpen && (
-              <button className="smart-vars-toggle smart-eq-toggle" title="Equations — click one to load its letters into Variables (⌘E)" onClick={() => setEqOpen(true)}>
-                ‹ Equations
-              </button>
-            )}
-          </div>
-          {/* the history: a fixed-height window that scrolls, so the calculator
-              stays one size however many answers there are */}
-          {(data.smartNote !== undefined || noting) && (
-            <div className="smart-note-box">
-              {noting ? (
-                <textarea
-                  className="smart-note-edit nodrag"
-                  autoFocus
-                  defaultValue={data.smartNote ?? ""}
-                  placeholder="What's this problem? In your own words…"
-                  onBlur={(e) => {
-                    const text = e.currentTarget.value.trim();
-                    updateBlock(data.id, { smartNote: text || undefined });
-                    setNoting(false);
-                  }}
-                  onKeyDown={(e) => e.key === "Escape" && e.currentTarget.blur()}
-                />
-              ) : (
-                <button className="smart-note-text" title="Click to edit the note" onClick={() => setNoting(true)}>
-                  <RichText text={data.smartNote ?? ""} />
-                </button>
-              )}
-            </div>
-          )}
-          <div className={`smart-tape${tapeScrolled ? " is-scrolled" : ""}`} ref={tape} onScroll={(e) => setTapeScrolled(e.currentTarget.scrollTop > 4)}>
-            {!tapeEntries.length && <div className="smart-empty">Type math — numbers, x, an equation, or r = 4 to save a value — and press Enter.</div>}
-            {tapeEntries.map((entry) => {
-              const r = entry.result;
-              const handoffs = (
-                <>
-                  {r.work && (
-                    <button className="chip is-handoff" title="Into the Work tab, with how it's solved beside your lines" onClick={() => showWork(r.work_latex ?? entry.latex, r.steps)}>
-                      ✎ Show work
-                    </button>
-                  )}
-                </>
-              );
-              // on hover: name it, or put its answer on the line with + − × ÷
-              const tools = (
-                <span className="smart-tape-tools">
-                  {lockButton(entry)}
-                  <button className="smart-tape-tool" title={entry.label ? "Rename it" : "Name it — rent, tip…"} onClick={() => setLabeling(entry.id)}>
-                    🏷
-                  </button>
-                  {r.ans &&
-                    TAPE_OPS.map((op) => (
-                      <button
-                        key={op.label}
-                        className="smart-tape-tool is-op"
-                        title={`${op.title} ${plainMath(decimalTex(r) ?? r.ans!)} — onto the end of the line`}
-                        onPointerDown={(e) => e.preventDefault() /* keep the cursor in the line */}
-                        onClick={() => combine(op, decimalTex(r) ?? r.ans!)}
-                      >
-                        {op.label}
-                      </button>
-                    ))}
-                </span>
-              );
-              const label = labelView(entry);
-              return (
-                <div key={entry.id} className={`smart-entry${isLocked(entry) ? " is-locked" : ""}`}>
-                  {tools}
-                  {isLocked(entry) && lockButton(entry)}
-                  {label}
-                  <button
-                    className="smart-in"
-                    title="Put this in the line (at the cursor)"
-                    onPointerDown={(e) => e.preventDefault() /* keep the cursor where it is */}
-                    onClick={() => reuse(entry.latex)}
-                  >
-                    <Tex math={fullSize(asLine(r.input_latex))} />
-                  </button>
-                  {ansFrom.get(entry.id) && (
-                    <span className="smart-ans-from" title="What Ans was on this line — the named answer before it">
-                      Ans = <Tex math={decimalTex(ansFrom.get(entry.id)!.result) ?? ansFrom.get(entry.id)!.result.ans ?? ""} /> {ansFrom.get(entry.id)!.label}
-                    </span>
-                  )}
-                  {r.kind === "choose" ? (
-                    <div className="smart-choose">
-                      <span>What should I do?</span>
-                      {(r.choices ?? []).map((c) => (
-                        <button key={c.label} className="chip" onClick={() => run(entry.latex, c, entry.id)}>
-                          {c.label}
-                        </button>
-                      ))}
-                      {handoffs}
-                    </div>
-                  ) : (
-                    <>
-                      {(() => {
-                        const exact = r.action?.kind === "solve" ? asStep(r).replace(/^[a-zA-Z]\s*=\s*/, "") : asStep(r);
-                        // two answers side by side — the exact one and its decimal — each its own click
-                        const decimal = showsDecimal(r) || (r.kind === "result" && /\\approx/.test(r.result_latex ?? "")) ? decimalOf(r) : null;
-                        const keep = (e: React.PointerEvent) => e.preventDefault(); /* keep the cursor where it is */
-                        return decimal ? (
-                          <div className="smart-out is-split">
-                            <button className="smart-part" title="Put the exact answer in the line" onPointerDown={keep} onClick={() => reuse(exact)}>
-                              <Tex math={fullSize(asLine(asStep(r)))} />
-                              {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
-                            </button>
-                            <button className="smart-part smart-decimal" title="Put the decimal in the line" onPointerDown={keep} onClick={() => reuse(decimal)}>
-                              <Tex math={`\\approx ${decimal}`} />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            className="smart-out"
-                            title="Put this answer in the line (at the cursor)"
-                            onPointerDown={keep}
-                            onClick={() => r.result_latex && reuse(decimalOnly(r) ? decimalTex(r)! : exact)}
-                          >
-                            <Tex math={fullSize(decimalOnly(r) ? `\\approx ${decimalTex(r)}` : asLine(r.result_latex ?? ""))} />
-                            {answerName(r) && <span className="smart-unit-word">{answerName(r)}</span>}
-                          </button>
-                        );
-                      })()}
-                      {r.kind !== "truth" && (
-                        <div className="smart-more">
-                          {(r.others ?? []).map((o) => (
-                            <button key={o.label} className="chip" onClick={() => run(entry.latex, o, entry.id)}>
-                              {o.label}
-                            </button>
-                          ))}
-                          {!!r.steps?.length && (
-                            <button className="chip" onClick={() => setOpenSteps(openSteps === entry.id ? null : entry.id)}>
-                              {openSteps === entry.id ? "Hide steps" : "Steps"}
-                            </button>
-                          )}
-                          {handoffs}
-                          <button className="chip is-handoff" title="Copy this answer — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
-                            ⧉ Copy
-                          </button>
-                          <button className="chip is-handoff" title="Add this answer to the Work tab as your next step" onClick={() => answerToWork(r)}>
-                            → Add to Work
-                          </button>
-                        </div>
-                      )}
-                      {openSteps === entry.id && r.steps && <StepList steps={r.steps} wrap />}
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="smart-line" onKeyDownCapture={continueFromAns}>
-            <MathInput
-              ref={field}
-              className="smart-field"
-              value={draft}
-              placeholder="type math, then Enter"
-              onChange={(latex) => {
-                setDraft(latex);
-                setError(null);
-              }}
-              onEnter={enter}
-              onArrow={cycle}
-              linear={!!data.smartLinear}
-            />
-            <div className={`smart-preview${error ? " is-error" : ""}`}>
-              {error ? error : note ? <span className="smart-note">{note}</span> : previewText ? (
-                <>
-                  <Tex math={asLine(previewText)} />
-                  {preview?.kind !== "assign" && answerName(preview) && <span className="smart-unit-word">{answerName(preview)}</span>}
-                </>
-              ) : null}
-            </div>
-            {draft.trim() && lint && (lint.units.length > 0 || lint.letters.length > 0) && (
-              <div className="smart-lint">
-                {lint.units.map((u) => (
-                  <button
-                    key={u.symbol}
-                    className="lint-unit"
-                    title={`Read as a unit: ${u.name}. Click to make it letters (a variable each) instead`}
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={() => flipUnit(u.typed, false)}
-                  >
-                    <b>{u.symbol}</b> {u.name}
-                  </button>
-                ))}
-                {lint.letters.map((l) => (
-                  <button
-                    key={l.text}
-                    className="lint-letters"
-                    title={`Read as letters ${l.text} (a variable each). Click to make it ${l.name}`}
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={() => flipUnit(l.text.replace(/·/g, ""), true)}
-                  >
-                    <b>{l.text}</b> letters, not {l.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {unitsOpen && (
-            <UnitPicker
-              onPick={(symbol) => {
-                // a thin space first: 900 km reads as 900 of a unit
-                field.current?.insert(`\\,\\mathrm{${symbol}}`);
-                setUnitsOpen(false);
-                field.current?.focus();
-              }}
-              onClose={() => setUnitsOpen(false)}
-            />
-          )}
-          <div className="smart-keys">
-            {KEYS.map((key) => (
-              <button
-                key={key.label}
-                className={`smart-key${"run" in key && key.run === "enter" ? " is-enter" : ""}${"run" in key && key.run === "linear" && data.smartLinear ? " is-on" : ""}${key.wide ? " is-wide" : ""}${"command" in key || ("run" in key && key.run === "clear") ? " is-tool" : ""}`}
-                title={key.title}
-                // act on press, like a real calculator (and keep the line focused)
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  press(key);
-                }}
-              >
-                {key.tex ? <Tex math={key.label} /> : key.label}
-              </button>
-            ))}
-          </div>
-          </div>
+          {eqOpen && equationsBody}
+          {calcMain}
         </div>
       )}
     </div>

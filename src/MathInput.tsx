@@ -154,7 +154,15 @@ export default function MathInput({
   const handlers = useRef({ onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow, linear });
   handlers.current = { onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow, linear };
 
+  const latest = useRef(value);
+  latest.current = value;
+
   useEffect(() => {
+    // a field whose spot isn't on the page yet (a tile still being docked)
+    // waits for it: MathLive can't be set up off the page
+    let cleanup: (() => void) | undefined;
+    let frame = 0;
+    const mount = () => {
     const mf = new MathfieldElement();
     mf.classList.add("nokey");
     // MathLive only accepts most settings once the field is on the page —
@@ -184,7 +192,7 @@ export default function MathInput({
     // a space is a (thin) space, so 2 1/3 types as the mixed number 2⅓ —
     // MathLive drops spaces by default, which made it 21/3
     mf.mathModeSpace = "\\,";
-    mf.value = value;
+    mf.value = latest.current;
     mf.addEventListener("input", () => handlers.current.onChange(mf.value));
     mf.addEventListener("focus", () => handlers.current.onFocus?.());
     // a mouse drag (or ⇧⌥ / ⇧⌘ arrows) never ends halfway into a fraction
@@ -325,6 +333,16 @@ export default function MathInput({
       selectionWatch?.disconnect();
       mf.remove();
       field.current = null;
+    };
+    };
+    const start = () => {
+      if (host.current?.isConnected) cleanup = mount();
+      else frame = requestAnimationFrame(start);
+    };
+    start();
+    return () => {
+      cancelAnimationFrame(frame);
+      cleanup?.();
     };
     // the field is created once; value changes are synced below
     // eslint-disable-next-line react-hooks/exhaustive-deps

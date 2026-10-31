@@ -212,6 +212,8 @@ export default function CalculatorApp() {
       <main className="calc-app-main">{block && (
           <SmartCalc
             data={block}
+            tiled
+            layoutKey={active ?? "scratch"}
             equations={equations}
             onEquations={setEquations}
             spaces={{
