@@ -445,7 +445,7 @@ body {
   min-height: 0;
 }
 
-.dock-matrix {
+.dockview-theme-dark.dock-matrix {
   --dv-group-view-background-color: var(--t-bg2);
   --dv-tabs-and-actions-container-background-color: var(--t-bg1);
   --dv-tabs-and-actions-container-height: 32px;
@@ -464,8 +464,9 @@ body {
   --dv-sash-color: transparent;
   --dv-active-sash-color: var(--t-pink);
   --dv-icon-hover-background-color: var(--t-bg4);
-  --dv-drag-over-background-color: color-mix(in srgb, var(--t-pink) 22%, transparent);
+  --dv-drag-over-background-color: color-mix(in srgb, var(--t-pink) 26%, transparent);
   --dv-drag-over-border-color: var(--t-pink);
+  --dv-drag-over-border: 2px solid var(--t-pink);
   --dv-border-radius: 10px;
   --dv-tab-border-radius: 8px 8px 0 0;
   --dv-scrollbar-background-color: var(--t-bg4);
@@ -475,6 +476,12 @@ body {
   --dv-floating-box-shadow: 0 10px 34px color-mix(in srgb, var(--t-bg0) 60%, transparent);
   background: var(--t-bg1);
   color: var(--t-text);
+}
+
+/* where a dragged tab will land: a bold, rounded preview of its spot */
+.dock-matrix .dv-drop-target-anchor,
+.dock-matrix .dv-drop-target-selection {
+  border-radius: 10px;
 }
 
 /* each zone: a rounded card, its tabs on top */
