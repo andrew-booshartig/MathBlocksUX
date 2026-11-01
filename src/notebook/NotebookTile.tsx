@@ -294,6 +294,8 @@ export default function NotebookTile({
    * this, as typed in Source — not rewritten from the blocks) */
   const commit = useCallback(
     (next: NotebookDoc, text?: string) => {
+      // the latest at once, so changes made one after another (flatten every graph) build on each other
+      docRef.current = next;
       setDoc(next);
       if (!name) return;
       setSaving(true);
@@ -601,7 +603,10 @@ export default function NotebookTile({
 
   // ---- blocks
 
-  const updateBlock = (id: string, patch: Partial<Block>) => doc && commit({ ...doc, blocks: doc.blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b)) });
+  const updateBlock = (id: string, patch: Partial<Block>) => {
+    const now = docRef.current;
+    if (now) commit({ ...now, blocks: now.blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b)) });
+  };
   /** flatten: the cell as it shows, kept as a picture (PNG or JPEG) in its place — so it isn't worked out
    * or drawn again (thirty graphs, thirty pictures); its code stays, to unflatten */
   const [flatMenu, setFlatMenu] = useState<string | null>(null);
@@ -1081,6 +1086,23 @@ export default function NotebookTile({
                 <button className="nb-pop-item" onClick={copyLatex}>
                   <Icon name="copy" size={14} /> Copy as LaTeX
                 </button>
+                {doc.blocks.some((b) => b.kind === "cell" && b.lang === "graph" && !flatOf(b)) && (
+                  <button
+                    className="nb-pop-item"
+                    title="Each graph kept as a picture — a notebook with many opens and scrolls faster (unflatten any to change it)"
+                    onClick={async () => {
+                      setMenu(false);
+                      for (const b of doc.blocks) if (b.kind === "cell" && b.lang === "graph" && !flatOf(b)) await flatten(b, "png");
+                    }}
+                  >
+                    <Icon name="frame" size={14} /> Flatten every graph
+                  </button>
+                )}
+                {doc.blocks.some((b) => flatOf(b)) && (
+                  <button className="nb-pop-item" onClick={() => (setMenu(false), doc.blocks.forEach((b) => flatOf(b) && unflatten(b)))}>
+                    <Icon name="reset" size={14} /> Unflatten everything
+                  </button>
+                )}
                 <button className="nb-pop-item" title="Vim in code cells and text, set up like Neovim: Space is the leader (Space r runs), :w is done, yanks go to the clipboard" onClick={() => setVimKeys(!vimKeys)}>
                   <Icon name="source" size={14} /> Vim keys {vimKeys ? "on — turn off" : "off — turn on"}
                 </button>
