@@ -33,6 +33,8 @@ export interface CalcLine {
  * (r = 4) is there for every line after it */
 export async function runCalcCells(cells: string[]): Promise<CalcLine[][]> {
   const vars: Record<string, string> = {};
+  // every value saved so far, worked out together — so F = m·g has one too (from m and g)
+  const defs: { name: string; latex: string }[] = [];
   let ans: string | undefined;
   const out: CalcLine[][] = [];
   for (const code of cells) {
@@ -43,9 +45,11 @@ export async function runCalcCells(cells: string[]): Promise<CalcLine[][]> {
       try {
         const result = await mathRequest<SmartResult>({ op: "smart", latex, angle: "deg", ans, vars });
         if (result.kind === "assign" && result.name && result.value_latex && !result.params?.length) {
-          const resolved = await mathRequest<{ values: Record<string, { plain?: string }> }>({ op: "smartvars", vars: [{ name: result.name, latex: result.value_latex }] });
-          const plain = resolved.values[result.name]?.plain;
-          if (plain !== undefined) vars[result.name] = plain;
+          const at = defs.findIndex((d) => d.name === result.name);
+          if (at >= 0) defs.splice(at, 1);
+          defs.push({ name: result.name, latex: result.value_latex });
+          const resolved = await mathRequest<{ values: Record<string, { plain?: string }> }>({ op: "smartvars", vars: defs });
+          for (const [name, v] of Object.entries(resolved.values)) if (v?.plain !== undefined && v.plain !== null) vars[name] = v.plain;
         }
         if (result.ans) ans = result.ans;
         lines.push({ latex, result });
@@ -533,5 +537,139 @@ export function PythonOutput({ output, running, live, matlab }: { output?: PyOut
       <Shown html={output.html} latex={output.latex} value={output.value} />
       {output.error && <pre className="nb-cell-error is-code">{output.error}</pre>}
     </div>
+  );
+}
+
+// ---- a variables block: what the notebook calls what, at the top of the work
+
+export interface VarRow {
+  name: string;
+  value: string;
+  note: string;
+}
+
+/** ```vars lines — `m = 2.5 kg  # the cart's mass` — as rows */
+export function parseVars(code: string): VarRow[] {
+  return code
+    .split("\n")
+    .filter((l) => l.trim())
+    .map((line) => {
+      const hash = line.search(/\s#\s|\s#$|^#/);
+      const [body, note] = hash < 0 ? [line, ""] : [line.slice(0, hash), line.slice(hash).replace(/^\s*#\s?/, "")];
+      const eq = body.indexOf("=");
+      return eq < 0 ? { name: body.trim(), value: "", note: note.trim() } : { name: body.slice(0, eq).trim(), value: body.slice(eq + 1).trim(), note: note.trim() };
+    });
+}
+
+export function writeVars(rows: VarRow[]): string {
+  return rows
+    .filter((r) => r.name.trim() || r.value.trim() || r.note.trim())
+    .map((r) => `${r.name.trim()} = ${r.value.trim()}${r.note.trim() ? `  # ${r.note.trim()}` : ""}`)
+    .join("\n");
+}
+
+/** each row as a line of math the calculator works out: name = value */
+export const varsAsCalc = (code: string) =>
+  parseVars(code)
+    .filter((r) => r.name && r.value)
+    .map((r) => `${r.name} = ${r.value}`)
+    .join("\n");
+
+/** a value typed as just a number (and its unit): nothing to work out, nothing more to show */
+const plainValue = (v: string) => /^\s*-?(\d+\.?\d*|\.\d+)(e-?\d+)?\s*([A-Za-zµΩ°]+([/^·*]?[A-Za-zµΩ°0-9]+)*)?\s*$/.test(v);
+
+/** a worked-out value as a plain number (in the unit it was given): 2.5 for 2.5 kg */
+export function numberOf(line?: CalcLine): number | null {
+  const r = line?.result;
+  if (!r || r.kind !== "assign") return null;
+  const tex = (r.decimal_latex ?? r.result_latex?.replace(/^[^=]*=\s*/, "") ?? "").trim();
+  const frac = tex.match(/^(-?)\\frac\{(-?\d+(?:\.\d+)?)\}\{(\d+(?:\.\d+)?)\}/);
+  if (frac) return (frac[1] ? -1 : 1) * (Number(frac[2]) / Number(frac[3]));
+  const n = tex.match(/^-?\d+(?:\.\d+)?(?:\\times10\^\{(-?\d+)\})?/);
+  if (!n) return null;
+  const base = Number.parseFloat(n[0]);
+  return n[1] ? base * 10 ** Number(n[1]) : base;
+}
+
+/** The variables block: a table to fill in — name, value (units fine, or
+ * math of the names above it), what it is — each worked out, and given to
+ * every calc line, Python cell and code cell in the notebook. */
+export function VarsCell({ code, lines, onCommit }: { code: string; lines?: CalcLine[]; onCommit: (code: string) => void }) {
+  const [rows, setRows] = useState<VarRow[]>(() => parseVars(code));
+  const seen = useRef(code);
+  useEffect(() => {
+    if (code !== seen.current) {
+      seen.current = code;
+      setRows(parseVars(code));
+    }
+  }, [code]);
+  const commit = (next: VarRow[]) => {
+    const text = writeVars(next);
+    if (text !== seen.current) {
+      seen.current = text;
+      onCommit(text);
+    }
+  };
+  const set = (k: number, patch: Partial<VarRow>) => setRows(rows.map((r, j) => (j === k ? { ...r, ...patch } : r)));
+  const keys = (e: import("react").KeyboardEvent<HTMLInputElement>, k: number) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    // Enter: a new row under this one
+    const next = [...rows.slice(0, k + 1), { name: "", value: "", note: "" }, ...rows.slice(k + 1)];
+    setRows(next);
+    commit(next);
+    requestAnimationFrame(() => (e.currentTarget.closest("table")?.querySelectorAll<HTMLInputElement>("tr")[k + 2]?.querySelector("input") as HTMLInputElement | null)?.focus());
+  };
+  // which worked-out line is this row's (rows without a name and value have none)
+  let at = 0;
+  return (
+    <table className="nb-varblock" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && commit(rows)}>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Value</th>
+          <th>What it is</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, k) => {
+          const line = r.name && r.value ? lines?.[at++] : undefined;
+          const shown = line?.result?.result_latex?.replace(/^[^=]*=\s*/, "");
+          return (
+            <tr key={k}>
+              <td>
+                <input className="nb-varblock-name" value={r.name} placeholder="m" spellCheck={false} onChange={(e) => set(k, { name: e.target.value })} onKeyDown={(e) => keys(e, k)} />
+              </td>
+              <td>
+                <input className="nb-varblock-value" value={r.value} placeholder="2.5 kg" spellCheck={false} onChange={(e) => set(k, { value: e.target.value })} onKeyDown={(e) => keys(e, k)} />
+                {line?.error ? (
+                  <span className="nb-varblock-error">{line.error}</span>
+                ) : shown && !plainValue(r.value) ? (
+                  <span className="nb-varblock-is">
+                    <Tex math={`=${line?.result?.decimal_latex && !/\\frac/.test(line.result.decimal_latex) ? line.result.decimal_latex : shown}`} />
+                  </span>
+                ) : null}
+              </td>
+              <td>
+                <input className="nb-varblock-note" value={r.note} placeholder="the cart's mass" onChange={(e) => set(k, { note: e.target.value })} onKeyDown={(e) => keys(e, k)} />
+              </td>
+              <td>
+                <button className="nb-varblock-x" title="Take this one out" onClick={() => (setRows(rows.filter((_, j) => j !== k)), commit(rows.filter((_, j) => j !== k)))}>
+                  ×
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+        <tr>
+          <td colSpan={4}>
+            <button className="nb-varblock-add" onClick={() => setRows([...rows, { name: "", value: "", note: "" }])}>
+              + a variable
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 }

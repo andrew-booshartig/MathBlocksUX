@@ -55,6 +55,8 @@ export interface Language {
   output?: "text" | "matlab";
   /** what a new cell starts with */
   starter?: string;
+  /** a variables block's value set in this language, put before each cell: "{name} = {value};" */
+  assign?: string;
   /** which plugin added it */
   plugin?: string;
 }
@@ -70,6 +72,7 @@ export const BUILT_IN_LANGUAGES: Language[] = [
     aliases: ["octave", "m"],
     extension: "m",
     output: "matlab",
+    assign: "{name} = {value};",
     install: "Octave runs MATLAB code, free: brew install octave (or install MATLAB)",
     starter: "A = [1 2; 3 4];\nb = [5; 6];\nx = A \\ b",
     highlight: {
@@ -103,6 +106,7 @@ export const BUILT_IN_LANGUAGES: Language[] = [
     label: "C++",
     aliases: ["c++", "cxx", "cc"],
     extension: "cpp",
+    assign: "const double {name} = {value};",
     install: "Xcode's command line tools have it: xcode-select --install",
     starter: "#include <iostream>\n\nint main() {\n    std::cout << \"hello\\n\";\n}",
     highlight: { lineComment: ["//"], blockComment: [["/*", "*/"]], strings: ['"', "'"], preprocessor: true, keywords: CPP_KEYWORDS.split(" "), builtins: "std cout cin endl vector string map set array printf size_t".split(" ") },
@@ -112,6 +116,7 @@ export const BUILT_IN_LANGUAGES: Language[] = [
     id: "c",
     label: "C",
     extension: "c",
+    assign: "const double {name} = {value};",
     install: "Xcode's command line tools have it: xcode-select --install",
     starter: '#include <stdio.h>\n\nint main(void) {\n    printf("hello\\n");\n}',
     highlight: { lineComment: ["//"], blockComment: [["/*", "*/"]], strings: ['"', "'"], preprocessor: true, keywords: C_KEYWORDS.split(" "), builtins: "printf scanf malloc free size_t NULL".split(" ") },
@@ -122,6 +127,7 @@ export const BUILT_IN_LANGUAGES: Language[] = [
     label: "Rust",
     aliases: ["rs"],
     extension: "rs",
+    assign: "#[allow(non_upper_case_globals, dead_code)] const {name}: f64 = {value};",
     install: "rustup: curl https://sh.rustup.rs -sSf | sh",
     starter: 'fn main() {\n    println!("hello");\n}',
     highlight: {
@@ -139,6 +145,7 @@ export const BUILT_IN_LANGUAGES: Language[] = [
     label: "JavaScript",
     aliases: ["js", "node"],
     extension: "mjs",
+    assign: "const {name} = {value};",
     install: "Node.js: brew install node",
     starter: "console.log([1, 2, 3].map((n) => n * n));",
     highlight: {
@@ -155,6 +162,7 @@ export const BUILT_IN_LANGUAGES: Language[] = [
     id: "lua",
     label: "Lua",
     extension: "lua",
+    assign: "local {name} = {value}",
     install: "brew install lua",
     starter: 'print("hello")',
     highlight: {
@@ -172,6 +180,7 @@ export const BUILT_IN_LANGUAGES: Language[] = [
     label: "Shell",
     aliases: ["sh", "bash", "zsh"],
     extension: "sh",
+    assign: "{name}={value}",
     starter: "echo hello",
     highlight: {
       lineComment: ["#"],

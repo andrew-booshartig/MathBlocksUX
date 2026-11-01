@@ -256,11 +256,15 @@ def complete(code: str) -> dict:
     return {"word": word, "matches": found[:60]}
 
 
-def run(code: str, calc: dict | None = None) -> dict:
+def run(code: str, calc: dict | None = None, notebook_vars: dict | None = None) -> dict:
     global count
     count += 1
     if calc is not None:
         ns["calc"] = Calc({k: v for k, v in calc.items() if isinstance(v, (int, float))})
+    # the notebook's variables blocks: m, g… as names of their own
+    for k, v in (notebook_vars or {}).items():
+        if isinstance(v, (int, float)) and k.isidentifier():
+            ns[k] = v
     out: dict = {"count": count, "stdout": "", "images": [], "value": None, "latex": None, "html": None, "error": None}
     shown.clear()
     printed = _Live()
@@ -340,7 +344,7 @@ def main():
             req = json.loads(line)
             op = req.get("op")
             if op == "run":
-                reply = run(str(req.get("code", "")), req.get("calc"))
+                reply = run(str(req.get("code", "")), req.get("calc"), req.get("vars"))
             elif op == "complete":
                 reply = complete(str(req.get("code", "")))
             elif op == "vars":

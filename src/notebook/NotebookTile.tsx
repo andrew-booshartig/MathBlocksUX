@@ -15,7 +15,7 @@ import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../Icon";
 import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
-import { type CalcLine, CalcCell, GraphCell, NumberLineCell, type PyOutput, PythonOutput, WorkCell, WorkCellEditor, readWorkCell, runCalcCells } from "./cells";
+import { type CalcLine, CalcCell, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, WorkCell, WorkCellEditor, numberOf, parseVars, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
 import { type Block, type CellLang, type NotebookDoc, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, setMeta, writeNotebook } from "./format";
 import { setNotebookInbox } from "./inbox";
 import { notebookLatex } from "./latex";
@@ -72,6 +72,7 @@ const HEADER_FIELDS: [string, string][] = [
 const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon: string; start: string }[] = [
   { lang: "text", label: "Text", icon: "text", start: "" },
   { lang: "math", label: "Math", icon: "equations", start: "$$\n\n$$" },
+  { lang: "vars", label: "Variables", icon: "variables", start: "m = 2.5 kg  # the cart's mass\ng = 9.81  # gravity, m/s²" },
   { lang: "calc", label: "Calc", icon: "calc", start: "" },
   { lang: "graph", label: "Graph", icon: "graph", start: "y = 2x + 1" },
   { lang: "numberline", label: "Number line", icon: "segment", start: "x < 3" },
@@ -79,9 +80,11 @@ const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon: string
   { lang: "python", label: "Python", icon: "source", start: "" },
 ];
 
-const LANG_LABEL: Record<string, string> = { calc: "Calc", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
+const LANG_LABEL: Record<string, string> = { vars: "Variables", calc: "Calc", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
-const OWN_CELLS = new Set(["calc", "graph", "numberline", "work", "python"]);
+const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python"]);
+/** cells worked out by the calculator, in order: calc lines, and variables blocks (as name = value) */
+const isCalcLike = (b: Block) => b.kind === "cell" && (b.lang === "calc" || b.lang === "vars");
 /** a cell's language, when a plugin's — not one of the app's own */
 const codeLanguage = (b: Block) => (b.kind === "cell" && !OWN_CELLS.has(b.lang) ? languageOf(b.lang) : undefined);
 /** where a cell's output is kept: Python's by its code, any other language's by both */
@@ -335,7 +338,25 @@ export default function NotebookTile({
   }, [name, doc, commit]);
 
   // ---- calc cells: worked out top to bottom whenever one changes
-  const calcCodes = useMemo(() => (doc?.blocks ?? []).filter((b) => b.kind === "cell" && b.lang === "calc").map((b) => (b as { code: string }).code), [doc]);
+  const calcCodes = useMemo(() => (doc?.blocks ?? []).filter(isCalcLike).map((b) => (b.kind === "cell" && b.lang === "vars" ? varsAsCalc(b.code) : (b as { code: string }).code)), [doc]);
+  /** the variables blocks' values, as numbers (in the units given) — for Python and code cells */
+  const notebookVars = useMemo(() => {
+    const out: Record<string, number> = {};
+    let k = 0;
+    for (const b of doc?.blocks ?? []) {
+      if (!isCalcLike(b)) continue;
+      const lines = calc?.[k++];
+      if (b.kind !== "cell" || b.lang !== "vars" || !lines) continue;
+      const named = parseVars(b.code).filter((r) => r.name && r.value);
+      named.forEach((r, j) => {
+        const n = numberOf(lines[j]);
+        if (n !== null && /^[A-Za-z_]\w*$/.test(r.name)) out[r.name] = n;
+      });
+    }
+    return out;
+  }, [doc, calc]);
+  const notebookVarsRef = useRef(notebookVars);
+  notebookVarsRef.current = notebookVars;
   const calcKey = calcCodes.join("\u0001");
   useEffect(() => {
     let live = true;
@@ -426,7 +447,7 @@ export default function NotebookTile({
         let out: PyOutput;
         try {
           const calc = Object.fromEntries(Object.entries(calcVarsRef.current ?? {}).filter(([, v]) => typeof v === "number"));
-          out = await invoke<PyOutput>("kernel_run", { notebook: name, code, calc });
+          out = await invoke<PyOutput>("kernel_run", { notebook: name, code, calc, vars: notebookVarsRef.current });
         } catch (err) {
           out = { error: errorText(err) };
         }
@@ -473,7 +494,7 @@ export default function NotebookTile({
             notebook: name,
             lang: lang.id,
             spec: { once: way.once, session: way.session, init: way.init, done: way.done, timeout: way.timeout, extension: lang.extension },
-            code,
+            code: lang.assign ? [...Object.entries(notebookVarsRef.current).map(([n, v]) => lang.assign!.split("{name}").join(n).split("{value}").join(String(v))), code].join("\n") : code,
           });
           out = { stdout: ran.stdout, error: ran.error, seconds: ran.seconds, images: ran.images };
         } catch (err) {
@@ -1125,7 +1146,9 @@ export default function NotebookTile({
     // a cell that runs (Python, or a plugin's language): its output's key
     const runKey = b.lang === "python" || language ? outKey(b.lang, b.code) : null;
     const result =
-      language ? (
+      b.lang === "vars" ? (
+        <VarsCell code={b.code} lines={calc?.[calcAt]} onCommit={(code) => updateBlock(b.id, { code })} />
+      ) : language ? (
         <PythonOutput output={py[runKey!]} running={running.has(runKey!)} live={live?.code === runKey ? live.text : undefined} matlab={language.output === "matlab"} />
       ) : pluginCell ? (
         <PluginCell kind={pluginCell} code={isEditing ? draft : b.code} />
@@ -1229,7 +1252,7 @@ export default function NotebookTile({
             )
           ))}
         {result && (
-          <div className="nb-cell-result" onClick={() => !isEditing && b.lang !== "python" && !language && b.lang !== "graph" && startEditing(b)}>
+          <div className="nb-cell-result" onClick={() => !isEditing && b.lang !== "python" && !language && b.lang !== "graph" && b.lang !== "vars" && startEditing(b)}>
             {result}
           </div>
         )}
@@ -1301,7 +1324,7 @@ export default function NotebookTile({
       ) : (
         <div className="nb-page" ref={page}>
           {header}
-          {doc.blocks.map((b) => blockView(b, b.kind === "cell" && b.lang === "calc" ? calcAt++ : -1))}
+          {doc.blocks.map((b) => blockView(b, isCalcLike(b) ? calcAt++ : -1))}
           {!doc.blocks.length && <div className="nb-empty">An empty page — add something below, or open the file in another editor.</div>}
           <div className="nb-add">
             {NEW_CELLS.map((c) => (

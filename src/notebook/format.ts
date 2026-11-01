@@ -12,8 +12,8 @@
  *
  * The app edits a block at a time and writes the file back the same way. */
 
-export type CellLang = "calc" | "graph" | "numberline" | "work" | "python";
-export const CELL_LANGS: CellLang[] = ["calc", "graph", "numberline", "work", "python"];
+export type CellLang = "vars" | "calc" | "graph" | "numberline" | "work" | "python";
+export const CELL_LANGS: CellLang[] = ["vars", "calc", "graph", "numberline", "work", "python"];
 
 export type Block = { id: string; kind: "text"; text: string } | { id: string; kind: "cell"; lang: string; info: string; code: string };
 

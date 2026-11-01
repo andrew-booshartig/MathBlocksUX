@@ -1564,3 +1564,111 @@
   position: absolute;
   z-index: 400;
 }
+
+/* the variables block: a table to fill in */
+.nb-varblock {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.nb-varblock th {
+  padding: 2px 8px 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--t-muted);
+}
+
+.nb-varblock td {
+  padding: 2px 4px;
+  border-top: 1px solid color-mix(in srgb, var(--t-line) 60%, transparent);
+  vertical-align: middle;
+}
+
+.nb-varblock input {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t-text);
+  font: inherit;
+}
+
+.nb-varblock input:hover {
+  border-color: var(--t-line);
+}
+
+.nb-varblock input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--t-pink, #c99bbf) 60%, transparent);
+  background: var(--t-bg1, #14141a);
+}
+
+.nb-varblock-name {
+  font-family: var(--t-mono, "SF Mono", Menlo, monospace);
+  font-weight: 600;
+  max-width: 120px;
+}
+
+.nb-varblock td:nth-child(1) {
+  width: 120px;
+}
+
+.nb-varblock td:nth-child(2) {
+  width: 38%;
+}
+
+.nb-varblock-value {
+  font-family: var(--t-mono, "SF Mono", Menlo, monospace);
+}
+
+.nb-varblock td:nth-child(2) {
+  position: relative;
+}
+
+.nb-varblock-is,
+.nb-varblock-error {
+  display: block;
+  padding: 0 6px 2px;
+  font-size: 12.5px;
+  color: var(--t-muted);
+}
+
+.nb-varblock-error {
+  color: var(--t-red);
+}
+
+.nb-varblock-note {
+  color: var(--t-muted) !important;
+}
+
+.nb-varblock-x,
+.nb-varblock-add {
+  border: none;
+  background: none;
+  color: var(--t-muted);
+  cursor: pointer;
+}
+
+.nb-varblock-x {
+  opacity: 0;
+  font-size: 15px;
+}
+
+.nb-varblock tr:hover .nb-varblock-x {
+  opacity: 1;
+}
+
+.nb-varblock-add {
+  padding: 6px 6px 2px;
+  font-size: 12.5px;
+}
+
+.nb-varblock-add:hover,
+.nb-varblock-x:hover {
+  color: var(--t-text);
+}
