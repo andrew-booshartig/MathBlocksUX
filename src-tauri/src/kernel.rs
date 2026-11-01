@@ -34,11 +34,23 @@ pub struct Kernel {
 pub struct Kernels(Mutex<HashMap<String, Arc<Kernel>>>);
 
 impl Kernel {
+    /// A built app's frozen engine is the kernel too (`engine --kernel`), so
+    /// notebooks run on a Mac with nothing installed; development runs the
+    /// sidecar's venv.
+    fn command() -> Command {
+        let bundled = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|dir| dir.join("../Resources/engine/engine")));
+        if let Some(engine) = bundled.filter(|path| path.exists()) {
+            let mut c = Command::new(engine);
+            c.arg("--kernel");
+            return c;
+        }
+        let mut dev = Command::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../sidecar/.venv/bin/python"));
+        dev.arg(concat!(env!("CARGO_MANIFEST_DIR"), "/../sidecar/kernel.py"));
+        dev
+    }
+
     fn spawn() -> Result<Self, String> {
-        let python = concat!(env!("CARGO_MANIFEST_DIR"), "/../sidecar/.venv/bin/python");
-        let script = concat!(env!("CARGO_MANIFEST_DIR"), "/../sidecar/kernel.py");
-        let mut child = Command::new(python)
-            .arg(script)
+        let mut child = Self::command()
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

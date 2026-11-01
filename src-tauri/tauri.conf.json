@@ -33,7 +33,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../sidecar/dist/engine/": "engine/"
+      "../sidecar/dist/engine/": "engine/",
+      "resources/THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"
     },
     "macOS": {
       "signingIdentity": "-"

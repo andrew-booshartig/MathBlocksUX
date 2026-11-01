@@ -34,3 +34,5 @@ sidecar/build
 
 # headless UI checks (Playwright + the real engine) — local tooling
 .uitest/
+# made for each release (npm run build:notices)
+src-tauri/resources/THIRD_PARTY_NOTICES.txt

@@ -9,6 +9,9 @@ Protocol (one JSON object per line, in both directions):
          or {"id": int, "ok": false, "error": str}
 
 The math itself lives in mathcore/ (one module per family of ops).
+
+Started as `engine --kernel`, it's a notebook's Python instead (kernel.py)
+— so a built app carries one Python, frozen, for both.
 """
 
 import json
@@ -16,6 +19,12 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+if __name__ == "__main__" and "--kernel" in sys.argv:
+    import kernel
+
+    kernel.main()
+    sys.exit(0)
 
 import sympy  # noqa: E402
 from sympy.parsing.sympy_parser import parse_expr  # noqa: E402

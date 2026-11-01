@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "calculator": "tauri dev --config src-tauri/tauri.calculator.conf.json",
-    "build:engine": "cd sidecar && .venv/bin/python -m PyInstaller --noconfirm --clean --onedir --name engine --distpath dist --workpath build/pyinstaller --specpath build --collect-submodules mathcore --exclude-module tkinter --exclude-module PyInstaller --exclude-module pytest --log-level WARN engine.py"
+    "build:notices": "node scripts/notices.mjs",
+    "build:engine": "cd sidecar && .venv/bin/python -m PyInstaller --noconfirm --clean --onedir --name engine --distpath dist --workpath build/pyinstaller --specpath build --collect-submodules mathcore --hidden-import kernel --hidden-import cell_modules --exclude-module tkinter --exclude-module PyInstaller --exclude-module pytest --log-level WARN engine.py"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
