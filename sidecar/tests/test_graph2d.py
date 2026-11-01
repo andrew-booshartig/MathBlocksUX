@@ -305,3 +305,21 @@ def test_a_list_counted_to_a_letter_waits_for_its_slider():
 def test_a_line_typed_another_way_says_its_slope_intercept_form(line, said):
     facts = graph(line)["series"][0].get("facts") or []
     assert (facts[0] if facts else None) == said
+
+
+def test_a_sequence_from_n_is_dots_and_says_its_kind():
+    s = graph(r"a_{n}=3n+2", xrange=[-10, 10])["series"][0]
+    assert s["kind"] == "points" and s["x"][:3] == [1, 2, 3] and s["y"][:3] == [5, 8, 11]
+    assert s["facts"][1] == r"\text{arithmetic: adds }d=3"
+    g = graph(r"a_n=2\cdot3^{n-1}", xrange=[-10, 10])["series"][0]
+    assert g["y"][:4] == [2, 6, 18, 54] and g["facts"][1] == r"\text{geometric: times }r=3"
+
+
+def test_a_sequence_from_the_term_before_needs_a_start_and_gives_its_formula():
+    out = graph(r"a_{n}=a_{n-1}+3", r"a_{1}=2", xrange=[-10, 10])["series"]
+    assert out[0]["y"][:3] == [2, 5, 8] and out[0]["facts"][-1] == "a_{n}=3 n - 1"
+    assert out[1]["kind"] == "value"
+    fib = graph(r"F_{n}=F_{n-1}+F_{n-2}", r"F_{1}=1", r"F_{2}=1", xrange=[-10, 10])["series"][0]
+    assert fib["y"][:7] == [1, 1, 2, 3, 5, 8, 13]
+    alone = graph(r"a_{n}=a_{n-1}+3")["series"][0]
+    assert alone["kind"] == "error" and "start" in alone["error"]

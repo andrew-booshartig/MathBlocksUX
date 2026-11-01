@@ -627,6 +627,17 @@ def op_graph2d(req: dict) -> dict:
             continue
         letters: list = []
         try:
+            if _SEQ.match(text):
+                s = _sequence(text, lines, values, functions, consts, points, window)
+                s["index"] = i
+                series.append(s)
+                continue
+            start = _START.match(text)
+            if start and start.group(1) in _sequence_names(lines):
+                # a_1 = 2: where a sequence starts
+                v = graphtex.Reader(graphtex.tokenize(start.group(4)), functions, consts, points).sum().subs(values)
+                series.append({"kind": "value", "value": float(v), "facts": [f"\\text{{where {start.group(1)} starts}}"], "index": i})
+                continue
             p = graphtex.read_line(text, functions, consts, points)
             letters = _letters(*p.sides, *p.conditions, *(p.tuples or []), bound={"x", "y", "t", "theta", "r"})
             s, expr = graph_line(i, p, values, xr, window, degrees)
@@ -878,6 +889,86 @@ def _through(expr):
         return [f"\\left(0,{sympy.latex(expr.subs(X, 0))}\\right)", f"\\left(1,{sympy.latex(expr.subs(X, 1))}\\right)"]
     except Exception:  # noqa: BLE001
         return None
+
+
+# ------------------------------------------------------------------ sequences
+
+_SEQ = re.compile(r"^\s*([a-zA-Z])_(?:\{n\}|n)\s*=(.+)$")
+_START = re.compile(r"^\s*([a-zA-Z])_(?:\{(\d+)\}|(\d))\s*=(.+)$")
+N = Symbol("n")
+
+
+def _sequence_names(lines) -> set:
+    return {m.group(1) for m in map(_SEQ.match, lines) if m}
+
+
+def _sequence(text, lines, values, functions, consts, points, window):
+    """a_n = 3n + 2 (each term from n), or a_n = a_{n-1} + 3 with a_1 = 2 on a
+    row of its own (each from the one before): dots at n = 1, 2, 3 … across
+    the view — and what kind it is, arithmetic (adds d) or geometric (times r)"""
+    name, rhs = _SEQ.match(text).groups()
+    # the terms before (a_{n-1}, a_{n-2}) as stand-in letters the reader can take
+    before = re.compile(rf"{name}_\{{\s*n\s*-\s*([12])\s*\}}")
+    back = sorted({int(k) for k in before.findall(rhs)})
+    stand = {k: Symbol(f"w_990{k}") for k in (1, 2)}
+    reader = graphtex.Reader(graphtex.tokenize(before.sub(lambda m: f"w_{{990{m.group(1)}}}", rhs)), functions, consts, points)
+    expr = reader.sum()
+    graphtex._done(reader)
+    expr = expr.subs({k: v for k, v in values.items() if str(k) != "n"})
+    missing = sorted(str(s) for s in expr.free_symbols - {N, *stand.values()})
+    if missing:
+        err = MathInputError(f"give {', '.join(missing)} a value to graph this")
+        err.missing = missing  # type: ignore[attr-defined]
+        raise err
+    last = int(min(200, max(10, math.floor(window[0][1]))))
+    terms: dict[int, sympy.Expr] = {}
+    if back:
+        starts = {}
+        for row in lines:
+            m = _START.match(row)
+            if m and m.group(1) == name:
+                k = int(m.group(2) or m.group(3))
+                starts[k] = graphtex.Reader(graphtex.tokenize(m.group(4)), functions, consts, points).sum().subs(values)
+        first = min(starts, default=None)
+        if first is None or any(first + j not in starts for j in range(max(back))):
+            need = ", ".join(f"{name}_{first if first is not None else 1}{'' if j == 0 else f'+{j}'}" for j in range(max(back)))
+            raise MathInputError(f"each term comes from the one before — give it a start: {name}_1 = … on a row of its own" if max(back) == 1 else f"give it its first {max(back)} terms, each on a row: {need}")
+        terms = {k: sympy.nsimplify(v) for k, v in starts.items() if k < first + max(back)}
+        for k in range(first + max(back), last + 1):
+            v = sympy.simplify(expr.subs({N: k, stand[1]: terms[k - 1], **({stand[2]: terms[k - 2]} if 2 in back else {})}))
+            if not v.is_real or abs(float(v)) > 1e12:
+                break
+            terms[k] = v
+    else:
+        for k in range(1, last + 1):
+            v = expr.subs(N, k)
+            if v.is_real is False or v.has(sympy.zoo, sympy.nan):
+                continue
+            if abs(float(v)) > 1e12:
+                break
+            terms[k] = v
+    if not terms:
+        raise MathInputError("it has no terms to draw")
+    ks = sorted(terms)
+    from .geometry import number_tex
+
+    first = ",\\ ".join(number_tex(terms[k]) for k in ks[:5])
+    facts = [f"{name}_{{n}}:\\ {first}" + (",\\ \\dots" if len(ks) > 5 else "")]
+    if len(ks) >= 3:
+        diffs = {sympy.simplify(terms[ks[j + 1]] - terms[ks[j]]) for j in range(min(len(ks) - 1, 8))}
+        ratios = {sympy.simplify(terms[ks[j + 1]] / terms[ks[j]]) for j in range(min(len(ks) - 1, 8)) if terms[ks[j]] != 0}
+        a1 = terms[ks[0]]
+        if len(diffs) == 1:
+            d = diffs.pop()
+            facts.append(f"\\text{{arithmetic: adds }}d={number_tex(d)}")
+            if back:
+                facts.append(f"{name}_{{n}}={sympy.latex(sympy.expand(a1 + (N - ks[0]) * d))}")
+        elif len(ratios) == 1 and len(ks) > 2 and terms[ks[0]] != 0:
+            r = ratios.pop()
+            facts.append(f"\\text{{geometric: times }}r={number_tex(r)}")
+            if back:
+                facts.append(f"{name}_{{n}}={sympy.latex(a1)}\\cdot{sympy.latex(r) if r.is_Integer and r > 0 else '(' + sympy.latex(r) + ')'}^{{n-{ks[0]}}}".replace("^{n-0}", "^{n}"))
+    return {"kind": "points", "x": [float(k) for k in ks], "y": [float(terms[k]) for k in ks], "sequence": name, "facts": facts}
 
 
 def _slope_intercept(text, p, expr):

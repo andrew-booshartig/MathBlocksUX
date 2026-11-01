@@ -814,6 +814,8 @@ export const CATALOG: [string, string, string, string][] = [
   ["Measure", "area(s)", "a polygon's or circle's area", op("area", "#?")],
   ["Measure", "perimeter(s)", "all the way round", op("perimeter", "#?")],
   ["Measure", "slope(l)", "rise over run", op("slope", "#?")],
+  ["Sequences", "aₙ = 3n + 2", "each term from n — a dot at n = 1, 2, 3…", "a_{n}=#?"],
+  ["Sequences", "aₙ = aₙ₋₁ + 3", "each term from the one before (a₁ = … on its own row)", "a_{n}=a_{n-1}+#?"],
   ["Statistics", "[3, 7, 2]", "a list of numbers", "\\left\\lbrack#?\\right\\rbrack"],
   ["Statistics", "[1...10]", "counting: 1 to 10 — [0, 5...50] by fives", "\\left\\lbrack#?\\ldots#?\\right\\rbrack"],
   ["Statistics", "(L, L²)", "a point for each number in L", "\\left(L,L^{2}\\right)"],

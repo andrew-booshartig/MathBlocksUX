@@ -127,11 +127,12 @@ function seriesTraces(s: GraphSeries, color: string, style: GraphLineStyle, outl
             const numbers = `(${fmt(x)}, ${fmt(s.y?.[i] ?? 0)})`;
             const name = s.name ? `<b>${s.name.replace(/_(\w+)/, "<sub>$1</sub>")}</b>` : "";
             if (style.text) return escapeHtml(style.text);
-            if (style.pointLabel === "none") return "";
+            // a sequence's dots, or a crowd of them, are read by hovering
+            if (style.pointLabel === "none" || (!style.pointLabel && (s.sequence || (s.x?.length ?? 0) > 8))) return "";
             if (style.pointLabel === "both") return name ? `${name} ${numbers}` : numbers;
             return name || numbers;
           }),
-          hovertext: (s.x ?? []).map((x, i) => `${s.name ? `${s.name} ` : ""}(${fmt(x)}, ${fmt(s.y?.[i] ?? 0)})`),
+          hovertext: (s.x ?? []).map((x, i) => (s.sequence ? `${s.sequence}<sub>${fmt(x)}</sub> = ${fmt(s.y?.[i] ?? 0)}` : `${s.name ? `${s.name} ` : ""}(${fmt(x)}, ${fmt(s.y?.[i] ?? 0)})`)),
           textposition: s.name ? "top right" : "top center",
           textfont: { color, size: s.name ? 13 : 10 },
           hoverinfo: "text",
