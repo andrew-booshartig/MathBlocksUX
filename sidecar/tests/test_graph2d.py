@@ -270,3 +270,23 @@ def test_rise_over_run_going_down_and_on_a_curve():
     assert down["facts"][0].endswith("=-2")
     curve = next(s for s in out if s.get("role") == "slope" and s["index"] == 1)
     assert curve["kind"] == "error" and "straight line" in curve["error"]
+
+
+@pytest.mark.parametrize("line,n,mean", [
+    (r"\left[1...5\right]", "n=5", r"\text{mean }3"), (r"\left[1,\ldots,5\right]", "n=5", r"\text{mean }3"),
+    (r"\left[1,3...11\right]", "n=6", r"\text{mean }6"), (r"\left[5...1\right]", "n=5", r"\text{mean }3"),
+    (r"\left[0,0.5...2\right]", "n=5", r"\text{mean }1"),
+])
+def test_a_list_can_count(line, n, mean):
+    assert graph(line)["series"][0]["facts"] == [n, mean]
+
+
+def test_a_list_in_a_point_is_a_point_for_each_number():
+    s = graph(r"L=\left[1...4\right]", r"\left(L,L^{2}\right)")["series"][1]
+    assert s["kind"] == "points" and s["x"] == [1, 2, 3, 4] and s["y"] == [1, 4, 9, 16]
+
+
+def test_a_list_in_a_function_is_a_curve_for_each_number():
+    s = graph(r"L=\left[1,2,3\right]", r"y=Lx")["series"][1]
+    assert s["kind"] == "function" and s["y"].count(None) >= 3  # three lines, gaps between
+    assert "intercepts" not in str(graph(r"y=\left[1,2\right]x")["markers"])

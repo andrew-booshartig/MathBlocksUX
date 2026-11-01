@@ -43,6 +43,7 @@ _AS_SYM = {
     "\\{": "LB", "\\}": "RB", "\\lbrace": "LB", "\\rbrace": "RB", "\\\\": "ROW", "\\|": "|", "\\vert": "|", "\\mid": "|",
     "\\lfloor": "LFLOOR", "\\rfloor": "RFLOOR", "\\lceil": "LCEIL", "\\rceil": "RCEIL", "\\prime": "'",
     "\\lbrack": "[", "\\rbrack": "]",
+    "\\ldots": "...", "\\dots": "...", "\\cdots": "...",
 }
 _GREEK = {"alpha", "beta", "gamma", "delta", "epsilon", "varepsilon", "zeta", "eta", "theta", "vartheta", "iota", "kappa", "lambda", "mu", "nu", "xi", "rho", "sigma", "tau", "upsilon", "phi", "varphi", "chi", "psi", "omega"}
 
@@ -90,6 +91,8 @@ def tokenize(latex: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     i = 0
     text = latex.replace("\\left.", "").replace("\\right.", "")
+    # [1...10]: the dots as one word (not 1. and two more dots)
+    text = re.sub(r"\.\.\.|…", r" \\ldots ", text)
     while i < len(text):
         m = _TOKEN.match(text, i)
         if not m:
@@ -119,6 +122,22 @@ def tokenize(latex: str) -> list[tuple[str, str]]:
                 kind, value = value[1:], m2.group(1)
         out.append((kind, value))
     return out
+
+
+def _counted(items: list, last) -> list:
+    """[1...5] → 1, 2, 3, 4, 5; [5...1] counts down; [0, 0.5...2] by halves"""
+    if any(v.free_symbols for v in (*items[:2], last)):
+        raise MathInputError("a list like [1...10] needs numbers at its ends")
+    start = items[0]
+    step = items[1] - items[0] if len(items) > 1 else (Integer(1) if last >= start else Integer(-1))
+    if step == 0:
+        raise MathInputError("the list's first two numbers are the same — it wouldn't get anywhere")
+    n = int(sympy.floor((last - start) / step + sympy.Rational(1, 10**9))) + 1
+    if n <= 0:
+        raise MathInputError("that list goes the wrong way — its steps never reach the end")
+    if n > 10_000:
+        raise MathInputError("that list is too long (10,000 at most)")
+    return [start + k * step for k in range(n)]
 
 
 @dataclasses.dataclass
@@ -307,11 +326,19 @@ class Reader:
                 self.take()
                 close = ")" if value == "(" else "]"
                 first = self.sum()
-                if self.at("sym", ","):
+                if self.at("sym", ",") or (value == "[" and self.at("sym", "...")):
                     items = [first]
                     while self.at("sym", ","):
                         self.take()
+                        if value == "[" and self.at("sym", "..."):
+                            break  # [1, 3, ..., 11]
                         items.append(self.sum())
+                    if value == "[" and self.at("sym", "..."):
+                        # [1...10], [1, 3...11]: counting from the first, in the steps the first two take
+                        self.take()
+                        if self.at("sym", ","):
+                            self.take()
+                        items = _counted(items, self.sum())
                     self.expect("sym", close)
                     if value == "[":
                         # [1, 2, 3]: a list (a point is round brackets)

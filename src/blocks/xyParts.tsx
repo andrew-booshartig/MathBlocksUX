@@ -815,6 +815,8 @@ export const CATALOG: [string, string, string, string][] = [
   ["Measure", "perimeter(s)", "all the way round", op("perimeter", "#?")],
   ["Measure", "slope(l)", "rise over run", op("slope", "#?")],
   ["Statistics", "[3, 7, 2]", "a list of numbers", "\\left\\lbrack#?\\right\\rbrack"],
+  ["Statistics", "[1...10]", "counting: 1 to 10 — [0, 5...50] by fives", "\\left\\lbrack#?\\ldots#?\\right\\rbrack"],
+  ["Statistics", "(L, L²)", "a point for each number in L", "\\left(L,L^{2}\\right)"],
   ["Statistics", "mean(L)", "the average", op("mean", "#?")],
   ["Statistics", "median(L)", "the middle", op("median", "#?")],
   ["Statistics", "stdev(L)", "standard deviation (a sample's)", op("stdev", "#?")],

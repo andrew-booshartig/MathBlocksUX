@@ -79,7 +79,31 @@ def _degrees(expr):
 _LOG = {"x": False, "y": False}
 
 
+def _list_atoms(e) -> list:
+    from .stats import is_list
+
+    return sorted((a for a in e.atoms(sympy.core.function.AppliedUndef) if is_list(a)), key=str) if hasattr(e, "atoms") else []
+
+
+def _spread(*exprs) -> list[tuple]:
+    """a list in an expression stands for each of its numbers in turn:
+    (L, L²) is a point for each number in L; y = Lx a line for each — the
+    lists taken side by side, as long as the shortest"""
+    lists = sorted({a for e in exprs for a in _list_atoms(e)}, key=str)
+    if not lists:
+        return [exprs]
+    n = min(len(a.args) for a in lists)
+    if n * len(exprs) > 20_000:
+        raise MathInputError("that's too many to draw (10,000 at most)")
+    return [tuple(e.xreplace({a: a.args[k] for a in lists}) if hasattr(e, "xreplace") else e for e in exprs) for k in range(n)]
+
+
 def _function_series(expr, conds, xr, yr):
+    if _list_atoms(expr):
+        # one curve for each number in the list, gaps between
+        parts = [_function_series(e, conds, xr, yr) for (e,) in _spread(expr)[:50]]
+        gap = np.array([np.nan])
+        return np.concatenate([np.concatenate([xs, gap]) for xs, _ in parts]), np.concatenate([np.concatenate([ys, gap]) for _, ys in parts])
     xs = np.geomspace(xr[0], xr[1], 1800) if _LOG["x"] and xr[0] > 0 else np.linspace(xr[0], xr[1], 1800)
     ys = _numeric(expr, X)(xs)
     ys = _mask(ys, conds, xs, ys)
@@ -359,6 +383,8 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
     yr = window[1]
     if p.tuples is not None:
         items = [sympy.Tuple(*[fix(c.subs(values)) for c in tup]) for tup in p.tuples]
+        # a list in a point: a point for each of its numbers — (L, L²)
+        items = [sympy.Tuple(*each) for t in items for each in _spread(*t)]
         if any(len(t) != 2 for t in items):
             raise MathInputError("a point is (x, y)")
         free = set().union(*[t.free_symbols for t in items])
@@ -591,6 +617,8 @@ def op_graph2d(req: dict) -> dict:
             p = graphtex.read_line(text, functions, consts, points)
             letters = _letters(*p.sides, *p.conditions, *(p.tuples or []), bound={"x", "y", "t", "theta", "r"})
             s, expr = graph_line(i, p, values, xr, window, degrees)
+            if expr is not None and _list_atoms(expr):
+                expr = None  # a family of curves (y = Lx): no one curve to mark or build from
             # a straight line (y = 2x + 1, x = 3): two points on it, to build from
             through = _through(expr) if s["kind"] == "function" and expr is not None else _through_vertical(s)
             if through:
