@@ -403,7 +403,6 @@ export default function NotebookTile({
     [doc],
   );
   const codesOf = (d: NotebookDoc | null) => (d?.blocks ?? []).filter((b) => b.kind === "cell" && b.lang === "python").map((b) => (b as { code: string }).code);
-  const pythonCodes = codesOf(doc);
   const pyRef = useRef(py);
   pyRef.current = py;
   // a cell running: how long so far, counted up as it goes
@@ -563,14 +562,42 @@ export default function NotebookTile({
     const ok = await runCells([code]);
     if (ok && reactive) runCells(await dependents(code));
   };
-  const runAll = () => runCells(codesOf(docRef.current));
-  const stopKernel = () => name && invoke("kernel_interrupt", { notebook: name }).catch(() => {});
+  /** every cell that runs — Python, MATLAB, C++… — top to bottom, stopping at the first that fails */
+  const runAll = async () => {
+    const cells = (docRef.current?.blocks ?? []).filter(runnable);
+    // the Python ones show they're waiting their turn
+    setRunning((r) => new Set([...r, ...cells.filter((b) => b.kind === "cell" && b.lang === "python").map((b) => (b as { code: string }).code)]));
+    let ok = true;
+    for (const b of cells) {
+      if (b.kind !== "cell") continue;
+      if (!ok) {
+        if (b.lang === "python") setRunning((r) => (r.delete(b.code), new Set(r)));
+        continue;
+      }
+      const lang = codeLanguage(b);
+      ok = (await (lang ? runLanguage(lang, b.code) : runCells([b.code]))) !== false;
+    }
+  };
+  /** the languages kept running for this notebook (a session each): MATLAB, a shell… */
+  const sessionLanguages = () => [...new Set((docRef.current?.blocks ?? []).map(codeLanguage).filter((l): l is Language => !!l?.run?.some((w) => w.session)))];
+  /** stop the cell running, whatever its language (variables stay) */
+  const stopKernel = () => {
+    if (!name) return;
+    invoke("kernel_interrupt", { notebook: name }).catch(() => {});
+    for (const l of sessionLanguages()) invoke("lang_stop", { notebook: name, lang: l.id }).catch(() => {});
+    const at = now.current;
+    if (at && at.lang !== "python") invoke("lang_stop", { notebook: name, lang: at.lang }).catch(() => {});
+  };
+  /** a fresh start: Python, and every other language kept running, every variable gone */
   const restartKernel = async (andRun = false) => {
     if (!name) return;
     await invoke("kernel_restart", { notebook: name }).catch(() => {});
+    const others = sessionLanguages();
+    for (const l of others) await invoke("lang_restart", { notebook: name, lang: l.id }).catch(() => {});
     setKernel("off");
     setVars([]);
-    setNotice("Python restarted — every variable is gone");
+    const names = ["Python", ...others.map((l) => l.label)];
+    setNotice(`${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]} restarted — every variable is gone`);
     if (andRun) runAll();
   };
   const toggleReactive = () => {
@@ -1005,18 +1032,18 @@ export default function NotebookTile({
       </div>
       {view !== "new" && doc && (
         <div className="nb-tools">
-          {pythonCodes.length > 0 && (
+          {doc.blocks.some(runnable) && (
             <span className="nb-kernel">
               <span className={`nb-kernel-dot is-${kernel}`} title={kernel === "busy" ? "Python is running a cell" : kernel === "idle" ? "Python is ready — its variables kept between cells" : "Python starts on the first run"} />
-              <button className="nb-tool" title="Run every Python cell, top to bottom" onClick={runAll}>
+              <button className="nb-tool" title="Run every cell that runs — Python, MATLAB, C++… — top to bottom" onClick={runAll}>
                 <Icon name="run" size={14} /> Run all
               </button>
-              {kernel === "busy" && (
+              {(kernel === "busy" || running.size > 0) && (
                 <button className="nb-tool" title="Stop the cell running (its variables stay)" onClick={stopKernel}>
                   ■ Stop
                 </button>
               )}
-              <button className="nb-tool is-icon" title="Restart Python — every variable gone, a fresh start" onClick={() => restartKernel()}>
+              <button className="nb-tool is-icon" title="Restart — Python (and MATLAB, a shell… kept running) start fresh, every variable gone" onClick={() => restartKernel()}>
                 <Icon name="reset" size={14} />
               </button>
               <button
@@ -1128,7 +1155,7 @@ export default function NotebookTile({
                   <Icon name="folder" size={14} /> Open a Jupyter notebook…
                 </button>
                 <input ref={importer} type="file" accept=".ipynb" hidden onChange={(e) => e.target.files?.[0] && importIpynb(e.target.files[0])} />
-                {pythonCodes.length > 0 && (
+                {doc.blocks.some(runnable) && (
                   <>
                     <button className="nb-pop-item" onClick={() => (keepOutputs({}), setMenu(false))}>
                       <Icon name="close" size={14} /> Clear every output
