@@ -122,7 +122,14 @@ function seriesTraces(s: GraphSeries, color: string, style: GraphLineStyle, outl
           // a named point is labelled by its name, its numbers when hovered
           // (they're in the list too); names are only letters, digits and
           // primes — the engine reads no others
-          text: (s.x ?? []).map((x, i) => (s.name ? `<b>${s.name.replace(/_(\w+)/, "<sub>$1</sub>")}</b>` : `(${fmt(x)}, ${fmt(s.y?.[i] ?? 0)})`)),
+          text: (s.x ?? []).map((x, i) => {
+            const numbers = `(${fmt(x)}, ${fmt(s.y?.[i] ?? 0)})`;
+            const name = s.name ? `<b>${s.name.replace(/_(\w+)/, "<sub>$1</sub>")}</b>` : "";
+            if (style.text) return escapeHtml(style.text);
+            if (style.pointLabel === "none") return "";
+            if (style.pointLabel === "both") return name ? `${name} ${numbers}` : numbers;
+            return name || numbers;
+          }),
           hovertext: (s.x ?? []).map((x, i) => `${s.name ? `${s.name} ` : ""}(${fmt(x)}, ${fmt(s.y?.[i] ?? 0)})`),
           textposition: s.name ? "top right" : "top center",
           textfont: { color, size: s.name ? 13 : 10 },
@@ -623,7 +630,7 @@ export default function GraphView({
     const out: Trace[] = [];
     for (const s of result?.series ?? []) {
       const style = styles[s.index];
-      if (!style?.label || style.hidden) continue;
+      if (!(style?.label || style?.text) || style.hidden || s.kind === "points") continue;
       const spot = labelSpot(s, window);
       if (!spot) continue;
       out.push({
@@ -632,7 +639,7 @@ export default function GraphView({
         xref: "x",
         yref: "y",
         // a shape says its equation; any other line, itself
-        text: escapeHtml(plainMath((s.equation ?? exprs[s.index] ?? "").trim())),
+        text: escapeHtml(style.text || plainMath((s.equation ?? exprs[s.index] ?? "").trim())),
         showarrow: false,
         xanchor: "right",
         yanchor: "bottom",

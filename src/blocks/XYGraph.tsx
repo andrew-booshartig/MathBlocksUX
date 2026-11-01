@@ -46,6 +46,13 @@ const TOOLS: { id: GraphTool; icon: string; title: string; group: number }[] = [
   { id: "eraser", icon: "eraser", title: "Eraser — click a drawing to remove it", group: 2 },
 ];
 
+/** one key each, with the pointer over the graph (as design apps do) */
+const TOOL_KEYS: Record<string, GraphTool> = {
+  h: "pan", v: "move", p: "point", s: "segment", l: "line", y: "ray", o: "circle", r: "rectangle", g: "polygon",
+  a: "angle", i: "intersect", m: "midpoint", d: "pen", t: "text", e: "eraser",
+};
+const keyOf = (tool: GraphTool) => Object.entries(TOOL_KEYS).find(([, t]) => t === tool)?.[0]?.toUpperCase();
+
 /** what to do with the tool in hand, said under the graph */
 const HINTS: Record<GraphTool, string> = {
   pan: "Drag the graph to move around · hover a curve to read it",
@@ -153,8 +160,14 @@ function fracTex(n: number): string {
   return trim(n);
 }
 type Row = NonNullable<XYPlot["lines"]>[number];
+/** the folder a row is in: the nearest folder row above it */
+function folderAbove(lines: Row[], i: number): Row | null {
+  for (let k = i - 1; k >= 0; k--) if (lines[k].folder !== undefined) return lines[k];
+  return null;
+}
+
 /** a row with nothing in it yet (a note, even empty, is something) */
-const isBlank = (l: Row) => !l.latex.trim() && l.note === undefined && !l.triangle;
+const isBlank = (l: Row) => !l.latex.trim() && l.note === undefined && !l.triangle && l.folder === undefined;
 /** a triangle row, drawn: the polygon through its corners (nothing until it's worked out) */
 function triangleLatex(t: NonNullable<Row["triangle"]>): string {
   const solved = solveTriangle(t.given, t.pick ?? 1);
@@ -163,7 +176,7 @@ function triangleLatex(t: NonNullable<Row["triangle"]>): string {
   return corners ? `\\operatorname{polygon}\\left(${corners.map(([x, y]) => `\\left(${n(x)},${n(y)}\\right)`).join(",")}\\right)` : "";
 }
 /** what a row graphs: its math — not a note, nor a starter with boxes still empty */
-const exprOf = (l: Row) => (l.triangle ? triangleLatex(l.triangle) : l.note !== undefined || l.latex.includes("\\placeholder") ? "" : l.latex);
+const exprOf = (l: Row) => (l.triangle ? triangleLatex(l.triangle) : l.note !== undefined || l.folder !== undefined || l.latex.includes("\\placeholder") ? "" : l.latex);
 /** a note grows to fit its words */
 const fit = (el: HTMLTextAreaElement) => {
   el.style.height = "auto";
@@ -293,6 +306,8 @@ function LetterRow({
   from,
   range,
   playing,
+  speed = 1,
+  onSpeed,
   onRange,
   onPlay,
   onChange,
@@ -303,6 +318,9 @@ function LetterRow({
   /** its slider's ends (else −10 to 10, wider to fit the value) */
   range?: [number, number];
   playing?: boolean;
+  /** how fast it plays: ×0.5 … ×4 */
+  speed?: number;
+  onSpeed?: (speed: number) => void;
   onRange: (range: [number, number]) => void;
   onPlay: () => void;
   onChange: (n: number) => void;
@@ -340,6 +358,11 @@ function LetterRow({
       <button className={`xy-letter-play${playing ? " is-on" : ""}`} title={playing ? `Stop ${name}` : `Play — ${name} sweeps from ${round(lo)} to ${round(hi)} and back`} onClick={onPlay}>
         <Icon name={playing ? "pause" : "play"} size={12} />
       </button>
+      {onSpeed && (
+        <button className="xy-letter-speed" title="How fast it plays — click for faster" onClick={() => onSpeed(({ 0.5: 1, 1: 2, 2: 4, 4: 0.5 } as Record<number, number>)[speed] ?? 1)}>
+          ×{speed}
+        </button>
+      )}
       <RangeEnd value={lo} title={`Where ${name}'s slider starts`} onChange={(n) => n < hi && onRange([n, hi])} />
       <input
         className="xy-letter-slide nodrag"
@@ -414,7 +437,7 @@ export default function XYGraph({
    * and plain lines like y = 2x + 1 (the engine gives two points on them) */
   const shapes: GraphShape[] = (result?.series ?? []).flatMap((s): GraphShape[] => {
     const line = lines[s.index];
-    if (!line || line.hidden || s.role || s.kind === "points" || s.kind === "error" || s.kind === "field" || s.kind === "value") return [];
+    if (!line || line.hidden || folderAbove(lines, s.index)?.hidden || s.role || s.kind === "points" || s.kind === "error" || s.kind === "field" || s.kind === "value") return [];
     if (s.kind === "vline" && s.x0 !== undefined) return [{ key: line.id, kind: "straight", pts: [[s.x0, -1e5], [s.x0, 1e5]] }];
     if (!s.x?.length || !s.y?.length) return [];
     // a gap in a curve stays a gap
@@ -423,7 +446,7 @@ export default function XYGraph({
     return [{ key: line.id, kind: straight ? "straight" : s.shape === "circle" ? "circle" : "curve", pts: straight ? [pts[0], pts[pts.length - 1]] : pts }];
   });
   const targets: GraphTarget[] = (result?.series ?? []).flatMap((s) =>
-    s.kind === "points" && lines[s.index] && !lines[s.index].hidden && s.x?.length === 1 && s.y?.[0] != null
+    s.kind === "points" && lines[s.index] && !lines[s.index].hidden && !folderAbove(lines, s.index)?.hidden && s.x?.length === 1 && s.y?.[0] != null
       ? [{ key: lines[s.index].id, x: s.x[0], y: s.y[0] as number, name: s.name, movable: literalPoint(lines[s.index].latex) || !!s.glide }]
       : [],
   );
@@ -439,12 +462,19 @@ export default function XYGraph({
   const [moreOpen, setMoreOpen] = useState(false);
   /** letters playing: each sweeps its slider back and forth */
   const [playing, setPlaying] = useState<string[]>([]);
-  // Esc (when you're not typing): put the tool down, back to the hand
+  // keys, with the pointer over the graph and not typing: a letter picks a
+  // tool (S segment, L line…), Esc puts it down — back to the hand
+  const over = useRef(false);
   useEffect(() => {
-    if (tool === "pan") return;
     const key = (e: KeyboardEvent) => {
-      const typing = (e.target as HTMLElement)?.closest?.("input, textarea, math-field, [contenteditable]");
-      if (e.key === "Escape" && !e.defaultPrevented && !typing) setTool("pan");
+      const typing = (e.target as HTMLElement)?.closest?.("input, textarea, select, math-field, [contenteditable]");
+      if (typing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "Escape") return tool !== "pan" && setTool("pan");
+      const pick = over.current && !e.shiftKey ? TOOL_KEYS[e.key.toLowerCase()] : undefined;
+      if (pick) {
+        e.preventDefault();
+        setTool(pick);
+      }
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
@@ -463,6 +493,10 @@ export default function XYGraph({
   const tables = plot.tables ?? [];
   const setTables = (next: XYTable[]) => update({ tables: next.length ? next : undefined });
   const empty = lines.every(isBlank) && !tables.length;
+  /** each row's folder: the nearest folder above it */
+  const folderOf = lines.map((l, k) => (l.folder !== undefined ? null : folderAbove(lines, k)));
+  /** hidden on the graph: by its own swatch, or its folder's */
+  const hiddenAt = (i: number) => !!lines[i]?.hidden || !!folderOf[i]?.hidden;
   const [addOpen, setAddOpen] = useState(false);
   const notes = useRef<Record<string, HTMLTextAreaElement | null>>({});
   // the lines, then each table's points and its fitted curve (two lines each)
@@ -898,7 +932,7 @@ export default function XYGraph({
         if (v === null || v === undefined) continue;
         const [lo, hi] = plot.ranges?.[name] ?? [Math.min(-10, Math.floor(v)), Math.max(10, Math.ceil(v))];
         let dir = heading[name] ?? 1;
-        let next = v + (dir * (hi - lo) * dt) / 4;
+        let next = v + (dir * (hi - lo) * dt * (plot.speeds?.[name] ?? 1)) / 4;
         if (next >= hi) [next, dir] = [hi, -1];
         else if (next <= lo) [next, dir] = [lo, 1];
         heading[name] = dir;
@@ -961,6 +995,7 @@ export default function XYGraph({
     setExamplesOpen(false);
     if (id === "table") return setTables([...tables, { id: newId("table"), rows: [["", ""], ["", ""], ["", ""]] }]);
     if (id === "image") return imagePicker.current?.click();
+    if (id === "folder") return setLines([...lines.filter((l) => !isBlank(l)), { id: newId("xy"), latex: "", folder: "Folder" }]);
     if (id === "triangle") return setLines([...lines.filter((l) => !isBlank(l)), { id: newId("xy"), latex: "", triangle: { given: {} } }]);
     const row = { id: newId("xy"), latex: "", ...(id === "note" ? { note: "" } : {}) };
     setLines([...lines.filter((l) => !isBlank(l)), row]);
@@ -1009,7 +1044,7 @@ export default function XYGraph({
   };
 
   return (
-    <div className={`xy-graph${fill ? " is-fill" : ""}`}>
+    <div className={`xy-graph${fill ? " is-fill" : ""}`} onPointerEnter={() => (over.current = true)} onPointerLeave={() => (over.current = false)}>
       {/* the list beside the graph when there's room (it scrolls on its own,
           so the graph never moves), above it when there isn't */}
       <div className="xy-split">
@@ -1043,9 +1078,29 @@ export default function XYGraph({
               const error = errorOf(i);
               const caption = error ? [] : captionOf(i);
               const last = i === lines.length - 1 && isBlank(line);
+              const folder = last ? null : folderOf[i];
+              // a folded folder's rows are out of sight (the empty row at the end never is)
+              if (folder && folder.collapsed) return null;
+              const inFolder = folder ? " is-in-folder" : "";
+              if (line.folder !== undefined)
+                return (
+                  <div key={line.id} className={`xy-folder${line.hidden ? " is-hidden" : ""}`}>
+                    <button className="xy-folder-fold" title={line.collapsed ? "Open it" : "Fold it shut"} onClick={() => setLine(i, { collapsed: !line.collapsed || undefined })}>
+                      {line.collapsed ? "▸" : "▾"}
+                    </button>
+                    <button className="xy-folder-eye" title={line.hidden ? "Show everything in it" : "Hide everything in it"} onClick={() => setLine(i, { hidden: !line.hidden || undefined })}>
+                      <Icon name={line.hidden ? "eyeOff" : "eye"} size={14} />
+                    </button>
+                    <input className="xy-folder-title" value={line.folder} placeholder="Folder" onChange={(e) => setLine(i, { folder: e.target.value })} />
+                    <span className="xy-dim">{lines.filter((l, j) => folderOf[j]?.id === line.id && !isBlank(l)).length}</span>
+                    <button className="xy-remove" title="Take the folder away (what's in it stays)" onClick={() => remove(i)}>
+                      ×
+                    </button>
+                  </div>
+                );
               if (line.triangle)
                 return (
-                  <div key={line.id} className="xy-line is-triangle">
+                  <div key={line.id} className={`xy-line is-triangle${inFolder}`}>
                     <TriangleRow
                       tri={line.triangle}
                       color={colorOf(i)}
@@ -1067,7 +1122,7 @@ export default function XYGraph({
                 );
               if (line.note !== undefined)
                 return (
-                  <div key={line.id} className="xy-line is-note">
+                  <div key={line.id} className={`xy-line is-note${inFolder}`}>
                     <div className="xy-line-row">
                       <span className="xy-note-mark" title="A note">
                         <Icon name="text" size={14} />
@@ -1095,7 +1150,7 @@ export default function XYGraph({
                   ref={(el) => {
                     rows.current[line.id] = el;
                   }}
-                  className={`xy-line${line.hidden ? " is-hidden" : ""}${selected === line.id ? " is-selected" : ""}${last ? " is-blank" : ""}`}
+                  className={`xy-line${line.hidden ? " is-hidden" : ""}${selected === line.id ? " is-selected" : ""}${last ? " is-blank" : ""}${inFolder}`}
                 >
                   <div className="xy-line-row">
                     <button
@@ -1165,6 +1220,8 @@ export default function XYGraph({
                       palette={palette}
                       auto={palette[i % palette.length]}
                       isFunction={seriesOf(i).some((s) => s.kind === "function" && !s.role && !s.shape)}
+                  shaded={seriesOf(i).some((s) => !s.role && (s.kind === "inequality" || s.kind === "region" || s.kind === "polygon"))}
+                  isPoint={seriesOf(i).some((s) => s.kind === "points")}
                       straight={straightOf(line.latex)}
                       onStraight={(kind, a, b) => setLine(i, { latex: `\\operatorname{${kind}}\\left(${texName(a)},${texName(b)}\\right)` })}
                       builds={buildsOf(i)}
@@ -1241,6 +1298,8 @@ export default function XYGraph({
                   from={name in fromVars}
                   range={plot.ranges?.[name]}
                   playing={playing.includes(name)}
+                  speed={plot.speeds?.[name] ?? 1}
+                  onSpeed={(speed) => update({ speeds: { ...(plot.speeds ?? {}), [name]: speed } })}
                   onRange={(range) => update({ ranges: { ...(plot.ranges ?? {}), [name]: range } })}
                   onPlay={() => setPlaying(playing.includes(name) ? playing.filter((n) => n !== name) : [...playing, name])}
                   onChange={(n) => (name in fromVars ? setVariable(name, n) : update({ letters: { ...(plot.letters ?? {}), [name]: n } }))}
@@ -1254,7 +1313,7 @@ export default function XYGraph({
             {TOOLS.map((t, k) => (
               <Fragment key={t.id}>
                 {k > 0 && TOOLS[k - 1].group !== t.group && <span className="xy-tools-sep" />}
-                <button className={`xy-tool${tool === t.id ? " is-on" : ""}`} title={t.title} onClick={() => setTool(t.id)}>
+                <button className={`xy-tool${tool === t.id ? " is-on" : ""}`} title={keyOf(t.id) ? `${t.title}   (${keyOf(t.id)})` : t.title} onClick={() => setTool(t.id)}>
                   <Icon name={t.icon} size={15} />
                 </button>
               </Fragment>
@@ -1314,7 +1373,7 @@ export default function XYGraph({
               window={plot.window ?? DEFAULT_WINDOW}
               onWindowChange={(window) => update({ window })}
               styles={[
-                ...lines.map((l) => ({ hidden: l.hidden, ...(l.style ?? {}) })),
+                ...lines.map((l, i) => ({ hidden: hiddenAt(i), ...(l.style ?? {}) })),
                 ...tables.flatMap((_, k) => [{ color: tableColor(k) }, { color: tableColor(k), dash: "dash" as const }]),
               ]}
               extras={lines.map((l) => {

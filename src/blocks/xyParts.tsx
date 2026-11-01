@@ -72,6 +72,8 @@ export function LineOptions({
   palette,
   auto,
   isFunction,
+  shaded,
+  isPoint,
   straight,
   onStraight,
   builds = [],
@@ -84,7 +86,7 @@ export function LineOptions({
   onExtra,
   onClose,
 }: {
-  style: Pick<GraphLineStyle, "color" | "dash" | "width" | "label">;
+  style: Pick<GraphLineStyle, "color" | "dash" | "width" | "label" | "fill" | "pointLabel" | "text">;
   extra: XYExtra;
   palette: string[];
   /** its color when none is picked */
@@ -104,7 +106,11 @@ export function LineOptions({
   trace?: boolean;
   onTrace?: (on: boolean) => void;
   onClearTrace?: () => void;
-  onStyle: (s: Pick<GraphLineStyle, "color" | "dash" | "width" | "label">) => void;
+  onStyle: (s: Pick<GraphLineStyle, "color" | "dash" | "width" | "label" | "fill" | "pointLabel" | "text">) => void;
+  /** it's shaded (an inequality, a region, a polygon): how strongly */
+  shaded?: boolean;
+  /** it's a point: what its label says */
+  isPoint?: boolean;
   onExtra: (e: XYExtra) => void;
   onClose: () => void;
 }) {
@@ -137,10 +143,35 @@ export function LineOptions({
           </button>
         ))}
       </div>
-      <label className="xy-check">
-        <input type="checkbox" checked={!!style.label} onChange={(e) => set({ label: e.target.checked || undefined })} />
-        Write its equation on the graph
-      </label>
+      {shaded && (
+        <div className="xy-row">
+          <span>Shading</span>
+          <input className="xy-image-fade" type="range" min={0.05} max={0.8} step={0.05} value={style.fill ?? 0.2} onChange={(e) => set({ fill: Number(e.target.value) })} />
+        </div>
+      )}
+      {isPoint ? (
+        <div className="xy-seg is-text">
+          {(
+            [
+              ["name", "Its name"],
+              ["both", "Name and numbers"],
+              ["none", "No label"],
+            ] as const
+          ).map(([v, label]) => (
+            <button key={v} className={(style.pointLabel ?? "name") === v ? "is-on" : ""} onClick={() => set({ pointLabel: v === "name" ? undefined : v })}>
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <label className="xy-check">
+          <input type="checkbox" checked={!!style.label} onChange={(e) => set({ label: e.target.checked || undefined })} />
+          Write its equation on the graph
+        </label>
+      )}
+      <div className="xy-row">
+        <input className="xy-text" value={style.text ?? ""} placeholder="Or your own words beside it — “max height”" onChange={(e) => set({ text: e.target.value || undefined })} />
+      </div>
       {onTrace && (
         <div className="xy-row">
           <label className="xy-check">
@@ -599,6 +630,7 @@ export const ADDS: { id: string; group: string; label: string; tex: string; temp
   { id: "histogram", group: "Statistics", label: "Histogram", tex: "\\text{histogram}(L)", template: "\\operatorname{histogram}\\left(#?\\right)", title: "Bars of how many fall in each range — histogram(L) or histogram(L, 5)" },
   { id: "boxplot", group: "Statistics", label: "Box plot", tex: "\\text{boxplot}(L)", template: "\\operatorname{boxplot}\\left(#?\\right)", title: "Min, Q1, median, Q3, max" },
   { id: "normal", group: "Statistics", label: "Normal curve", tex: "y=\\text{normalpdf}(x)", template: "y=\\operatorname{normalpdf}\\left(x,#?,#?\\right)", title: "The bell curve — its mean, then its standard deviation; normalcdf(a, b, μ, σ) for the chance between a and b" },
+  { id: "folder", group: "Data and notes", label: "Folder", tex: "\\text{group rows}", title: "A title over the rows under it — fold them away, hide them all at once" },
   { id: "table", group: "Data and notes", label: "Table", tex: "x\\;\\big|\\;y", title: "Data points — and a curve fitted to them" },
   { id: "image", group: "Data and notes", label: "Image", tex: "\\text{map, photo}", title: "A picture under the graph — a map to triangulate on, a photo to trace, a scan" },
   { id: "note", group: "Data and notes", label: "Note", tex: "\\text{Aa}", title: "Words in the list: what this shows, what to try next" },

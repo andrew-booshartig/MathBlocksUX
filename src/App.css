@@ -7759,3 +7759,66 @@ math-field {
 .xy-fact-error {
   color: var(--t-red, #f19a9a);
 }
+
+/* folders: a title over the rows under it */
+.xy-folder {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: var(--t-bg2, #17171f);
+}
+
+.xy-folder.is-hidden .xy-folder-title {
+  opacity: 0.5;
+}
+
+.xy-folder-fold,
+.xy-folder-eye {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-muted, #7a7a90);
+  cursor: pointer;
+}
+
+.xy-folder-fold:hover,
+.xy-folder-eye:hover {
+  color: var(--t-text, #e8e8f0);
+  background: var(--t-bg4, #23232d);
+}
+
+.xy-folder-title {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--t-text, #e8e8f0);
+  font: 600 13px -apple-system, "Inter", sans-serif;
+}
+
+.xy-line.is-in-folder {
+  margin-left: 14px;
+}
+
+.xy-letter-speed {
+  flex: 0 0 auto;
+  padding: 1px 4px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--t-muted, #7a7a90);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.xy-letter-speed:hover {
+  color: var(--t-text, #e8e8f0);
+}

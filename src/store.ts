@@ -99,6 +99,10 @@ export interface GraphLineStyle {
   fill?: number;
   /** write the equation next to its curve */
   label?: boolean;
+  /** a point's label: its name (the default), its name and numbers, or none */
+  pointLabel?: "name" | "both" | "none";
+  /** words of your own on the graph beside it, instead of its equation */
+  text?: string;
 }
 
 export interface GraphSlider {
@@ -296,13 +300,17 @@ export interface XYPlot {
     latex: string;
     hidden?: boolean;
     /** how it's drawn: its own color, dashes, thickness, a label on it */
-    style?: Pick<GraphLineStyle, "color" | "dash" | "width" | "label">;
+    style?: Pick<GraphLineStyle, "color" | "dash" | "width" | "label" | "fill" | "pointLabel" | "text">;
     /** calculus on it: its derivative graphed, a tangent at x, the area from a to b */
     extra?: XYExtra;
     /** a note: words in the list, not math */
     note?: string;
     /** a point leaves a trail as it moves (not saved — like chalk) */
     trace?: boolean;
+    /** a folder: its title — it holds the rows under it, down to the next folder */
+    folder?: string;
+    /** a folder folded shut (its rows out of sight in the list, still graphed) */
+    collapsed?: boolean;
     /** a triangle from what's known of it: sides a, b, c, angles A, B, C (degrees) */
     triangle?: { given: Partial<Record<"a" | "b" | "c" | "A" | "B" | "C", number>>; pick?: 1 | 2; at?: [number, number]; turn?: number };
   }[];
@@ -313,6 +321,8 @@ export interface XYPlot {
   letters?: Record<string, number>;
   /** a letter's slider: from, to */
   ranges?: Record<string, [number, number]>;
+  /** how fast a letter plays: ×0.5 … ×4 */
+  speeds?: Record<string, number>;
   /** pictures under it: maps, photos */
   images?: XYImage[];
   window?: GraphWindow;
