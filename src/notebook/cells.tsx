@@ -443,6 +443,8 @@ export interface PyOutput {
   latex?: string | null;
   /** a table (pandas) or anything else that shows itself as a web page */
   html?: string | null;
+  /** what display( ) showed, in order */
+  shown?: { value?: string | null; latex?: string | null; html?: string | null }[];
   error?: string | null;
   skipped?: boolean;
   /** its run number in the kernel, [3], and how long it took */
@@ -477,6 +479,18 @@ function HtmlOutput({ html }: { html: string }) {
   );
 }
 
+/** an answer, as richly as it came: a table, math, or text */
+function Shown({ html, latex, value }: { value?: string | null; latex?: string | null; html?: string | null }) {
+  if (html) return <HtmlOutput html={html} />;
+  if (latex)
+    return (
+      <div className="nb-py-value">
+        <Tex math={latex} block />
+      </div>
+    );
+  return value ? <pre className="nb-py-text is-value">{value}</pre> : null;
+}
+
 export function PythonOutput({ output, running, live }: { output?: PyOutput; running?: boolean; live?: string }) {
   // running: what it's printed so far, as it goes
   if (running)
@@ -493,15 +507,9 @@ export function PythonOutput({ output, running, live }: { output?: PyOutput; run
   return (
     <div className="nb-py-out">
       {output.stdout && <pre className="nb-py-text">{output.stdout}</pre>}
+      {output.shown?.map((s, i) => <Shown key={i} {...s} />)}
       {output.images?.map((png, i) => <img key={i} className="nb-py-image" src={`data:image/png;base64,${png}`} alt="plot" />)}
-      {output.html && <HtmlOutput html={output.html} />}
-      {output.html ? null : output.latex ? (
-        <div className="nb-py-value">
-          <Tex math={output.latex} block />
-        </div>
-      ) : (
-        output.value && <pre className="nb-py-text is-value">{output.value}</pre>
-      )}
+      <Shown html={output.html} latex={output.latex} value={output.value} />
       {output.error && <pre className="nb-cell-error is-code">{output.error}</pre>}
     </div>
   );

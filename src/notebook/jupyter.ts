@@ -13,6 +13,8 @@ function outputs(o: PyOutput | undefined) {
   if (!o) return [];
   const out: object[] = [];
   if (o.stdout) out.push({ output_type: "stream", name: "stdout", text: lines(o.stdout) });
+  for (const s of o.shown ?? [])
+    out.push({ output_type: "display_data", data: { "text/plain": lines(s.value ?? ""), ...(s.html ? { "text/html": lines(s.html) } : {}), ...(s.latex ? { "text/latex": [`$${s.latex}$`] } : {}) }, metadata: {} });
   for (const png of o.images ?? []) out.push({ output_type: "display_data", data: { "image/png": png, "text/plain": ["<Figure>"] }, metadata: {} });
   if (o.value || o.html || o.latex)
     out.push({

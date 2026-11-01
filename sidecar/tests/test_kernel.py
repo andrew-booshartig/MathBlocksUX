@@ -1,7 +1,14 @@
 """The notebook's kernel (kernel.py): one Python kept running per notebook,
 spoken to one JSON line each way."""
 
+import pytest
+
 import kernel
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _libraries():
+    kernel.setup()  # numpy, sympy, pandas… as a kernel starts with
 
 
 def test_cells_share_what_they_make():
@@ -47,3 +54,24 @@ def test_variables_leave_out_the_kernels_own_names():
     names = [v["name"] for v in kernel.variables()]
     assert "k_list" in names
     assert not {"calc", "input", "math"} & set(names)
+
+
+def test_display_shows_each_richly_in_order():
+    out = kernel.run("display(sp.Rational(1, 2), 7)\n'last'")
+    assert [s.get("latex") for s in out["shown"]] == [r"\frac{1}{2}", None]
+    assert out["shown"][1]["value"] == "7" and out["value"] == "'last'"
+
+
+def test_time_magics():
+    out = kernel.run("%timeit 1 + 1\n%time k_t = 5")
+    assert "per loop" in out["stdout"] and "Wall time:" in out["stdout"] and out["error"] is None
+    assert kernel.ns["k_t"] == 5
+
+
+def test_a_timed_cell_keeps_its_answer():
+    out = kernel.run("%%time\n6 * 7")
+    assert out["value"] == "42" and out["stdout"].startswith("Wall time:")
+
+
+def test_names_read_through_magics():
+    assert kernel.names_of("%time a = b + 1") == (["a"], ["b"])

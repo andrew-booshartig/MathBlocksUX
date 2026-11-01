@@ -79,7 +79,25 @@ def _no_input(prompt=""):
     raise RuntimeError("input() can't ask in a notebook — set the value in the cell (name = 5), or use calc.<name> from the calculator")
 
 
-ns: dict = {"__name__": "__main__", "math": math, "calc": Calc(), "input": _no_input}
+shown: list = []  # what display( ) showed in the cell running
+
+
+def _display(*objs):
+    """show each richly — a table, math, a value — under the cell, in order
+    (as Jupyter's display does), however many and wherever in the cell"""
+    for value in objs:
+        if value is None or _is_plot(value):
+            continue
+        out: dict = {}
+        show(value, out)
+        if len(shown) < 50:
+            shown.append(out)
+
+
+ns: dict = {"__name__": "__main__", "math": math, "calc": Calc(), "input": _no_input, "display": _display}
+
+
+
 count = 0
 plt = None
 sp = None
@@ -118,10 +136,56 @@ def setup():
         pass
 
 
+def _seconds(t: float) -> str:
+    for unit, scale in (("s", 1), ("ms", 1e3), ("µs", 1e6), ("ns", 1e9)):
+        if t * scale >= 1 or unit == "ns":
+            return f"{t * scale:.3g} {unit}"
+    return f"{t:.3g} s"
+
+
+def _time(stmt: str):
+    """%time: run it once and say how long it took"""
+    start = time.perf_counter()
+    exec(compile(stmt, "<cell>", "exec"), ns)  # noqa: S102
+    print(f"Wall time: {_seconds(time.perf_counter() - start)}")
+
+
+def _timeit(stmt: str):
+    """%timeit: run it many times (about a fifth of a second a go, 7 goes) and say how long one takes"""
+    import statistics
+    import timeit
+
+    timer = timeit.Timer(stmt, globals=ns)
+    number, _ = timer.autorange()
+    goes = [t / number for t in timer.repeat(repeat=7, number=number)]
+    spread = statistics.stdev(goes) if len(goes) > 1 else 0.0
+    print(f"{_seconds(statistics.mean(goes))} ± {_seconds(spread)} per loop (mean ± std. dev. of 7 runs, {number:,} loops each)")
+
+
+MAGIC = __import__("re").compile(r"^(\s*)%(time|timeit)\s+(.+)$")
+
+
+def timed_cell(code: str) -> tuple[str, bool]:
+    """%%time on a cell's first line: the cell without it, and that it's to be timed"""
+    first, _, rest = code.lstrip().partition("\n")
+    return (rest, True) if first.strip() == "%%time" else (code, False)
+
+
+def magics(code: str, plain: bool = False) -> str:
+    """Jupyter's line magics as Python: each %time and %timeit line a call
+    (plain: just the statement — to read what names it makes and uses)"""
+    code = timed_cell(code)[0]
+    out = []
+    for line in code.split("\n"):
+        m = MAGIC.match(line)
+        out.append(line if not m else f"{m.group(1)}{m.group(3).strip()}" if plain else f"{m.group(1)}__{m.group(2)}__({m.group(3).strip()!r})")
+    return "\n".join(out)
+
+
 def names_of(code: str) -> tuple[list[str], list[str]]:
     """the names a cell makes (x = …, def f, import numpy) and the ones it uses from elsewhere"""
     try:
-        tree = ast.parse(code)
+        tree = ast.parse(magics(code, plain=True))
     except SyntaxError:
         return [], []
     made, used = set(), set()
@@ -198,20 +262,23 @@ def run(code: str, calc: dict | None = None) -> dict:
     if calc is not None:
         ns["calc"] = Calc({k: v for k, v in calc.items() if isinstance(v, (int, float))})
     out: dict = {"count": count, "stdout": "", "images": [], "value": None, "latex": None, "html": None, "error": None}
+    shown.clear()
     printed = _Live()
     start = time.perf_counter()
     commands, sys.stdin = sys.stdin, io.StringIO("")  # a cell reading stdin gets nothing, not the next request
     try:
-        tree = ast.parse(code, "<cell>", "exec")
+        timed = timed_cell(code)[1]
+        tree = ast.parse(magics(code), "<cell>", "exec")
         # the last line, when it's an expression, is the cell's answer
         last = tree.body.pop() if tree.body and isinstance(tree.body[-1], ast.Expr) else None
         with contextlib.redirect_stdout(printed), contextlib.redirect_stderr(printed):
             exec(compile(tree, "<cell>", "exec"), ns)  # noqa: S102 — the user's own code, like any notebook
-            if last is not None:
-                value = eval(compile(ast.Expression(last.value), "<cell>", "eval"), ns)  # noqa: S307
-                if value is not None and not _is_plot(value):
-                    show(value, out)
-                    ns["_"] = value
+            value = eval(compile(ast.Expression(last.value), "<cell>", "eval"), ns) if last is not None else None  # noqa: S307
+            if timed:
+                print(f"Wall time: {_seconds(time.perf_counter() - start)}")
+            if value is not None and not _is_plot(value):
+                show(value, out)
+                ns["_"] = value
     except KeyboardInterrupt:
         out["error"] = "Stopped."
     except SyntaxError as exc:
@@ -229,6 +296,7 @@ def run(code: str, calc: dict | None = None) -> dict:
             out["images"].append(base64.b64encode(buf.getvalue()).decode())
         plt.close("all")
     out["stdout"] = printed.getvalue()[:MAX_TEXT]
+    out["shown"] = list(shown)
     out["seconds"] = round(time.perf_counter() - start, 4)
     out["defines"], out["uses"] = names_of(code)
     return out
@@ -239,10 +307,13 @@ def _is_plot(value) -> bool:
     return kind.startswith("matplotlib") or (isinstance(value, list) and value and (type(value[0]).__module__ or "").startswith("matplotlib"))
 
 
+ns.update(__time__=_time, __timeit__=_timeit)  # what %time and %timeit lines call
+
+
 def variables() -> list[dict]:
     out = []
     for name, value in ns.items():
-        if name.startswith("_") or name in ("math", "np", "numpy", "plt", "sp", "sympy", "pd", "calc", "input") or type(value).__name__ == "module":
+        if name.startswith("_") or name in ("math", "np", "numpy", "plt", "sp", "sympy", "pd", "calc", "input", "display") or type(value).__name__ == "module":
             continue
         kind = type(value).__name__
         shape = getattr(value, "shape", None)
