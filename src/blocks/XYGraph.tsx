@@ -35,6 +35,56 @@ function fracTex(n: number): string {
   }
   return trim(n);
 }
+/** a typed number as math: 2/3 stays a fraction, -0.5 a decimal */
+function typedTex(text: string): string | null {
+  const t = text.trim().replace(/−/g, "-");
+  const frac = t.match(/^(-?)(\d+)\s*\/\s*(\d+)$/);
+  if (frac) return Number(frac[3]) === 0 ? null : `${frac[1]}\\frac{${frac[2]}}{${frac[3]}}`;
+  return /^-?\d*\.?\d+$/.test(t) ? String(Number(t)) : null;
+}
+
+/** a point by its numbers, typed — for where a click can't land (y = 2/3) */
+function TypedPoints({ count, onAdd }: { count: 1 | 2; onAdd: (points: { tex: [string, string]; at: [number, number] }[]) => void }) {
+  const [cells, setCells] = useState(["", "", "", ""]);
+  const read = (i: number) => {
+    const tex = typedTex(cells[i]);
+    const at = parseNumber(cells[i]);
+    return tex !== null && at !== null ? { tex, at } : null;
+  };
+  const points = Array.from({ length: count }, (_, k) => [read(2 * k), read(2 * k + 1)] as const);
+  const ready = points.every(([x, y]) => x && y);
+  const add = () => {
+    if (!ready) return;
+    onAdd(points.map(([x, y]) => ({ tex: [x!.tex, y!.tex], at: [x!.at, y!.at] })));
+    setCells(["", "", "", ""]);
+  };
+  const box = (i: number, label: string) => (
+    <input
+      key={i}
+      className={`xy-typed-num${cells[i].trim() && !read(i) ? " is-bad" : ""}`}
+      value={cells[i]}
+      placeholder={label}
+      spellCheck={false}
+      title="A number — a fraction like 2/3 works too"
+      onChange={(e) => setCells(cells.map((c, j) => (j === i ? e.target.value : c)))}
+      onKeyDown={(e) => e.key === "Enter" && add()}
+    />
+  );
+  return (
+    <div className="xy-typed">
+      <span>{count === 1 ? "Or type it:" : "Or through:"}</span>
+      {Array.from({ length: count }, (_, k) => (
+        <span key={k} className="xy-typed-point">
+          ( {box(2 * k, "x")} , {box(2 * k + 1, "y")} ){count === 2 && k === 0 ? " and" : ""}
+        </span>
+      ))}
+      <button className="xy-zoom-btn is-text" disabled={!ready} onClick={add}>
+        Add
+      </button>
+    </div>
+  );
+}
+
 /** the line through two points, the way it's written: y = mx + b (x = c when it's straight up) */
 export function lineThrough([x1, y1]: [number, number], [x2, y2]: [number, number]): string {
   if (Math.abs(x1 - x2) < 1e-9) return `x=${trim(x1)}`;
@@ -262,6 +312,8 @@ export default function XYGraph({
           </button>
         )}
       </div>
+      {tool === "point" && <TypedPoints count={1} onAdd={([p]) => addLine(`(${p.tex[0]}, ${p.tex[1]})`)} />}
+      {tool === "line" && <TypedPoints count={2} onAdd={([a, b]) => (a.at[0] === b.at[0] && a.at[1] === b.at[1] ? undefined : addLine(lineThrough(a.at, b.at)))} />}
       <div className="xy-plot">
         <GraphView
           exprs={lines.map((l) => l.latex)}

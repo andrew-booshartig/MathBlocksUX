@@ -6769,3 +6769,42 @@ math-field {
 .xy-tool.is-text {
   margin-left: auto;
 }
+
+/* a point (or a line's two points) typed instead of clicked */
+.xy-typed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--t-muted, #7a7a90);
+}
+
+.xy-typed-point {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--t-text, #e8e8f0);
+  font-size: 15px;
+}
+
+.xy-typed-num {
+  width: 54px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 6px;
+  background: var(--t-bg1, #0e0e12);
+  color: var(--t-text, #e8e8f0);
+  font: 14px -apple-system, "Inter", sans-serif;
+  text-align: center;
+  outline: none;
+}
+
+.xy-typed-num:focus {
+  border-color: var(--t-faint, #55606e);
+}
+
+.xy-typed-num.is-bad {
+  border-color: var(--t-red, #f19a9a);
+}
