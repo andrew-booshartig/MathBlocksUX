@@ -447,7 +447,7 @@ export default function XYGraph({
   });
   const targets: GraphTarget[] = (result?.series ?? []).flatMap((s) =>
     s.kind === "points" && lines[s.index] && !lines[s.index].hidden && !folderAbove(lines, s.index)?.hidden && s.x?.length === 1 && s.y?.[0] != null
-      ? [{ key: lines[s.index].id, x: s.x[0], y: s.y[0] as number, name: s.name, movable: literalPoint(lines[s.index].latex) || !!s.glide }]
+      ? [{ key: lines[s.index].id, x: s.x[0], y: s.y[0] as number, name: s.name, movable: literalPoint(lines[s.index].latex) || !!s.glide || !!s.drives }]
       : [],
   );
   /** names in use: the list's points and shapes, and letters with values */
@@ -904,8 +904,15 @@ export default function XYGraph({
   });
   /** a point moved to (x, y): a free one rewritten there, one on a shape slid along it (its letter follows) */
   const movePoint = (key: string, x: number, y: number) => {
-    const s = seriesOf(lines.findIndex((l) => l.id === key)).find((q) => q.glide && q.path);
+    const all = seriesOf(lines.findIndex((l) => l.id === key));
+    const s = all.find((q) => q.glide && q.path);
     if (s?.glide && s.path) return update({ letters: { ...(plot.letters ?? {}), [s.glide]: tAt(s, x, y) } });
+    // (h, k): each letter set from its coordinate
+    const d = all.find((q) => q.drives)?.drives;
+    if (d) {
+      const at = ([, p, q]: [string, number, number], v: number) => Math.round(((v - q) / p) * 1e4) / 1e4;
+      return update({ letters: { ...(plot.letters ?? {}), [d.x[0]]: at(d.x, x), [d.y[0]]: at(d.y, y) } });
+    }
     setLines(lines.map((l) => (l.id === key ? { ...l, latex: movedTo(l.latex, x, y) } : l)));
   };
   nudge.current = (dx, dy, fine, far) => {

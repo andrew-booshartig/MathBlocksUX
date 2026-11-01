@@ -415,6 +415,8 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
                 own = sorted(str(s) for s in sympy.Tuple(*p.tuples[0]).free_symbols if str(s) not in ("x", "y", "t"))
                 if len(own) == 1 and Symbol(own[0]) in values:
                     out.update(_glide_path(p.tuples[0], own[0], values, window, free=True))
+                elif len(own) == 2 and all(Symbol(n) in values for n in own):
+                    out.update(_drives(p.tuples[0]))
             return out, None
         if len(items) == 1 and T in free:
             need(*items[0], bound={"t"})
@@ -856,6 +858,30 @@ def _extras(i, expr, extra, xr, window):
         said = said or f"{value:.6g}"
         out.append({"kind": "area", "x": ax, "y": ay, "index": i, "value": round(value, 6), "from": lo, "to": hi, "facts": [f"\\int_{{{sympy.latex(a)}}}^{{{sympy.latex(b)}}}y\\,dx={said}"]})
     return out
+
+
+def _drives(raw) -> dict:
+    """(h, k), (a + 1, 2b): each coordinate moved by a letter of its own, in a
+    straight line — dragged, the point sets both letters: x = p·a + q gives
+    a = (x − q)/p. Nothing when it isn't that simple"""
+    out = {}
+    for axis, c in zip(("x", "y"), raw):
+        c = sympy.sympify(c)
+        letters = [s for s in c.free_symbols if str(s) not in ("x", "y", "t")]
+        if len(letters) != 1:
+            return {}
+        v = letters[0]
+        try:
+            poly = sympy.Poly(c, v)
+        except Exception:  # noqa: BLE001
+            return {}
+        if poly.degree() != 1 or not all(k.is_number for k in poly.all_coeffs()):
+            return {}
+        p, q = (float(k) for k in poly.all_coeffs())
+        out[axis] = [str(v), p, q]
+    if out["x"][0] == out["y"][0]:
+        return {}
+    return {"drives": out}
 
 
 def _glide_path(raw, letter, values, window=None, free=False):

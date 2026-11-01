@@ -350,3 +350,9 @@ def test_a_point_moved_by_one_letter_slides_along_its_path():
     k = min(range(len(s["path"]["t"])), key=lambda j: abs(s["path"]["x"][j] - 2))
     assert abs(s["path"]["y"][k] - 4) < 0.05 and abs(s["path"]["t"][k] - 2) < 0.05
     assert "glide" not in graph(r"\left(a,b\right)", vars={"a": 1, "b": 2})["series"][0]
+
+
+def test_a_point_of_two_letters_drives_both():
+    s = graph(r"\left(a+1,2b\right)", vars={"a": 1, "b": 2})["series"][0]
+    assert s["drives"] == {"x": ["a", 1.0, 1.0], "y": ["b", 2.0, 0.0]}
+    assert "drives" not in graph(r"\left(a^{2},b\right)", vars={"a": 1, "b": 2})["series"][0]
