@@ -334,6 +334,8 @@ export interface XYPlot {
 }
 
 export interface XYExtra {
+  /** a straight line's slope drawn: a step across (run), a step up (rise), m = rise/run */
+  slope?: boolean;
   derivative?: boolean;
   tangent?: number;
   area?: [number, number];

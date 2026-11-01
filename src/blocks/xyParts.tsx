@@ -72,6 +72,7 @@ export function LineOptions({
   palette,
   auto,
   isFunction,
+  linear,
   shaded,
   isPoint,
   straight,
@@ -93,6 +94,8 @@ export function LineOptions({
   auto: string;
   /** y = f(x): calculus works on it */
   isFunction: boolean;
+  /** y = mx + b: its slope can be drawn as rise over run */
+  linear?: boolean;
   /** a segment, ray or line between two named points: how far it reaches */
   straight?: { kind: "segment" | "ray" | "line"; a: string; b: string } | null;
   onStraight?: (kind: "segment" | "ray" | "line", a: string, b: string) => void;
@@ -218,6 +221,12 @@ export function LineOptions({
       {isFunction && (
         <>
           <div className="xy-pop-head">Calculus and analysis</div>
+          {linear && (
+            <label className="xy-check">
+              <input type="checkbox" checked={!!extra.slope} onChange={(e) => ex({ slope: e.target.checked || undefined })} />
+              Show rise over run <span className="xy-dim">(its slope, as a step across and a step up)</span>
+            </label>
+          )}
           <label className="xy-check">
             <input type="checkbox" checked={!!extra.analyze} onChange={(e) => ex({ analyze: e.target.checked || undefined })} />
             Analyze it <span className="xy-dim">(domain, zeros, highs and lows, where it rises and falls)</span>

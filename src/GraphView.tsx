@@ -85,7 +85,8 @@ function seriesTraces(s: GraphSeries, color: string, style: GraphLineStyle, outl
       return [...asymptotes, { x: s.x, y: s.y, type: "scatter", mode: "lines", line: own, connectgaps: false, hoverinfo: "x+y", name: "" }];
     }
     case "curve":
-      return [{ x: s.x, y: s.y, type: "scatter", mode: "lines", line, connectgaps: false, hoverinfo: "x+y", name: "" }];
+      // a slope triangle: dashed, thinner than its line
+      return [{ x: s.x, y: s.y, type: "scatter", mode: "lines", line: s.role === "slope" ? { ...line, dash: "dash", width: 1.8 } : line, connectgaps: false, hoverinfo: s.role === "slope" ? "skip" : "x+y", name: "" }];
     case "field":
       return [{ x: s.x, y: s.y, type: "scatter", mode: "lines", line: { color: toRgba(color, 0.75), width: 1.3 }, connectgaps: false, hoverinfo: "skip", name: "" }];
     case "region":
@@ -630,6 +631,8 @@ export default function GraphView({
       traces.push(...own);
       if (s.label)
         traces.push({ x: [s.label.x], y: [s.label.y], type: "scatter", mode: "text", text: [escapeHtml(s.label.text)], textfont: { color: colorOf(s.index), size: 12 }, hoverinfo: "skip" });
+      for (const l of s.labels ?? [])
+        traces.push({ x: [l.x], y: [l.y], type: "scatter", mode: "text", text: [escapeHtml(l.text)], textposition: l.at === "below" ? "bottom center" : l.at === "above" ? "top center" : "middle right", textfont: { color: colorOf(s.index), size: 12 }, hoverinfo: "skip" });
     }
     traces.push(...extraTraces);
     traces.push(...drawn.traces);

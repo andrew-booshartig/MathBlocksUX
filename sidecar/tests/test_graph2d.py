@@ -253,3 +253,20 @@ def test_riemann_sums_and_the_area_between():
     facts = {s.get("role") or s["kind"]: s.get("facts") for s in out}
     assert facts["riemann"] == [r"L_{4}\approx1.75"]
     assert facts["between"] == [r"\text{area between }\frac{10}{3}\approx3.333"]
+
+
+def test_rise_over_run_steps_along_the_line_on_whole_numbers():
+    out = graph(r"y=\frac{2}{3}x+1", extras=[{"slope": True}])["series"]
+    tri = next(s for s in out if s.get("role") == "slope")
+    assert tri["x"] == [0.0, 3.0, 3.0] and tri["y"] == [1.0, 1.0, 3.0]
+    assert [l["text"] for l in tri["labels"]] == ["run 3", "rise 2"]
+    assert tri["facts"] == [r"m=\frac{\text{rise}}{\text{run}}=\frac{2}{3}"]
+
+
+def test_rise_over_run_going_down_and_on_a_curve():
+    out = graph(r"y=-2x+3", r"y=x^{2}", extras=[{"slope": True}, {"slope": True}])["series"]
+    down = next(s for s in out if s.get("role") == "slope" and s["index"] == 0)
+    assert down["labels"][1]["text"] == "rise −2" and down["labels"][0]["at"] == "above"
+    assert down["facts"][0].endswith("=-2")
+    curve = next(s for s in out if s.get("role") == "slope" and s["index"] == 1)
+    assert curve["kind"] == "error" and "straight line" in curve["error"]

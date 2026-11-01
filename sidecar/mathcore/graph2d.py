@@ -701,8 +701,52 @@ def _between(i, f, g, j, area, window):
     return {"kind": "polygon", "role": "between", "x": ax, "y": ay, "index": i, "facts": [f"\\text{{area between }}{said}"], "with": j}
 
 
+def _slope_triangle(i, expr, window):
+    """y = mx + b with its slope drawn: a step across (the run) and a step up
+    or down (the rise), on the line where its numbers come out whole — and
+    m = rise/run beside it"""
+    try:
+        straight = not (expr.free_symbols - {X}) and expr.is_polynomial(X) and sympy.degree(expr, X) <= 1
+    except Exception:  # noqa: BLE001
+        straight = False
+    if not straight:
+        raise MathInputError("rise over run is for a straight line — for a curve, try a tangent line")
+    m = sympy.nsimplify(sympy.diff(expr, X), rational=True) if isinstance(sympy.diff(expr, X), sympy.Float) else sympy.diff(expr, X)
+    run, rise = (sympy.Integer(m.q), sympy.Integer(m.p)) if m.is_Rational and m.q <= 12 and abs(m.p) <= 48 else (sympy.Integer(1), m)
+    (lo, hi), (ylo, yhi) = window
+    # big enough to see: whole multiples of the simplest step, about a tenth of the view across
+    k = next((k for k in (1, 2, 5, 10, 20, 50, 100, 200, 500, 1000) if float(run) * k * 12 >= hi - lo or float(abs(rise)) * k * 12 >= yhi - ylo), 1000)
+    run, rise = run * k, rise * k
+    # where it starts: a whole x near the middle where y is whole too, the triangle in view
+    mid = (lo + hi) / 2
+    xs = sorted(range(math.ceil(lo), math.floor(hi - float(run)) + 1), key=lambda v: (abs(v - mid), v))[:80] or [round(mid)]
+    def inside(v):
+        a, b = float(expr.subs(X, v)), float(expr.subs(X, v) + rise)
+        return ylo <= min(a, b) and max(a, b) <= yhi
+    x0 = next((v for v in xs if expr.subs(X, v).is_Integer and inside(v)), None)
+    if x0 is None:
+        x0 = next((v for v in xs if inside(v)), xs[0])
+    y0 = expr.subs(X, x0)
+    fx, fy, frun, frise = float(x0), float(y0), float(run), float(sympy.N(rise))
+    said = lambda v: (str(v) if v.is_Integer else f"{float(sympy.N(v)):.3g}").replace("-", "−")  # noqa: E731
+    up = frise >= 0
+    labels = [
+        {"x": fx + frun / 2, "y": fy, "text": f"run {said(run)}", "at": "below" if up else "above"},
+        {"x": fx + frun, "y": fy + frise / 2, "text": f"rise {said(rise)}", "at": "right"},
+    ]
+    fraction = f"\\frac{{{sympy.latex(rise)}}}{{{sympy.latex(run)}}}"
+    simplest = sympy.latex(sympy.nsimplify(rise / run))
+    fact = f"m=\\frac{{\\text{{rise}}}}{{\\text{{run}}}}={fraction}" + (f"={simplest}" if simplest != fraction else "")
+    return {"kind": "curve", "role": "slope", "x": [fx, fx + frun, fx + frun], "y": [fy, fy, fy + frise], "index": i, "labels": labels, "facts": [fact]}
+
+
 def _extras(i, expr, extra, xr, window):
     out = []
+    if extra.get("slope"):
+        try:
+            out.append(_slope_triangle(i, expr, window))
+        except MathInputError as exc:
+            out.append({"kind": "error", "role": "slope", "error": str(exc), "index": i})
     if extra.get("analyze"):
         from .analysis import analyze
 

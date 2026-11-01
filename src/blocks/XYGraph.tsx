@@ -1302,6 +1302,7 @@ export default function XYGraph({
                       palette={palette}
                       auto={palette[i % palette.length]}
                       isFunction={seriesOf(i).some((s) => s.kind === "function" && !s.role && !s.shape)}
+                      linear={seriesOf(i).some((s) => s.kind === "function" && !s.role && !s.shape && !!s.through)}
                   shaded={seriesOf(i).some((s) => !s.role && (s.kind === "inequality" || s.kind === "region" || s.kind === "polygon"))}
                   isPoint={seriesOf(i).some((s) => s.kind === "points")}
                       straight={straightOf(line.latex)}

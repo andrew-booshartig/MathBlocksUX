@@ -66,7 +66,9 @@ export interface GraphSeries {
   /** words written on the graph beside it: an angle's size */
   label?: { x: number; y: number; text: string };
   /** a function drawn for another line: its derivative, or a tangent line */
-  role?: "derivative" | "tangent" | "riemann" | "between";
+  role?: "derivative" | "tangent" | "riemann" | "between" | "slope";
+  /** words on the graph beside it, each on a side of its spot: a slope triangle's rise and run */
+  labels?: { x: number; y: number; text: string; at?: "below" | "above" | "right" }[];
   /** vertical asymptotes (x values), drawn dashed */
   asymptotes?: number[];
   /** a region: its grid and where it's true (rows of 0/1) */
