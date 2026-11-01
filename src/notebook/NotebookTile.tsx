@@ -348,8 +348,27 @@ export default function NotebookTile({
 
   /** a change: on screen now, in the file a moment later (`text`: exactly
    * this, as typed in Source — not rewritten from the blocks) */
+  // ⌘Z / ⌘⇧Z: back and forward through the notebook's changes (this notebook's, since it was opened)
+  const past = useRef<NotebookDoc[]>([]);
+  const future = useRef<NotebookDoc[]>([]);
+  const lastStep = useRef(0);
+  const restoring = useRef(false);
+  useEffect(() => {
+    past.current = [];
+    future.current = [];
+  }, [name]);
   const commit = useCallback(
     (next: NotebookDoc, text?: string) => {
+      // what it was, for ⌘Z — changes close together (a drag, typing in a table) as one step
+      const before = docRef.current;
+      if (before && before !== next && !restoring.current) {
+        if (Date.now() - lastStep.current > 700) {
+          past.current.push(before);
+          if (past.current.length > 200) past.current.shift();
+        }
+        lastStep.current = Date.now();
+        future.current = [];
+      }
       // the latest at once, so changes made one after another (flatten every graph) build on each other
       docRef.current = next;
       setDoc(next);
@@ -1564,6 +1583,21 @@ export default function NotebookTile({
       // focusable, so its keys (⌘F) come here once it's clicked
       tabIndex={-1}
       onKeyDownCapture={(e) => {
+        // ⌘Z / ⌘⇧Z: the notebook's changes (a field or the code editor undoes its own typing)
+        const inField = (e.target as HTMLElement).closest?.("input, textarea, .cm-editor, math-field, [contenteditable]");
+        if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "z" && !inField) {
+          e.preventDefault();
+          const from = e.shiftKey ? future : past;
+          const to = e.shiftKey ? past : future;
+          const step = from.current.pop();
+          if (!step || !docRef.current) return setNotice(e.shiftKey ? "Nothing to redo" : "Nothing to undo");
+          to.current.push(docRef.current);
+          restoring.current = true;
+          commit(step);
+          restoring.current = false;
+          setNotice(e.shiftKey ? "Redone" : "Undone — ⌘⇧Z to redo");
+          return;
+        }
         // ⌘F: find in this notebook (the editor's own search, in vim, is /)
         if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "f" && !(e.target as HTMLElement).closest?.(".cm-editor")) {
           e.preventDefault();
