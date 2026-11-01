@@ -7859,3 +7859,42 @@ math-field {
 .xy-catalog-item code {
   font: 12.5px ui-monospace, "SF Mono", Menlo, monospace;
 }
+
+/* dragging a row: its grip (on hover), and where it'll land */
+.xy-grip {
+  flex: 0 0 auto;
+  width: 10px;
+  margin-left: -6px;
+  color: var(--t-muted);
+  font-size: 13px;
+  letter-spacing: -3px;
+  cursor: grab;
+  opacity: 0;
+  user-select: none;
+  transition: opacity 0.12s;
+}
+
+.xy-line:hover .xy-grip,
+.xy-folder:hover .xy-grip {
+  opacity: 0.75;
+}
+
+.xy-grip:hover {
+  opacity: 1 !important;
+  color: var(--t-text);
+}
+
+.xy-line.is-dragging,
+.xy-folder.is-dragging {
+  opacity: 0.4;
+}
+
+.xy-line.is-drop-before,
+.xy-folder.is-drop-before {
+  box-shadow: 0 -2px 0 var(--t-pink, #c99bbf);
+}
+
+.xy-line.is-drop-after,
+.xy-folder.is-drop-after {
+  box-shadow: 0 2px 0 var(--t-pink, #c99bbf);
+}

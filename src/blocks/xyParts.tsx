@@ -885,6 +885,10 @@ export const EXAMPLES: { label: string; latex: string; title: string }[] = [
   { label: "y=x^2\\{0\\le x\\le 2\\}", latex: "y=x^{2}\\left\\{0\\le x\\le2\\right\\}", title: "Only part of it — a restriction in braces" },
   { label: "\\frac{dy}{dx}=x-y", latex: "\\frac{dy}{dx}=x-y", title: "A slope field (differential equations)" },
   { label: "(1,2),(3,5)", latex: "\\left(1,2\\right),\\left(3,5\\right)", title: "Points" },
+  { label: "\\text{polygon}((0,0),(4,0),(1,3))", latex: "\\operatorname{polygon}\\left(\\left(0,0\\right),\\left(4,0\\right),\\left(1,3\\right)\\right)", title: "Geometry — its area and perimeter worked out (more in ƒ Functions)" },
+  { label: "\\text{circle}((0,0),(3,4))", latex: "\\operatorname{circle}\\left(\\left(0,0\\right),\\left(3,4\\right)\\right)", title: "A circle by its center and a point on it — its equation shown" },
+  { label: "\\text{histogram}([2,3,3,5,6,6,6,8])", latex: "\\operatorname{histogram}\\left(\\left\\lbrack2,3,3,5,6,6,6,8\\right\\rbrack\\right)", title: "Statistics — lists, mean, median, box plots too" },
+  { label: "y=\\text{normalpdf}(x,0,1)", latex: "y=\\operatorname{normalpdf}\\left(x,0,1\\right)", title: "The bell curve — and normalcdf for the chance between two values" },
 ];
 
 export function Examples({ onPick }: { onPick: (latex: string) => void }) {

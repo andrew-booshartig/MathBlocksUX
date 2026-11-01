@@ -1064,7 +1064,17 @@ export default function NotebookTile({
               <span className="nb-count" title={py[b.code]?.count ? `Run ${py[b.code]!.count} in this Python` : "Not run yet"}>
                 [{running.has(b.code) ? "*" : (py[b.code]?.count ?? " ")}]
               </span>
-              <button className="nb-run" title="Run this cell — ⌘⏎ (⇧⏎ runs it and goes on to the next)" onClick={() => runCell(b.code)}>
+              <button
+                className="nb-run"
+                title="Run this cell — ⌘⏎ (⇧⏎ runs it and goes on to the next) · ⇧-click: this and every cell below · ⌥-click: every cell above, then this"
+                onClick={(e) => {
+                  const all = codesOf(docRef.current);
+                  const at = all.indexOf(b.code);
+                  if (e.shiftKey) runCells(all.slice(at));
+                  else if (e.altKey) runCells(all.slice(0, at + 1));
+                  else runCell(b.code);
+                }}
+              >
                 <Icon name="run" size={12} /> Run
               </button>
               {running.has(b.code) && started.current[b.code] !== undefined && <span className="nb-time is-running">{((performance.now() - started.current[b.code]) / 1000).toFixed(1)} s</span>}

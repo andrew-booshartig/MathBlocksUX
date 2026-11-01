@@ -499,6 +499,9 @@ export default function XYGraph({
   const hiddenAt = (i: number) => !!lines[i]?.hidden || !!folderOf[i]?.hidden;
   const [addOpen, setAddOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  // dragging a row to a new place in the list (a folder brings what's in it)
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ id: string; after: boolean } | null>(null);
   const notes = useRef<Record<string, HTMLTextAreaElement | null>>({});
   // the lines, then each table's points and its fitted curve (two lines each)
   const tableExprs = tables.flatMap((t) => {
@@ -1002,6 +1005,55 @@ export default function XYGraph({
     };
     setTimeout(() => start(15), 30);
   };
+  const moveRow = (fromId: string, toId: string, after: boolean) => {
+    const from = lines.findIndex((l) => l.id === fromId);
+    if (from < 0) return;
+    let end = from + 1;
+    if (lines[from].folder !== undefined) while (end < lines.length && lines[end].folder === undefined && !(end === lines.length - 1 && isBlank(lines[end]))) end++;
+    const block = lines.slice(from, end);
+    if (block.some((l) => l.id === toId)) return;
+    const rest = [...lines.slice(0, from), ...lines.slice(end)];
+    let to = rest.findIndex((l) => l.id === toId);
+    if (to < 0) return;
+    if (after) to += 1;
+    // never past the empty row at the end
+    to = Math.min(to, rest.length && isBlank(rest[rest.length - 1]) ? rest.length - 1 : rest.length);
+    setLines([...rest.slice(0, to), ...block, ...rest.slice(to)]);
+  };
+  /** what a row needs to take a dragged row: where it'd land, above or below it */
+  const dropProps = (id: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!dragging || dragging === id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const box = e.currentTarget.getBoundingClientRect();
+      const after = e.clientY > box.top + box.height / 2;
+      if (dropAt?.id !== id || dropAt.after !== after) setDropAt({ id, after });
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (dragging && dropAt) moveRow(dragging, dropAt.id, dropAt.after);
+      setDragging(null);
+      setDropAt(null);
+    },
+  });
+  const dropClass = (id: string) => (dropAt?.id === id ? (dropAt.after ? " is-drop-after" : " is-drop-before") : "") + (dragging === id ? " is-dragging" : "");
+  const grip = (id: string) => (
+    <span
+      className="xy-grip"
+      draggable
+      title="Drag to move it in the list"
+      onDragStart={(e) => {
+        e.dataTransfer.setData("application/x-matrixlab-row", id);
+        e.dataTransfer.effectAllowed = "move";
+        setDragging(id);
+      }}
+      onDragEnd={() => (setDragging(null), setDropAt(null))}
+    >
+      ⋮⋮
+    </span>
+  );
   /** the + : a table, a note, or a row with a starter typed into it (boxes to fill, Tab between them) */
   const addFrom = (id: string) => {
     setAddOpen(false);
@@ -1110,7 +1162,8 @@ export default function XYGraph({
               const inFolder = folder ? " is-in-folder" : "";
               if (line.folder !== undefined)
                 return (
-                  <div key={line.id} className={`xy-folder${line.hidden ? " is-hidden" : ""}`}>
+                  <div key={line.id} className={`xy-folder${line.hidden ? " is-hidden" : ""}${dropClass(line.id)}`} {...dropProps(line.id)}>
+                    {grip(line.id)}
                     <button className="xy-folder-fold" title={line.collapsed ? "Open it" : "Fold it shut"} onClick={() => setLine(i, { collapsed: !line.collapsed || undefined })}>
                       {line.collapsed ? "▸" : "▾"}
                     </button>
@@ -1148,8 +1201,9 @@ export default function XYGraph({
                 );
               if (line.note !== undefined)
                 return (
-                  <div key={line.id} className={`xy-line is-note${inFolder}`}>
+                  <div key={line.id} className={`xy-line is-note${inFolder}${dropClass(line.id)}`} {...dropProps(line.id)}>
                     <div className="xy-line-row">
+                      {grip(line.id)}
                       <span className="xy-note-mark" title="A note">
                         <Icon name="text" size={14} />
                       </span>
@@ -1176,9 +1230,11 @@ export default function XYGraph({
                   ref={(el) => {
                     rows.current[line.id] = el;
                   }}
-                  className={`xy-line${line.hidden ? " is-hidden" : ""}${selected === line.id ? " is-selected" : ""}${last ? " is-blank" : ""}${inFolder}`}
+                  className={`xy-line${line.hidden ? " is-hidden" : ""}${selected === line.id ? " is-selected" : ""}${last ? " is-blank" : ""}${inFolder}${dropClass(line.id)}`}
+                  {...dropProps(line.id)}
                 >
                   <div className="xy-line-row">
+                    {!last && grip(line.id)}
                     <button
                       className="xy-swatch"
                       style={{ background: line.hidden ? "transparent" : colorOf(i), borderColor: colorOf(i) }}
