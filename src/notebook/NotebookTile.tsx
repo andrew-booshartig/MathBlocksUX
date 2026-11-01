@@ -574,6 +574,16 @@ export default function NotebookTile({
         commit({ ...doc!, blocks: [...blocks.map((x) => (x.id === b.id ? { ...x, code: draft } : x)), { id, kind: "cell", lang: "python", info: "", code: "" }] });
         setTimeout(() => (setEditing(id), setDraft("")), 80);
       }
+    } else if (e.key === "Enter" && e.altKey && b.kind === "cell" && b.lang === "python") {
+      // ⌥⏎: run it, and a new cell right under it — as in Jupyter
+      e.preventDefault();
+      finishEditing();
+      setTimeout(() => runCell(draft), 60);
+      const id = blockId();
+      const blocks = doc!.blocks.map((x) => (x.id === b.id ? { ...x, code: draft } : x));
+      const at = blocks.findIndex((x) => x.id === b.id);
+      commit({ ...doc!, blocks: [...blocks.slice(0, at + 1), { id, kind: "cell", lang: "python", info: "", code: "" }, ...blocks.slice(at + 1)] });
+      setTimeout(() => (setEditing(id), setDraft("")), 80);
     } else if (e.key === "Tab" && b.kind === "cell") {
       // code indents with spaces (Python cares)
       e.preventDefault();
@@ -1066,7 +1076,7 @@ export default function NotebookTile({
               </span>
               <button
                 className="nb-run"
-                title="Run this cell — ⌘⏎ (⇧⏎ runs it and goes on to the next) · ⇧-click: this and every cell below · ⌥-click: every cell above, then this"
+                title="Run this cell — ⌘⏎ (⇧⏎ runs it and goes on to the next, ⌥⏎ runs it and adds a cell under it) · ⇧-click: this and every cell below · ⌥-click: every cell above, then this"
                 onClick={(e) => {
                   const all = codesOf(docRef.current);
                   const at = all.indexOf(b.code);

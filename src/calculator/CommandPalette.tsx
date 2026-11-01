@@ -109,6 +109,7 @@ const SHEET: { where: string; keys: [string, string][] }[] = [
       ["Esc  ⌘⏎", "Done editing a block"],
       ["⌘⏎", "In a Python cell: run it (reactive: and the cells that use it)"],
       ["⇧⏎", "Run it, and on to the next cell"],
+      ["⌥⏎", "Run it, and a new cell under it"],
       ["Tab", "In code: finish the name (np.lin → linspace), else indent"],
       ["↑ ↓  Enter", "In the list of names: pick one"],
       ["Enter", "In a work cell's step: the next step"],
