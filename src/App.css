@@ -1447,9 +1447,19 @@ math-field {
 }
 
 .graph-draw-layer.is-point,
+.graph-draw-layer.is-line,
 .graph-draw-layer.is-segment,
 .graph-draw-layer.is-arrow {
   cursor: crosshair;
+}
+
+/* the move tool: an open hand over something to drag, a closed one dragging */
+.graph-draw-layer.is-move.is-over {
+  cursor: grab;
+}
+
+.graph-draw-layer.is-move.is-holding {
+  cursor: grabbing;
 }
 
 .graph-draw-layer.is-pen {

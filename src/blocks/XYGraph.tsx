@@ -9,13 +9,14 @@ import type { GraphResult } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { type GraphDrawing, type XYPlot, newId } from "../store";
 import { Tex } from "../ui";
-import GraphDrawLayer, { type GraphTool } from "../GraphDraw";
+import GraphDrawLayer, { type GraphTarget, type GraphTool } from "../GraphDraw";
 import Icon from "../Icon";
 
 /** the hand tools: the first three put math in the list (a point, the line
  * through two points as its equation); the rest draw */
 const TOOLS: { id: GraphTool; icon: string; title: string }[] = [
-  { id: "pan", icon: "hand", title: "Move — drag the graph around" },
+  { id: "pan", icon: "hand", title: "Hand — drag the graph around" },
+  { id: "move", icon: "move", title: "Move — drag a point, a segment's end, or a whole segment" },
   { id: "point", icon: "point", title: "Point — click to plot it; it's added to the list" },
   { id: "line", icon: "line", title: "Line — drag from one point to another; its equation goes in the list" },
   { id: "segment", icon: "segment", title: "Line segment — drag from one end to the other" },
@@ -204,6 +205,10 @@ export default function XYGraph({
   );
 
   const setLines = (next: XYPlot["lines"]) => update({ lines: next });
+  /** the points plotted from the list: ends snap onto them, Move drags them */
+  const targets: GraphTarget[] = (result?.series ?? []).flatMap((s) =>
+    s.kind === "points" && lines[s.index] && !lines[s.index].hidden && s.x?.length === 1 && s.y?.[0] != null ? [{ key: lines[s.index].id, x: s.x[0], y: s.y[0] as number }] : [],
+  );
   const [tool, setTool] = useState<GraphTool>("pan");
   const drawings = plot.drawings ?? [];
   /** math from a tool: into the first empty line, or a new one */
@@ -314,6 +319,12 @@ export default function XYGraph({
       </div>
       {tool === "point" && <TypedPoints count={1} onAdd={([p]) => addLine(`(${p.tex[0]}, ${p.tex[1]})`)} />}
       {tool === "line" && <TypedPoints count={2} onAdd={([a, b]) => (a.at[0] === b.at[0] && a.at[1] === b.at[1] ? undefined : addLine(lineThrough(a.at, b.at)))} />}
+      {(tool === "segment" || tool === "arrow") && (
+        <TypedPoints
+          count={2}
+          onAdd={([a, b]) => update({ drawings: [...drawings, { id: newId("draw"), kind: tool, points: [a.at, b.at], color: colors.ink ?? "#e8e8f0", width: 2.5 }] })}
+        />
+      )}
       <div className="xy-plot">
         <GraphView
           exprs={lines.map((l) => l.latex)}
@@ -341,8 +352,10 @@ export default function XYGraph({
               window={plot.window ?? DEFAULT_WINDOW}
               drawings={drawings}
               onDrawings={(next: GraphDrawing[]) => update({ drawings: next.length ? next : undefined })}
-              onPoint={(x, y) => addLine(`(${trim(x)}, ${trim(y)})`)}
+              onPoint={(x, y) => addLine(`(${fracTex(x)}, ${fracTex(y)})`)}
               onLine={(a, b) => addLine(lineThrough(a, b))}
+              targets={targets}
+              onMovePoint={(key, x, y) => setLines(lines.map((l) => (l.id === key ? { ...l, latex: `(${fracTex(x)}, ${fracTex(y)})` } : l)))}
             />
           )}
           onResult={onResult}

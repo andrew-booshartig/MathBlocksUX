@@ -7,7 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import type { PlotDiv } from "./GraphView";
 import { type GraphDrawing, type GraphWindow, newId } from "./store";
 
-export type GraphTool = "pan" | "point" | "line" | "segment" | "arrow" | "pen" | "text" | "eraser";
+export type GraphTool = "pan" | "move" | "point" | "line" | "segment" | "arrow" | "pen" | "text" | "eraser";
+
+/** a point plotted as math (its line's key), to snap to and drag */
+export type GraphTarget = { key: string; x: number; y: number };
 
 type Px = { px: number; py: number };
 
@@ -66,6 +69,8 @@ export default function GraphDrawLayer({
   onDrawings,
   onPoint,
   onLine,
+  targets = [],
+  onMovePoint,
 }: {
   plot: PlotDiv;
   size: { width: number; height: number };
@@ -84,6 +89,9 @@ export default function GraphDrawLayer({
   onPoint: (x: number, y: number) => void;
   /** the line tool: a line through two points, as math (its equation) */
   onLine?: (a: [number, number], b: [number, number]) => void;
+  /** points plotted as math: ends snap onto them (2/3 and all), the move tool drags them */
+  targets?: GraphTarget[];
+  onMovePoint?: (key: string, x: number, y: number) => void;
 }) {
   const layer = useRef<HTMLDivElement>(null);
   const [stroke, setStroke] = useState<Px[] | null>(null);
@@ -91,6 +99,10 @@ export default function GraphDrawLayer({
   /** where a click would land — shown before you click */
   const [hover, setHover] = useState<Px | null>(null);
   const textInput = useRef<HTMLInputElement>(null);
+  /** what the move tool has hold of: a plotted point, a drawing's end, or a whole drawing */
+  const [held, setHeld] = useState<
+    { kind: "point"; key: string } | { kind: "end"; id: string; at: number } | { kind: "whole"; id: string; from: [number, number]; points: [number, number][] } | null
+  >(null);
   // focus once the click that placed it has finished (the canvas takes
   // focus on click, which would otherwise close the box straight away)
   useEffect(() => {
@@ -110,9 +122,43 @@ export default function GraphDrawLayer({
   };
   const stepX = gridLines?.x ? (fine ? minorStep(gridLines.x) : gridLines.x) : grid(geo.steps[0], window.xmax - window.xmin);
   const stepY = gridLines?.y ? (fine ? minorStep(gridLines.y) : gridLines.y) : grid(geo.steps[1], window.ymax - window.ymin);
-  const snapped = (p: Px): [number, number] => {
+  const onGrid = (p: Px): [number, number] => {
     const [x, y] = geo.toGraph(p);
     return snap ? [round(Math.round(x / stepX) * stepX), round(Math.round(y / stepY) * stepY)] : [round(x), round(y)];
+  };
+  /** what an end can snap onto: plotted points, and the ends of drawings
+   * (not the thing being moved) */
+  const anchors = (): [number, number][] => [
+    ...targets.filter((t) => !(held?.kind === "point" && held.key === t.key)).map((t) => [t.x, t.y] as [number, number]),
+    ...drawings.filter((d) => (d.kind === "segment" || d.kind === "arrow") && !(held && held.kind !== "point" && held.id === d.id)).flatMap((d) => d.points),
+  ];
+  /** a click's spot: onto a point near it (exactly — 2/3 stays 2/3), else the grid */
+  const snapped = (p: Px): [number, number] => {
+    let best: [number, number] | null = null;
+    let near = 12;
+    for (const a of anchors()) {
+      const q = geo.toPx(a);
+      const d = Math.hypot(q.px - p.px, q.py - p.py);
+      if (d < near) [best, near] = [a, d];
+    }
+    return best ?? onGrid(p);
+  };
+  /** what the move tool picks up under the pointer */
+  const grab = (p: Px) => {
+    const close = (q: [number, number], r = 12) => {
+      const s = geo.toPx(q);
+      return Math.hypot(s.px - p.px, s.py - p.py) < r;
+    };
+    const point = targets.find((t) => close([t.x, t.y]));
+    if (point) return { kind: "point" as const, key: point.key };
+    for (const d of [...drawings].reverse()) {
+      const at = d.kind === "pen" ? -1 : d.points.findIndex((q) => close(q));
+      if (at >= 0 && d.kind !== "text") return { kind: "end" as const, id: d.id, at };
+      const pts = d.points.map((q) => geo.toPx(q));
+      const onIt = d.kind === "text" ? close(d.points[0], 20) : pts.some((q, i) => i > 0 && distanceToSegment(p, pts[i - 1], q) < 8);
+      if (onIt) return { kind: "whole" as const, id: d.id, from: onGrid(p), points: d.points };
+    }
+    return null;
   };
 
   /** pointer → the layer's own pixels (the canvas around may be zoomed) */
@@ -144,6 +190,14 @@ export default function GraphDrawLayer({
     e.preventDefault(); // keep focus where it is (the text box, if one is open)
     const p = local(e);
     if (typing) return commitText();
+    if (tool === "move") {
+      const got = grab(p);
+      if (got) {
+        setHeld(got);
+        layer.current?.setPointerCapture(e.pointerId);
+      }
+      return;
+    }
     if (tool === "point") {
       if (geo.inside(p)) onPoint(...snapped(p));
       return;
@@ -159,6 +213,21 @@ export default function GraphDrawLayer({
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (tool === "move") {
+      const p = local(e);
+      if (!held) return setHover(grab(p) ? p : null);
+      if (held.kind === "point") onMovePoint?.(held.key, ...snapped(p));
+      else if (held.kind === "end") {
+        const to = snapped(p);
+        onDrawings(drawings.map((d) => (d.id === held.id ? { ...d, points: d.points.map((q, i) => (i === held.at ? to : q)) } : d)));
+      } else {
+        // the whole drawing, by whole grid steps
+        const [x, y] = onGrid(p);
+        const [dx, dy] = [round(x - held.from[0]), round(y - held.from[1])];
+        onDrawings(drawings.map((d) => (d.id === held.id ? { ...d, points: held.points.map(([a, b]) => [round(a + dx), round(b + dy)] as [number, number]) } : d)));
+      }
+      return;
+    }
     if (!stroke) {
       if (tool === "eraser" && e.buttons === 1) erase(local(e));
       if (tool !== "pen" && tool !== "eraser") setHover(geo.inside(local(e)) ? local(e) : null);
@@ -174,6 +243,7 @@ export default function GraphDrawLayer({
   };
 
   const onPointerUp = () => {
+    if (held) return setHeld(null);
     if (!stroke) return;
     const pts = stroke;
     setStroke(null);
@@ -195,7 +265,7 @@ export default function GraphDrawLayer({
 
   // the exact point under the cursor (snapped), with its coordinates
   const aim = (() => {
-    if (typing || tool === "pen" || tool === "eraser") return null;
+    if (typing || tool === "pen" || tool === "eraser" || tool === "move") return null;
     const at = stroke && stroke.length > 1 ? stroke[stroke.length - 1] : hover;
     if (!at) return null;
     const [x, y] = stroke && stroke.length > 1 ? geo.toGraph(at) : snapped(at);
@@ -227,7 +297,7 @@ export default function GraphDrawLayer({
   return (
     <div
       ref={layer}
-      className={`graph-draw-layer is-${tool}`}
+      className={`graph-draw-layer is-${tool}${tool === "move" ? (held ? " is-holding" : hover ? " is-over" : "") : ""}`}
       style={{ width: size.width, height: size.height }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
