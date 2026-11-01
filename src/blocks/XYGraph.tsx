@@ -57,7 +57,7 @@ const keyOf = (tool: GraphTool) => Object.entries(TOOL_KEYS).find(([, t]) => t =
 const HINTS: Record<GraphTool, string> = {
   pan: "Drag the graph to move around · hover a curve to read it",
   move: "Drag a point — whatever's built on it follows",
-  point: "Click to plot a point (A, B, C…) — for exact numbers like 2/3: + → Point",
+  point: "Click to plot a point (A, B, C…) — on a curve or shape, it slides along it · exact numbers like 2/3: + → Point",
   segment: "Click a point, then another — or type its length: 5, or 5<30 for 30° · Shift locks to 15° steps",
   line: "Click two points — or type a length and angle (5<30) for the second · Shift locks to 15° steps",
   ray: "Click where it starts, then a point it goes through (or type 5<30) · Shift locks to 15° steps",
@@ -69,7 +69,7 @@ const HINTS: Record<GraphTool, string> = {
   parallel: "Click a line, segment or ray — then a point the parallel goes through",
   intersect: "Click two things — a point where they cross (click near the crossing you want)",
   midpoint: "Click two points — the point halfway between",
-  glider: "Click a circle, segment, line, arc or polygon — a point that slides along it (drag it, or ▶ its slider)",
+  glider: "Click a curve, circle, segment, line, arc or polygon — a point that slides along it (drag it, or ▶ its slider)",
   locus: "Click the point to follow, then the sliding point that moves it — the path it sweeps out",
   calibrate: "Click two spots on the picture a known distance apart (the ends of a map's scale bar), then type that distance",
   bisector: "Click two points — the line through the middle, at right angles",
@@ -657,6 +657,17 @@ export default function XYGraph({
       },
     };
   };
+  /** a point on a function's curve, by a letter v: (v, f(v)) for f(x) = …, or y = …'s
+   * right side with v for each x (in brackets: 2x → 2(v), x² → (v)²) */
+  const curvePoint = (latex: string, v: string) => {
+    const named = latex.match(/^\s*([a-zA-Z])(?:\\left)?\(\s*x\s*(?:\\right)?\)\s*=/);
+    if (named) return `\\left(${v},${named[1]}\\left(${v}\\right)\\right)`;
+    const y = latex.match(/^\s*y\s*=(.+)$/s);
+    if (!y || /[<>]|\\[lg]e/.test(y[1])) return null;
+    // x on its own — not the x in \exp or \max
+    const body = y[1].replace(/(?<![\\a-zA-Z])x(?![a-zA-Z])/g, `\\left(${v}\\right)`);
+    return `\\left(${v},${body}\\right)`;
+  };
   /** a point's row turned into one sliding along `path`, by a letter of its own at `t` */
   const slide = (row: number, name: string, path: string, t: number, range: [number, number]) => {
     const letter = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => `t_${k}`).find((n) => !used.includes(n) && !(n in (plot.letters ?? {}))) ?? "t_9";
@@ -791,8 +802,18 @@ export default function XYGraph({
         // closed shape, or between a line's two points)
         const shape = shapes.find((s) => s.key === picks[0].shape);
         const s = shapeOf(0);
-        if (!shape || !s?.shape || s.through) return setNotice("A point can slide along a segment, line, circle, arc or polygon");
         const letter = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => `t_${k}`).find((n) => !used.includes(n) && !(n in (plot.letters ?? {}))) ?? "t_9";
+        if (shape && (!s?.shape || s.through)) {
+          // on a function's curve, y = f(x): (t, f(t)) — dragged, it rides the curve and t follows
+          const row = next.find((l) => l.id === picks[0].shape);
+          const on = row && curvePoint(row.latex, letter.replace(/_(\d+)/, "_{$1}"));
+          if (!on) return setNotice("A point can slide along a curve y = …, a segment, line, circle, arc or polygon");
+          add(on, true);
+          const w = plot.window ?? DEFAULT_WINDOW;
+          update({ lines: next, letters: { ...(plot.letters ?? {}), [letter]: settings.snap !== false ? Math.round(picks[0].x * 100) / 100 : Math.round(picks[0].x * 1e4) / 1e4 }, ranges: { ...(plot.ranges ?? {}), [letter]: [Math.floor(Math.min(w.xmin, picks[0].x)), Math.ceil(Math.max(w.xmax, picks[0].x))] } });
+          return;
+        }
+        if (!shape || !s?.shape) return setNotice("A point can slide along a curve y = …, a segment, line, circle, arc or polygon");
         const straightish = ["segment", "line", "ray", "vector", "perpendicular", "parallel"].includes(s.shape);
         let t = 0;
         if (straightish && s.anchor) {
@@ -867,8 +888,20 @@ export default function XYGraph({
       const d = (px - x) ** 2 + (path!.y[k] - y) ** 2;
       if (d < near) [near, best] = [d, k];
     });
+    // between the two samples either side of the nearest: where (x, y) falls along each
+    let t = path!.t[best];
+    for (const k of [best - 1, best]) {
+      if (k < 0 || k + 1 >= path!.t.length) continue;
+      const [ax, ay, bx, by] = [path!.x[k], path!.y[k], path!.x[k + 1], path!.y[k + 1]];
+      const len = (bx - ax) ** 2 + (by - ay) ** 2;
+      if (!len) continue;
+      const f = Math.min(1, Math.max(0, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / len));
+      const d = (ax + f * (bx - ax) - x) ** 2 + (ay + f * (by - ay) - y) ** 2;
+      if (d <= near + 1e-12) [near, t] = [d, path!.t[k] + f * (path!.t[k + 1] - path!.t[k])];
+    }
+    // a slider's own letter (snapping) to hundredths — a point on a curve lands on 1.5, not 1.4998
+    if (s.free && settings.snap !== false) t = Math.round(t * 100) / 100;
     // a slider's own letter keeps to its slider (−10 to 10 unless set); point(shape, t)'s t to 0 … 1
-    const t = path!.t[best];
     const [lo, hi] = plot.ranges?.[glide!] ?? (s.free ? [Math.min(-10, Math.floor(t)), Math.max(10, Math.ceil(t))] : [0, 1]);
     return Math.round(Math.min(hi, Math.max(lo, t)) * 1e4) / 1e4;
   };

@@ -464,7 +464,14 @@ export default function GraphDrawLayer({
       return;
     }
     if (tool === "point") {
-      if (geo.inside(p)) onPoint(...snapped(p));
+      if (!geo.inside(p)) return;
+      // on a curve or shape (and not on a point): a point that slides along it
+      const on = onConstruct && !pointAt(p) ? shapeAt(p) : null;
+      if (on) {
+        const [x, y] = geo.toGraph(p);
+        return onConstruct!("glider", [{ x, y, shape: on.key }]);
+      }
+      onPoint(...snapped(p));
       return;
     }
     if (tool === "eraser") return erase(p);
