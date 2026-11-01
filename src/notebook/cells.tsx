@@ -11,7 +11,7 @@
  *   python      code, run on ▶ (with every Python cell above it), its
  *               printout, plots and last line's answer under it */
 import { matlabOutput } from "./languages";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import GraphView, { DEFAULT_WINDOW, type PlotDiv, useAppGraphColors } from "../GraphView";
 import { mathRequest } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
@@ -672,4 +672,33 @@ export function VarsCell({ code, lines, onCommit }: { code: string; lines?: Calc
       </tbody>
     </table>
   );
+}
+
+// ---- drawn when seen: a graph below where the page is scrolled to isn't
+// drawn until it's near — a notebook of thirty draws the few in view
+
+let everything = false;
+const seers = new Set<() => void>();
+/** every one drawn now (for the page as it prints), or back to when seen */
+export function drawEverything(on: boolean) {
+  everything = on;
+  seers.forEach((f) => f());
+}
+
+export function WhenSeen({ children, height }: { children: React.ReactNode; height: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [seen, setSeen] = useState(false);
+  const all = useSyncExternalStore(
+    (f) => (seers.add(f), () => seers.delete(f)),
+    () => everything,
+  );
+  useEffect(() => {
+    const el = ref.current;
+    if (seen || all || !el) return;
+    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setSeen(true), { rootMargin: "600px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [seen, all]);
+  if (seen || all) return <>{children}</>;
+  return <div ref={ref} className="nb-unseen" style={{ height }} />;
 }

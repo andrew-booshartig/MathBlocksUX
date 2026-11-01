@@ -15,7 +15,7 @@ import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../Icon";
 import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
-import { type CalcLine, CalcCell, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, WorkCell, WorkCellEditor, numberOf, parseVars, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
+import { type CalcLine, CalcCell, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, WhenSeen, WorkCell, WorkCellEditor, drawEverything, numberOf, parseVars, plots, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
 import { type Block, type CellLang, type NotebookDoc, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, rowsOf, setMeta, widthsOf, writeNotebook } from "./format";
 import { setNotebookInbox } from "./inbox";
 import { notebookLatex } from "./latex";
@@ -609,6 +609,13 @@ export default function NotebookTile({
     const now = docRef.current;
     if (now) commit({ ...now, blocks: now.blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b)) });
   };
+  /** before printing: the graphs not yet scrolled to drawn too (a moment for each), so the page has them all */
+  const everyGraphDrawn = async () => {
+    const ids = (docRef.current?.blocks ?? []).filter((b) => b.kind === "cell" && b.lang === "graph" && !flatOf(b)).map((b) => b.id);
+    if (ids.every((id) => plots.get(id))) return;
+    drawEverything(true);
+    for (let t = 0; t < 40 && !ids.every((id) => plots.get(id)); t++) await new Promise((r) => setTimeout(r, 150));
+  };
   /** flatten: the cell as it shows, kept as a picture (PNG or JPEG) in its place — so it isn't worked out
    * or drawn again (thirty graphs, thirty pictures); its code stays, to unflatten */
   const [flatMenu, setFlatMenu] = useState<string | null>(null);
@@ -920,6 +927,7 @@ export default function NotebookTile({
   const showPreview = async () => {
     if (!doc || !name) return;
     try {
+      await everyGraphDrawn();
       setPreview(await notebookHtml(doc, name, calc, py));
     } catch (err) {
       setError(`Couldn't make the page: ${errorText(err)}`);
@@ -956,6 +964,7 @@ export default function NotebookTile({
   const print = async () => {
     if (!doc || !name) return;
     try {
+      await everyGraphDrawn();
       const html = await notebookHtml(doc, name, calc, py);
       await invoke("print_document", { name: metaValue(doc, "title") || name, html });
       setNotice("Opened in your browser — ⌘P to print or Save as PDF");
@@ -1311,7 +1320,9 @@ export default function NotebookTile({
       b.lang === "calc" ? (
         <CalcCell lines={calc?.[calcAt]} />
       ) : b.lang === "graph" ? (
-        <GraphCell id={b.id} code={isEditing ? draft : b.code} />
+        <WhenSeen height={360}>
+          <GraphCell id={b.id} code={isEditing ? draft : b.code} />
+        </WhenSeen>
       ) : b.lang === "numberline" ? (
         <NumberLineCell code={isEditing ? draft : b.code} />
       ) : b.lang === "work" ? (
