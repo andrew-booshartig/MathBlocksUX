@@ -7727,3 +7727,8 @@ math-field {
   min-width: 50px;
   accent-color: var(--t-pink, #c99bbf);
 }
+
+.xy-tie-pick {
+  flex: 1;
+  min-width: 0;
+}

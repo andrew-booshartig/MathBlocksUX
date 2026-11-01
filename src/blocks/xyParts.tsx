@@ -75,6 +75,7 @@ export function LineOptions({
   straight,
   onStraight,
   builds = [],
+  ties,
   trace,
   onTrace,
   onClearTrace,
@@ -94,6 +95,8 @@ export function LineOptions({
   onStraight?: (kind: "segment" | "ray" | "line", a: string, b: string) => void;
   /** more to build from it: its midpoint, a perpendicular… */
   builds?: { label: string; title: string; run: () => void }[];
+  /** a segment: tie it to another line — parallel, perpendicular, the same length */
+  ties?: { others: { id: string; label: string }[]; onTie: (kind: "parallel" | "perpendicular" | "length", other: string) => void } | null;
   /** a point: whether it leaves a trail as it moves */
   trace?: boolean;
   onTrace?: (on: boolean) => void;
@@ -177,6 +180,7 @@ export function LineOptions({
           </div>
         </>
       )}
+      {ties && ties.others.length > 0 && <Ties ties={ties} />}
       {isFunction && (
         <>
           <div className="xy-pop-head">Calculus</div>
@@ -208,6 +212,36 @@ const REACH: ["segment" | "ray" | "line", boolean, string, string][] = [
   ["ray", true, "overrightarrow", "Ray — from {p}, on past {q} forever"],
   ["line", false, "overleftrightarrow", "Line — through {p} and {q}, on forever both ways"],
 ];
+
+/** a segment tied to another line: pick which, then how */
+function Ties({ ties }: { ties: NonNullable<Parameters<typeof LineOptions>[0]["ties"]> }) {
+  const [other, setOther] = useState(ties.others[0].id);
+  return (
+    <>
+      <div className="xy-pop-head">Tie it to another line</div>
+      <div className="xy-row">
+        <select className="xy-select xy-tie-pick" value={other} onChange={(e) => setOther(e.target.value)}>
+          {ties.others.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="xy-builds">
+        <button className="xy-build" title="Its far end slides so it stays parallel to that line" onClick={() => ties.onTie("parallel", other)}>
+          ∥ Parallel
+        </button>
+        <button className="xy-build" title="Its far end slides so it stays at right angles to that line" onClick={() => ties.onTie("perpendicular", other)}>
+          ⊥ Perpendicular
+        </button>
+        <button className="xy-build" title="Its far end turns round its start, always as long as that segment" onClick={() => ties.onTie("length", other)}>
+          = Same length
+        </button>
+      </div>
+    </>
+  );
+}
 
 // ---- data tables
 

@@ -574,6 +574,43 @@ export default function XYGraph({
     if (equation) out.push({ label: "Its equation", title: `${plainMath(equation)} — as a line of its own`, run: () => addLine(equation) });
     return out;
   };
+  /** a segment's ties: the other straight lines it can be kept parallel, perpendicular or equal to */
+  const tiesOf = (i: number) => {
+    const st = straightOf(lines[i].latex);
+    if (st?.kind !== "segment") return null;
+    const [ia, ib] = [nameRow(st.a), nameRow(st.b)];
+    const [pa, pb] = [targets.find((t) => t.key === lines[ia]?.id), targets.find((t) => t.key === lines[ib]?.id)];
+    if (!pa || !pb || !literalPoint(lines[ib].latex)) return null;
+    const others = shapes.filter((sh) => sh.kind === "straight" && sh.key !== lines[i].id);
+    const refOf = (id: string) => {
+      const row = lines.find((l) => l.id === id)!;
+      const through = seriesOf(lines.indexOf(row)).find((s) => s.through)?.through;
+      return nameOf(row.latex) ? texName(nameOf(row.latex)!) : through ? `\\operatorname{line}\\left(${through[0]},${through[1]}\\right)` : exprOf(row);
+    };
+    return {
+      others: others.map((sh) => ({ id: sh.key, label: plainMath(exprOf(lines.find((l) => l.id === sh.key)!)) })),
+      onTie: (kind: "parallel" | "perpendicular" | "length", id: string) => {
+        const sh = shapes.find((s) => s.key === id);
+        if (!sh) return;
+        const a = texName(st.a);
+        const [dx, dy] = [sh.pts[1][0] - sh.pts[0][0], sh.pts[1][1] - sh.pts[0][1]];
+        const [bx, by] = [pb.x - pa.x, pb.y - pa.y];
+        if (kind === "length") {
+          const other = seriesOf(lines.findIndex((l) => l.id === id)).find((s) => s.shape);
+          if (other?.shape !== "segment" && other?.shape !== "vector") return setNotice("Same length: pick a segment — a whole line has no length");
+          const t = (Math.atan2(by, bx) / (2 * Math.PI) + 1) % 1;
+          return slide(ib, st.b, `\\operatorname{circle}\\left(${a},\\operatorname{length}\\left(${refOf(id)}\\right)\\right)`, t, [0, 1]);
+        }
+        // along the line through A in that direction (the anchor's two points, one apart in t)
+        // (a shape's two points, one apart in t; a line like y = 2x + 1 is (0, b) to (1, m + b))
+        const anchor = seriesOf(lines.findIndex((l) => l.id === id)).find((s) => s.anchor)?.anchor;
+        const [ux, uy] = anchor ? [anchor[2] - anchor[0], anchor[3] - anchor[1]] : Math.abs(dx) > 1e-12 ? [1, dy / dx] : [0, 1];
+        const [vx, vy] = kind === "parallel" ? [ux, uy] : [-uy, ux];
+        const t = (bx * vx + by * vy) / (vx * vx + vy * vy || 1);
+        slide(ib, st.b, `\\operatorname{${kind}}\\left(${refOf(id)},${a}\\right)`, t, [-1000, 1000]);
+      },
+    };
+  };
   /** a point's row turned into one sliding along `path`, by a letter of its own at `t` */
   const slide = (row: number, name: string, path: string, t: number, range: [number, number]) => {
     const letter = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => `t_${k}`).find((n) => !used.includes(n) && !(n in (plot.letters ?? {}))) ?? "t_9";
@@ -1116,6 +1153,7 @@ export default function XYGraph({
                       straight={straightOf(line.latex)}
                       onStraight={(kind, a, b) => setLine(i, { latex: `\\operatorname{${kind}}\\left(${texName(a)},${texName(b)}\\right)` })}
                       builds={buildsOf(i)}
+                  ties={tiesOf(i)}
                   trace={line.trace}
                   onTrace={seriesOf(i).some((s) => s.kind === "points") ? (on) => setLine(i, { trace: on || undefined }) : undefined}
                   onClearTrace={() => {
