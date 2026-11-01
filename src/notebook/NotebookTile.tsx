@@ -9,14 +9,14 @@
  * New notebooks start from a template: Blank, Assignment (filled with the
  * problems finished in Work — what the Assignment tab did), Lab report,
  * Study notes, Script, and your own (any notebook → Save as template). */
-import { type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, Fragment, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../Icon";
 import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
 import { type CalcLine, CalcCell, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, WorkCell, WorkCellEditor, numberOf, parseVars, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
-import { type Block, type CellLang, type NotebookDoc, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, setMeta, writeNotebook } from "./format";
+import { type Block, type CellLang, type NotebookDoc, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, rowsOf, setMeta, widthsOf, writeNotebook } from "./format";
 import { setNotebookInbox } from "./inbox";
 import { notebookLatex } from "./latex";
 import { renderMarkdown } from "./markdown";
@@ -582,6 +582,48 @@ export default function NotebookTile({
   // ---- blocks
 
   const updateBlock = (id: string, patch: Partial<Block>) => doc && commit({ ...doc, blocks: doc.blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b)) });
+  /** side by side: a block put beside the one above it (sharing the row evenly), or back on its own */
+  const toggleBeside = (id: string) => {
+    if (!doc) return;
+    const at = doc.blocks.findIndex((b) => b.id === id);
+    if (at <= 0) return;
+    const on = !doc.blocks[at].beside;
+    // the row it joins or leaves starts over at even widths
+    let first = at;
+    while (first > 0 && doc.blocks[first].beside) first--;
+    let last = at;
+    while (last + 1 < doc.blocks.length && doc.blocks[last + 1].beside) last++;
+    commit({
+      ...doc,
+      blocks: doc.blocks.map((b, k) => (k === at ? { ...b, beside: on || undefined, width: undefined } : k >= first && k <= last ? { ...b, width: undefined } : b)),
+    });
+  };
+  /** dragging the line between two blocks in a row: their widths, live, kept on letting go */
+  const [resizing, setResizing] = useState<{ row: string; widths: number[] } | null>(null);
+  const startResize = (e: ReactPointerEvent<HTMLDivElement>, row: Block[], k: number) => {
+    e.preventDefault();
+    const rowEl = e.currentTarget.parentElement!;
+    const total = rowEl.getBoundingClientRect().width || 1;
+    const start = e.clientX;
+    const from = widthsOf(row);
+    let now = from;
+    const move = (ev: PointerEvent) => {
+      const pair = from[k - 1] + from[k];
+      const left = Math.max(15, Math.min(pair - 15, from[k - 1] + ((ev.clientX - start) / total) * 100));
+      now = from.map((w, j) => (j === k - 1 ? left : j === k ? pair - left : w));
+      setResizing({ row: row[0].id, widths: now });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setResizing(null);
+      if (!doc || now === from) return;
+      const widths = new Map(row.map((b, j) => [b.id, Math.round(now[j])]));
+      commit({ ...doc, blocks: doc.blocks.map((b) => (widths.has(b.id) ? { ...b, width: widths.get(b.id) } : b)) });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   const removeBlock = (id: string, quiet = false) => {
     if (!doc) return;
     const at = doc.blocks.findIndex((b) => b.id === id);
@@ -1118,6 +1160,11 @@ export default function NotebookTile({
         <button title="Move down" onClick={() => moveBlock(b.id, 1)}>
           <Icon name="down" size={13} />
         </button>
+        {doc!.blocks[0]?.id !== b.id && (
+          <button className={b.beside ? "is-on" : ""} title={b.beside ? "Back on its own line, full width" : "Beside the block above — side by side (drag the line between to resize)"} onClick={() => toggleBeside(b.id)}>
+            <Icon name="layout" size={13} />
+          </button>
+        )}
         <button title="Delete this block" onClick={() => removeBlock(b.id)}>
           <Icon name="trash" size={13} />
         </button>
@@ -1324,7 +1371,23 @@ export default function NotebookTile({
       ) : (
         <div className="nb-page" ref={page}>
           {header}
-          {doc.blocks.map((b) => blockView(b, isCalcLike(b) ? calcAt++ : -1))}
+          {rowsOf(doc.blocks).map((row) => {
+            if (row.length === 1) return blockView(row[0], isCalcLike(row[0]) ? calcAt++ : -1);
+            // side by side: each block its share of the row, a line between to drag
+            const widths = resizing?.row === row[0].id ? resizing.widths : widthsOf(row);
+            return (
+              <div key={`row-${row[0].id}`} className={`nb-row${resizing?.row === row[0].id ? " is-resizing" : ""}`}>
+                {row.map((b, k) => (
+                  <Fragment key={b.id}>
+                    {k > 0 && <div className="nb-col-handle" title="Drag to resize" onPointerDown={(e) => startResize(e, row, k)} />}
+                    <div className="nb-col" style={{ flexBasis: `${widths[k]}%` }}>
+                      {blockView(b, isCalcLike(b) ? calcAt++ : -1)}
+                    </div>
+                  </Fragment>
+                ))}
+              </div>
+            );
+          })}
           {!doc.blocks.length && <div className="nb-empty">An empty page — add something below, or open the file in another editor.</div>}
           <div className="nb-add">
             {NEW_CELLS.map((c) => (

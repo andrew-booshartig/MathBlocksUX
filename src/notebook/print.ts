@@ -8,8 +8,10 @@ import { mathRequest } from "../mathSidecar";
 import { PRINT_PALETTE, numberLineSvg, sameWritten } from "../numberLine";
 import type { NumberLineGraph } from "../store";
 import { STEPS_CSS, noteHtml, pageMath, snapshot, todayLabel, workTable } from "../workHistory";
-import { type CalcLine, type PyOutput, calcAnswer, plots, readWorkCell, workLatex } from "./cells";
-import { type NotebookDoc, metaValue, printSwitches } from "./format";
+import { type CalcLine, type PyOutput, calcAnswer, parseVars, plots, readWorkCell, workLatex } from "./cells";
+import { type Block, type NotebookDoc, metaValue, printSwitches, rowsOf, widthsOf } from "./format";
+import { languageOf, matlabOutput } from "./languages";
+import { cellKindOf } from "../plugins";
 import { renderMarkdown } from "./markdown";
 
 const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -59,9 +61,11 @@ async function workPicture(code: string, o: ReturnType<typeof printSwitches>): P
   return `<div class="work">${workTable(work, rowNotes.map(html), answer ? { latex: answer, note: html(answerNote) } : undefined)}</div>${under}`;
 }
 
-function pythonPicture(code: string, out?: PyOutput): string {
+function pythonPicture(code: string, out?: PyOutput, matlab = false): string {
   const parts = [`<pre class="code">${escape(code)}</pre>`];
-  if (out?.stdout) parts.push(`<pre class="printout">${escape(out.stdout)}</pre>`);
+  if (out?.stdout && matlab)
+    for (const part of matlabOutput(out.stdout)) parts.push("latex" in part ? `<div class="value">${pageMath(part.latex, true)}</div>` : `<pre class="printout">${escape(part.text)}</pre>`);
+  else if (out?.stdout) parts.push(`<pre class="printout">${escape(out.stdout)}</pre>`);
   for (const png of out?.images ?? []) parts.push(`<img class="plot" src="data:image/png;base64,${png}" alt="plot">`);
   if (out?.latex) parts.push(`<div class="value">${pageMath(out.latex, true)}</div>`);
   else if (out?.value) parts.push(`<pre class="printout">${escape(out.value)}</pre>`);
@@ -76,13 +80,33 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
   const date = metaValue(doc, "date") || todayLabel();
   const o = printSwitches(doc);
   let calcAt = 0;
-  const body: string[] = [];
+  const pieces = new Map<Block, string>();
   for (const b of doc.blocks) {
+    const body = { push: (html: string) => pieces.set(b, (pieces.get(b) ?? "") + html) };
     if (b.kind === "text") {
       body.push(`<div class="text">${renderMarkdown(b.text, true)}</div>`);
       continue;
     }
-    if (b.lang === "calc") {
+    const language = ["vars", "calc", "graph", "numberline", "work", "python"].includes(b.lang) ? undefined : languageOf(b.lang);
+    const plugin = language ? undefined : cellKindOf(b.lang);
+    if (b.lang === "vars") {
+      // the variables: name, value (worked out when it's math of others), what it is
+      const lines = calc?.[calcAt++] ?? [];
+      let at = 0;
+      const rows = parseVars(b.code).map((r) => {
+        const line = r.name && r.value ? lines[at++] : undefined;
+        const value = line?.result?.result_latex?.replace(/^[^=]*=\s*/, "");
+        return `<tr><td>${pageMath(r.name)}</td><td>${value ? pageMath(value) : escape(r.value)}</td><td class="note">${escape(r.note)}</td></tr>`;
+      });
+      body.push(`<table class="vars"><tr><th>Name</th><th>Value</th><th>What it is</th></tr>${rows.join("")}</table>`);
+    } else if (language) body.push(pythonPicture(b.code, py[`${b.lang}\u0001${b.code}`], language.output === "matlab"));
+    else if (plugin) {
+      try {
+        body.push(`<div class="plugin">${await plugin.render(b.code)}</div>`);
+      } catch {
+        body.push(`<pre class="code">${escape(b.code)}</pre>`);
+      }
+    } else if (b.lang === "calc") {
       const lines = calc?.[calcAt++] ?? [];
       body.push(`<table class="calc">${lines.map((l) => `<tr><td>${pageMath(l.result?.input_latex ?? l.latex)}</td><td>${l.error ? `<span class="missing">${escape(l.error)}</span>` : pageMath(calcAnswer(l) ?? "")}</td></tr>`).join("")}</table>`);
     } else if (b.lang === "graph") body.push(await graphPicture(b.id));
@@ -92,6 +116,12 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
     else if (b.lang === "python") body.push(pythonPicture(b.code, py[b.code]));
     else body.push(`<pre class="code">${escape(b.code)}</pre>`);
   }
+  // side by side, as on the page: each block its share of the row
+  const body = rowsOf(doc.blocks).map((row) => {
+    if (row.length === 1) return pieces.get(row[0]) ?? "";
+    const widths = widthsOf(row);
+    return `<div class="row">${row.map((b, k) => `<div class="col" style="flex-basis:${widths[k].toFixed(2)}%">${pieces.get(b) ?? ""}</div>`).join("")}</div>`;
+  });
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -122,6 +152,9 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
   .nt.hl { padding: 1px 4px; border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .note-under { margin: -8px 0 18px; padding: 8px 0 0; border-top: 1px dashed #d4d8e0; }
   .calc { border-collapse: collapse; margin: 8px 0 14px; } .calc td { padding: 3px 18px 3px 0; }
+  .vars { border-collapse: collapse; margin: 8px 0 16px; font-size: 15px; } .vars th { font: 600 11px -apple-system, Helvetica, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: #6b7280; text-align: left; padding: 2px 16px 4px 0; } .vars td { padding: 3px 16px 3px 0; border-top: 1px solid #e5e7eb; } .vars .note { color: #4b5563; }
+  .row { display: flex; gap: 18px; align-items: flex-start; break-inside: avoid; } .col { min-width: 0; flex-grow: 0; flex-shrink: 1; }
+  .col .work, .col img.graph { max-width: 100%; }
   img.graph { display: block; width: 100%; max-width: 560px; margin: 8px auto 16px; break-inside: avoid; }
   .numberline { margin: 8px 0 16px; display: flex; flex-direction: column; align-items: center; gap: 2px; break-inside: avoid; }
   .numberline figcaption { font-size: 14px; color: #374151; } .together { color: #6b7280; font-size: 13px; }

@@ -1672,3 +1672,80 @@
 .nb-varblock-x:hover {
   color: var(--t-text);
 }
+
+/* side by side: a row of blocks, each its share, a line between to drag */
+.nb-page {
+  container-type: inline-size;
+}
+
+.nb-row {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.nb-col {
+  flex-grow: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nb-col > .nb-block {
+  flex: 1;
+  /* in a row, a block keeps to its column (its usual -10px reach would cover the line between) */
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.nb-col-handle {
+  z-index: 2;
+}
+
+.nb-col-handle {
+  flex: 0 0 12px;
+  align-self: stretch;
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.nb-col-handle::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 22px;
+  left: 5px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.nb-col-handle:hover::after,
+.nb-row.is-resizing .nb-col-handle::after {
+  background: color-mix(in srgb, var(--t-pink, #c99bbf) 70%, transparent);
+}
+
+.nb-row.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.nb-block-tools button.is-on {
+  color: var(--t-pink, #c99bbf);
+}
+
+/* a narrow tile: the row's blocks one under another again */
+@container (max-width: 520px) {
+  .nb-row {
+    flex-direction: column;
+  }
+  .nb-col {
+    flex-basis: auto !important;
+  }
+  .nb-col-handle {
+    display: none;
+  }
+}

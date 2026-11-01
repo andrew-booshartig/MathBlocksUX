@@ -15,7 +15,53 @@
 export type CellLang = "vars" | "calc" | "graph" | "numberline" | "work" | "python";
 export const CELL_LANGS: CellLang[] = ["vars", "calc", "graph", "numberline", "work", "python"];
 
-export type Block = { id: string; kind: "text"; text: string } | { id: string; kind: "cell"; lang: string; info: string; code: string };
+/** where a block sits: beside the one above it (in a row), and how much of the row it takes (percent) */
+export interface Placement {
+  beside?: boolean;
+  width?: number;
+}
+
+export type Block = ({ id: string; kind: "text"; text: string } | { id: string; kind: "cell"; lang: string; info: string; code: string }) & Placement;
+
+/** a block's placement, written as a comment the line before it — other
+ * Markdown editors (Neovim, Obsidian, GitHub) show nothing for it */
+const PLACEMENT = /^<!--\s*matrixlab:\s*(.*?)\s*-->\s*$/;
+
+function readPlacement(words: string): Placement {
+  const out: Placement = {};
+  for (const part of words.split(",").map((p) => p.trim())) {
+    if (part === "beside") out.beside = true;
+    const w = part.match(/^width\s+(\d+(?:\.\d+)?)%?$/);
+    if (w) out.width = Math.max(5, Math.min(100, Number(w[1])));
+  }
+  return out;
+}
+
+const placementLine = (b: Placement) => {
+  const parts = [b.beside ? "beside" : "", b.width ? `width ${Math.round(b.width)}` : ""].filter(Boolean);
+  return parts.length ? `<!-- matrixlab: ${parts.join(", ")} -->\n` : "";
+};
+
+/** the blocks as rows: each row a block and the ones beside it */
+export function rowsOf<B extends Placement>(blocks: B[]): B[][] {
+  const rows: B[][] = [];
+  for (const b of blocks) {
+    if (b.beside && rows.length) rows[rows.length - 1].push(b);
+    else rows.push([b]);
+  }
+  return rows;
+}
+
+/** each block's share of its row (percent): its own width, the rest shared by those without one */
+export function widthsOf(row: Placement[]): number[] {
+  const set = row.map((b) => b.width ?? 0);
+  const given = set.reduce((a, w) => a + w, 0);
+  const free = row.filter((b) => !b.width).length;
+  const each = free ? Math.max(10, (100 - Math.min(given, 90)) / free) : 0;
+  const raw = row.map((b) => b.width ?? each);
+  const total = raw.reduce((a, w) => a + w, 0);
+  return raw.map((w) => (w / total) * 100);
+}
 
 export interface NotebookDoc {
   /** the header's fields, in the order written */
@@ -49,9 +95,15 @@ export function parseNotebook(text: string): NotebookDoc {
   }
   const blocks: Block[] = [];
   let text_: string[] = [];
+  // a placement comment: for the block after it
+  let place: Placement = {};
+  const push = (b: Block) => {
+    blocks.push({ ...b, ...place });
+    place = {};
+  };
   const flush = () => {
     const t = text_.join("\n").replace(/^\n+|\s+$/g, "");
-    if (t) blocks.push({ id: blockId(), kind: "text", text: t });
+    if (t) push({ id: blockId(), kind: "text", text: t });
     text_ = [];
   };
   let inMath = false;
@@ -63,7 +115,13 @@ export function parseNotebook(text: string): NotebookDoc {
       const close = new RegExp(`^${fence[1][0] === "`" ? "`" : "~"}{${fence[1].length},}\\s*$`);
       const code: string[] = [];
       for (i++; i < lines.length && !close.test(lines[i]); i++) code.push(lines[i]);
-      blocks.push({ id: blockId(), kind: "cell", lang: fence[2].toLowerCase(), info: fence[3].trim(), code: code.join("\n") });
+      push({ id: blockId(), kind: "cell", lang: fence[2].toLowerCase(), info: fence[3].trim(), code: code.join("\n") });
+      continue;
+    }
+    const placed = !inMath && line.match(PLACEMENT);
+    if (placed) {
+      flush();
+      place = readPlacement(placed[1]);
       continue;
     }
     // $$ … $$ over several lines is one piece, blank lines and all
@@ -80,11 +138,11 @@ export function writeNotebook(doc: NotebookDoc): string {
   const head = doc.meta.length ? `---\n${doc.meta.map(([k, v]) => `${k}: ${quote(v)}`).join("\n")}\n---\n\n` : "";
   const body = doc.blocks
     .map((b) => {
-      if (b.kind === "text") return b.text.replace(/\s+$/, "");
+      if (b.kind === "text") return b.text.trim() ? `${placementLine(b)}${b.text.replace(/\s+$/, "")}` : "";
       // a fence longer than any run of backticks inside it
       const longest = Math.max(2, ...(b.code.match(/`+/g) ?? []).map((r) => r.length));
       const fence = "`".repeat(longest + 1);
-      return `${fence}${b.lang}${b.info ? ` ${b.info}` : ""}\n${b.code.replace(/\s+$/, "")}\n${fence}`;
+      return `${placementLine(b)}${fence}${b.lang}${b.info ? ` ${b.info}` : ""}\n${b.code.replace(/\s+$/, "")}\n${fence}`;
     })
     .filter(Boolean)
     .join("\n\n");
