@@ -44,7 +44,13 @@ class Calc(dict):
         return "calc(" + ", ".join(f"{k}={v:g}" for k, v in self.items()) + ")"
 
 
-ns: dict = {"__name__": "__main__", "math": math, "calc": Calc()}
+def _no_input(prompt=""):
+    """the kernel's stdin is how the notebook talks to it — input() would
+    swallow the next request and hang, so it says what to do instead"""
+    raise RuntimeError("input() can't ask in a notebook — set the value in the cell (name = 5), or use calc.<name> from the calculator")
+
+
+ns: dict = {"__name__": "__main__", "math": math, "calc": Calc(), "input": _no_input}
 count = 0
 plt = None
 sp = None
@@ -165,6 +171,7 @@ def run(code: str, calc: dict | None = None) -> dict:
     out: dict = {"count": count, "stdout": "", "images": [], "value": None, "latex": None, "html": None, "error": None}
     printed = io.StringIO()
     start = time.perf_counter()
+    commands, sys.stdin = sys.stdin, io.StringIO("")  # a cell reading stdin gets nothing, not the next request
     try:
         tree = ast.parse(code, "<cell>", "exec")
         # the last line, when it's an expression, is the cell's answer
@@ -184,6 +191,8 @@ def run(code: str, calc: dict | None = None) -> dict:
         frames = [f for f in traceback.extract_tb(exc.__traceback__) if f.filename == "<cell>"]
         where = f"line {frames[-1].lineno}: " if frames else ""
         out["error"] = f"{where}{type(exc).__name__}: {exc}"
+    finally:
+        sys.stdin = commands
     if plt is not None:
         for num in plt.get_fignums():
             buf = io.BytesIO()
@@ -204,7 +213,7 @@ def _is_plot(value) -> bool:
 def variables() -> list[dict]:
     out = []
     for name, value in ns.items():
-        if name.startswith("_") or name in ("math", "np", "numpy", "plt", "sp", "sympy", "pd", "calc") or type(value).__name__ == "module":
+        if name.startswith("_") or name in ("math", "np", "numpy", "plt", "sp", "sympy", "pd", "calc", "input") or type(value).__name__ == "module":
             continue
         kind = type(value).__name__
         shape = getattr(value, "shape", None)
