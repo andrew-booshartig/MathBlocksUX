@@ -17,6 +17,15 @@ const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").rep
 // one pass, longest things first: strings (triple-quoted too, f"…"), comments, decorators, numbers, words
 const TOKEN = /([rbfuRBFU]{0,2}"""[\s\S]*?(?:"""|$)|[rbfuRBFU]{0,2}'''[\s\S]*?(?:'''|$)|[rbfuRBFU]{0,2}"(?:[^"\\\n]|\\.)*"?|[rbfuRBFU]{0,2}'(?:[^'\\\n]|\\.)*'?)|(#[^\n]*)|(@[A-Za-z_][\w.]*)|(\b\d[\d_]*\.?[\d_]*(?:[eE][+-]?\d+)?j?\b|\.\d[\d_]*\b)|([A-Za-z_]\w*)/g;
 
+/** colored, with one line marked (where an error came from — 1 is the first) */
+export function highlightWithError(code: string, line?: number): string {
+  if (!line) return highlightPython(code);
+  return code
+    .split("\n")
+    .map((text, k) => (k + 1 === line ? `<span class="nb-err-line">${highlightPython(text) || " "}</span>` : highlightPython(text)))
+    .join("\n");
+}
+
 export function highlightPython(code: string): string {
   let out = "";
   let at = 0;

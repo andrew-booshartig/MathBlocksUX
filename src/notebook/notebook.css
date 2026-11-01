@@ -1425,3 +1425,15 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* the line an error came from */
+.nb-err-line {
+  display: inline-block;
+  min-width: 100%;
+  background: color-mix(in srgb, var(--t-red, #f19a9a) 16%, transparent);
+  box-shadow: inset 2px 0 0 var(--t-red, #f19a9a);
+}
+
+.nb-time.is-running {
+  color: var(--t-yellow, #e5c07b);
+}

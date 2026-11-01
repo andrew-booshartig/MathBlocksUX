@@ -23,7 +23,7 @@ import Preview from "./Preview";
 import { notebookHtml } from "./print";
 import { TEMPLATES, type Template, problemSection, userTemplate } from "./templates";
 import { fromIpynb, toIpynb, toScript } from "./jupyter";
-import { highlightPython } from "./highlight";
+import { highlightPython, highlightWithError } from "./highlight";
 import "./notebook.css";
 
 type Listing = { name: string; modified: number }[];
@@ -332,6 +332,14 @@ export default function NotebookTile({
   const pythonCodes = codesOf(doc);
   const pyRef = useRef(py);
   pyRef.current = py;
+  // a cell running: how long so far, counted up as it goes
+  const started = useRef<Record<string, number>>({});
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!running.size) return;
+    const t = setInterval(() => tick((n) => n + 1), 200);
+    return () => clearInterval(t);
+  }, [running.size]);
   const calcVarsRef = useRef(calcVars);
   calcVarsRef.current = calcVars;
   // Tab completion: the names that could finish the word, one picked with ↑ ↓
@@ -372,6 +380,7 @@ export default function NotebookTile({
           continue;
         }
         setKernel("busy");
+        started.current[code] = performance.now();
         let out: PyOutput;
         try {
           const calc = Object.fromEntries(Object.entries(calcVarsRef.current ?? {}).filter(([, v]) => typeof v === "number"));
@@ -1058,6 +1067,7 @@ export default function NotebookTile({
               <button className="nb-run" title="Run this cell — ⌘⏎ (⇧⏎ runs it and goes on to the next)" onClick={() => runCell(b.code)}>
                 <Icon name="run" size={12} /> Run
               </button>
+              {running.has(b.code) && started.current[b.code] !== undefined && <span className="nb-time is-running">{((performance.now() - started.current[b.code]) / 1000).toFixed(1)} s</span>}
               {py[b.code]?.seconds !== undefined && !running.has(b.code) && <span className="nb-time">{py[b.code]!.seconds! < 1 ? `${Math.round(py[b.code]!.seconds! * 1000)} ms` : `${py[b.code]!.seconds!.toFixed(1)} s`}</span>}
             </>
           )}
@@ -1079,7 +1089,11 @@ export default function NotebookTile({
             <AutoText value={draft} onChange={setDraft} onBlur={() => (setComplete(null), finishEditing())} onKeyDown={(e) => editKeys(e, b)} mono highlight={b.lang === "python" ? highlightPython : undefined} />
           ) : (
             b.lang === "python" ? (
-              <pre className="nb-code" onClick={() => startEditing(b)} dangerouslySetInnerHTML={{ __html: highlightPython(b.code || " ") }} />
+              <pre
+                className="nb-code"
+                onClick={() => startEditing(b)}
+                dangerouslySetInnerHTML={{ __html: highlightWithError(b.code || " ", Number(py[b.code]?.error?.match(/^line (\d+):/)?.[1]) || undefined) }}
+              />
             ) : (
               <pre className="nb-code" onClick={() => startEditing(b)}>
                 {b.code || " "}
