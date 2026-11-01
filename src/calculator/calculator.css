@@ -1452,3 +1452,9 @@ body {
 .keys-row kbd {
   justify-self: start;
 }
+
+.calc-app-layout:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: none;
+}

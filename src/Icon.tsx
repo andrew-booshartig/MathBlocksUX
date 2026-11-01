@@ -50,6 +50,9 @@ const PATHS: Record<string, string> = {
   source: "M9 7l-5 5 5 5M15 7l5 5-5 5",
   up: "M12 19V5M6 11l6-6 6 6",
   down: "M12 5v14M6 13l6 6 6-6",
+  line: "M3 21 21 3M8.5 15.5h.01M15.5 8.5h.01",
+  undo: "M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11",
+  redo: "M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 0 0 0 11H13",
   // zones
   close: "M7 7l10 10M17 7 7 17",
   maximize: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",

@@ -973,16 +973,31 @@ export default function SmartCalc({
 
   /** an equation clicked: its letters into Variables, named and waiting for
    * a number — and it's worked out once every one has one */
-  const loadEquation = async (eq: Equation) => {
+  /** `replace` (an equation picked from Equations): the variables there
+   * were go — Undo brings them back — and only this equation's letters are
+   * left, any numbers they already had kept. Without it (one typed under
+   * your variables), it's built from the ones you have. */
+  const loadEquation = async (eq: Equation, replace = false) => {
     try {
       const f = await mathRequest<{ target: string; letters: string[]; input_latex: string }>({ op: "formula", latex: eq.latex, vars });
       const d = current();
-      const have = new Set([...(d?.smartVars ?? []).map((v) => v.name), ...(d?.smartBlanks ?? []).map((b) => b.name)]);
+      const mine = (name: string) => f.letters.includes(name);
+      const varsNow = replace ? (d?.smartVars ?? []).filter((v) => mine(v.name)) : d?.smartVars ?? [];
+      const blanksNow = replace ? (d?.smartBlanks ?? []).filter((b) => mine(b.name)) : d?.smartBlanks ?? [];
+      // history lines that saved a variable this equation doesn't use (not locked ones)
+      const goingEntries = replace ? (d?.smart ?? []).filter((e) => e.result.kind === "assign" && e.result.name && !mine(e.result.name) && !isLocked(e)) : [];
+      const have = new Set([...varsNow.map((v) => v.name), ...blanksNow.map((b) => b.name), ...(d?.smart ?? []).filter((e) => e.result.kind === "assign" && !goingEntries.includes(e)).map((e) => e.result.name)]);
       const fresh = f.letters.filter((l) => !have.has(l)).map((name) => ({ name, ...(eq.labels?.[name] ? { label: eq.labels[name] } : {}) }));
       const label = eq.labels?.[f.target];
+      if (replace) {
+        const goingVars = (d?.smartVars ?? []).filter((v) => !mine(v.name));
+        if (goingVars.length || goingEntries.length) setWiped({ vars: goingVars, entries: goingEntries });
+      }
       updateBlock(data.id, {
-        smartBlanks: [...(d?.smartBlanks ?? []), ...fresh],
-        smartPending: [...(d?.smartPending ?? []).filter((p) => p.target !== f.target), { id: newId("eq"), latex: f.input_latex, target: f.target, letters: f.letters, ...(label ? { label } : {}) }],
+        smartVars: varsNow,
+        ...(replace ? { smart: (d?.smart ?? []).filter((e) => !goingEntries.includes(e)) } : {}),
+        smartBlanks: [...blanksNow, ...fresh],
+        smartPending: [...(replace ? [] : (d?.smartPending ?? []).filter((p) => p.target !== f.target)), { id: newId("eq"), latex: f.input_latex, target: f.target, letters: f.letters, ...(label ? { label } : {}) }],
         smartSide: undefined, // Variables out, to fill them in
       });
       setError(null);
@@ -1699,9 +1714,12 @@ export default function SmartCalc({
       spaces={spaces}
       onLoad={async (eq) => {
         // its own workspace: back to where you were, or fresh with its letters
-        if (spaces && !(await spaces.open(spaceName(eq)))) return updateBlock(data.id, { smartEqSide: true, smartSide: undefined });
-        if (spaces) updateBlock(data.id, { smartEqSide: true });
-        await loadEquation(eq);
+        if (spaces) {
+          await spaces.open(spaceName(eq));
+          updateBlock(data.id, { smartEqSide: true, smartSide: undefined });
+        }
+        // only this equation's letters in Variables (the old ones: Undo)
+        await loadEquation(eq, true);
       }}
       onClose={() => setEqOpen(false)}
     />

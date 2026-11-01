@@ -7,6 +7,20 @@ import { mathRequest } from "../mathSidecar";
 import { type Equation, type EquationSpaces, STARTER, spaceName } from "../equations";
 import { Tex } from "../ui";
 
+/** an equation written any way — A = l \cdot w, a=l*w, A=lw — as one
+ * comparable string: no spaces, no ×/·/*, fractions as a/b, π as pi */
+function mathKey(text: string): string {
+  let t = text.toLowerCase();
+  for (let i = 0; i < 3; i++) t = t.replace(/\\[dt]?frac\{([^{}]*)\}\{([^{}]*)\}/g, "($1)/($2)");
+  return t
+    .replace(/\\left|\\right|\\cdot|\\times|\*|·|×|\s|\\,/g, "")
+    .replace(/\\pi|π/g, "pi")
+    .replace(/\\sqrt/g, "sqrt")
+    .replace(/[{}]/g, "")
+    .replace(/\(([a-z0-9]+)\)/g, "$1")
+    .replace(/\\/g, "");
+}
+
 export default function EquationsPanel({
   mine,
   onSave,
@@ -26,7 +40,10 @@ export default function EquationsPanel({
   const [confirming, setConfirming] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const q = search.trim().toLowerCase();
-  const matches = (eq: Equation) => !q || eq.name.toLowerCase().includes(q) || Object.values(eq.labels ?? {}).some((l) => l.toLowerCase().includes(q));
+  const typed = mathKey(search);
+  // by name, by what a letter is — or by the equation itself (A=lw, bh/2)
+  const matches = (eq: Equation) =>
+    !q || eq.name.toLowerCase().includes(q) || Object.values(eq.labels ?? {}).some((l) => l.toLowerCase().includes(q)) || (typed.length > 1 && mathKey(eq.latex).includes(typed));
 
   /** save the typed equation — once it reads as one letter = the rest */
   const save = async () => {

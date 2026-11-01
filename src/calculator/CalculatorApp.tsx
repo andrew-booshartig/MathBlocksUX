@@ -14,6 +14,7 @@ import WorkspaceMenu from "./WorkspaceMenu";
 import LayoutMenu, { type SavedLayout } from "./LayoutMenu";
 import { type CalcDockHandle, PRESETS, TILES } from "./CalcDock";
 import { type Command, CommandPalette, ShortcutSheet } from "./CommandPalette";
+import { makeUndo, typingInField } from "./undo";
 import Icon from "../Icon";
 import mark from "../assets/mx-mark.png";
 import type { Equation } from "../equations";
@@ -62,6 +63,26 @@ export default function CalculatorApp() {
   const dock = useRef<CalcDockHandle | null>(null);
   const [layouts, setLayouts] = useState<SavedLayout[]>([]);
   const [layoutOpen, setLayoutOpen] = useState(false);
+  /** ⌘Z / ⌘⇧Z: back and forward through what you've done */
+  const history = useRef<ReturnType<typeof makeUndo> | null>(null);
+  const [can, setCan] = useState({ undo: false, redo: false });
+  const blockReady = !!block;
+  useEffect(() => {
+    if (!blockReady) return;
+    const h = makeUndo(CALC_ID, (undo, redo) => setCan({ undo, redo }));
+    history.current = h;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "z" || typingInField()) return;
+      e.preventDefault();
+      if (e.shiftKey) h.redo();
+      else h.undo();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      h.stop();
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [blockReady]);
   /** ⌘K: commands; ⌘?: the shortcut sheet */
   const [palette, setPalette] = useState(false);
   const [sheet, setSheet] = useState(false);
@@ -98,6 +119,8 @@ export default function CalculatorApp() {
   const openWorkspace = async (name: string | null) => {
     setWsOpen(false);
     await invoke("save_workspace", { name: wsFile(activeRef.current), data: snapshot() }).catch(() => {});
+    // the tiles as you have them: a new workspace (an equation's) keeps them
+    const layout = (useStore.getState().blocks[CALC_ID] as CalculatorBlockData | undefined)?.smartLayout;
     let next: WorkspaceSnapshot;
     try {
       next = await invoke<WorkspaceSnapshot>("load_workspace", { name: wsFile(name) });
@@ -105,9 +128,12 @@ export default function CalculatorApp() {
     } catch {
       next = freshCalculator();
     }
+    const calc = next.blocks[CALC_ID] as CalculatorBlockData;
+    if (!calc.smartLayout && layout) next = { ...next, blocks: { ...next.blocks, [CALC_ID]: { ...calc, smartLayout: layout } } };
     activeRef.current = name;
     setActive(name);
     useStore.getState().loadSnapshot(next);
+    history.current?.reset();
   };
   /** an equation clicked: into its own workspace — the one from before, with
    * your numbers, or a fresh one (true: fresh, so load the equation in) */
@@ -259,6 +285,12 @@ export default function CalculatorApp() {
           </button>
         </span>
         <span className="calc-app-tools" data-tauri-drag-region>
+          <button className="calc-app-layout calc-app-cmd" title="Undo (⌘Z)" disabled={!can.undo} onClick={() => history.current?.undo()}>
+            <Icon name="undo" size={15} />
+          </button>
+          <button className="calc-app-layout calc-app-cmd" title="Redo (⌘⇧Z)" disabled={!can.redo} onClick={() => history.current?.redo()}>
+            <Icon name="redo" size={15} />
+          </button>
           <button className="calc-app-layout calc-app-cmd" title="Commands — anything, by name (⌘K)" onClick={() => setPalette(true)}>
             <Icon name="zoom" size={15} />
             <kbd className="calc-app-kbd">⌘K</kbd>

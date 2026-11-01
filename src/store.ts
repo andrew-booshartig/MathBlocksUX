@@ -285,6 +285,8 @@ export interface XYPlot {
   lines?: { id: string; latex: string; hidden?: boolean }[];
   letters?: Record<string, number>;
   window?: GraphWindow;
+  /** drawn by hand: segments, arrows, pen, text */
+  drawings?: GraphDrawing[];
 }
 
 /** An inequality drawn on a number line (the calculator's Graph tab) —

@@ -7,8 +7,43 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import GraphView, { DEFAULT_WINDOW, THEMES, useAppGraphColors } from "../GraphView";
 import type { GraphResult } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
-import { type XYPlot, newId } from "../store";
+import { type GraphDrawing, type XYPlot, newId } from "../store";
 import { Tex } from "../ui";
+import GraphDrawLayer, { type GraphTool } from "../GraphDraw";
+import Icon from "../Icon";
+
+/** the hand tools: the first three put math in the list (a point, the line
+ * through two points as its equation); the rest draw */
+const TOOLS: { id: GraphTool; icon: string; title: string }[] = [
+  { id: "pan", icon: "hand", title: "Move — drag the graph around" },
+  { id: "point", icon: "point", title: "Point — click to plot it; it's added to the list" },
+  { id: "line", icon: "line", title: "Line — drag from one point to another; its equation goes in the list" },
+  { id: "segment", icon: "segment", title: "Line segment — drag from one end to the other" },
+  { id: "arrow", icon: "arrow", title: "Arrow" },
+  { id: "pen", icon: "pen", title: "Pen — draw freehand" },
+  { id: "text", icon: "text", title: "Text — click, type, Enter" },
+  { id: "eraser", icon: "eraser", title: "Eraser — click a drawing to remove it" },
+];
+
+const trim = (n: number) => String(Math.round(n * 1000) / 1000);
+/** a number as a fraction when it is one (0.5 → \frac{1}{2}) */
+function fracTex(n: number): string {
+  if (Number.isInteger(Math.round(n * 1e6) / 1e6)) return trim(n);
+  for (let q = 2; q <= 100; q++) {
+    const p = Math.round(n * q);
+    if (Math.abs(n * q - p) < 1e-6) return `${p < 0 ? "-" : ""}\\frac{${Math.abs(p)}}{${q}}`;
+  }
+  return trim(n);
+}
+/** the line through two points, the way it's written: y = mx + b (x = c when it's straight up) */
+export function lineThrough([x1, y1]: [number, number], [x2, y2]: [number, number]): string {
+  if (Math.abs(x1 - x2) < 1e-9) return `x=${trim(x1)}`;
+  const m = (y2 - y1) / (x2 - x1);
+  const b = y1 - m * x1;
+  const mx = Math.abs(m) < 1e-9 ? "" : Math.abs(m - 1) < 1e-9 ? "x" : Math.abs(m + 1) < 1e-9 ? "-x" : `${fracTex(m)}x`;
+  const bb = Math.abs(b) < 1e-9 ? "" : `${b < 0 ? "-" : mx ? "+" : ""}${fracTex(Math.abs(b))}`;
+  return `y=${mx}${bb || (mx ? "" : "0")}`;
+}
 
 const PALETTE = THEMES.dark.palette;
 
@@ -119,6 +154,14 @@ export default function XYGraph({
   );
 
   const setLines = (next: XYPlot["lines"]) => update({ lines: next });
+  const [tool, setTool] = useState<GraphTool>("pan");
+  const drawings = plot.drawings ?? [];
+  /** math from a tool: into the first empty line, or a new one */
+  const addLine = (latex: string) => {
+    const empty = lines.findIndex((l) => !l.latex.trim());
+    if (empty >= 0) setLines(lines.map((l, j) => (j === empty ? { ...l, latex } : l)));
+    else setLines([...lines, { id: newId("xy"), latex }]);
+  };
   const setLine = (i: number, patch: Partial<(typeof lines)[number]>) => setLines(lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const addAfter = (i: number) => {
     const id = newId("xy");
@@ -207,6 +250,18 @@ export default function XYGraph({
         </div>
       )}
 
+      <div className="xy-tools">
+        {TOOLS.map((t) => (
+          <button key={t.id} className={`xy-tool${tool === t.id ? " is-on" : ""}`} title={t.title} onClick={() => setTool(t.id)}>
+            <Icon name={t.icon} size={15} />
+          </button>
+        ))}
+        {drawings.length > 0 && (
+          <button className="xy-tool is-text" title="Remove every drawing (not the lines and points in the list)" onClick={() => update({ drawings: undefined })}>
+            Clear drawings
+          </button>
+        )}
+      </div>
       <div className="xy-plot">
         <GraphView
           exprs={lines.map((l) => l.latex)}
@@ -220,6 +275,24 @@ export default function XYGraph({
           height={300}
           fill={fill}
           colors={colors}
+          drawings={drawings}
+          overlay={(p, size, gridLines) => (
+            <GraphDrawLayer
+              plot={p}
+              size={size}
+              tool={tool}
+              color={colors.ink ?? "#e8e8f0"}
+              width={2.5}
+              snap
+              fine={false}
+              grid={gridLines}
+              window={plot.window ?? DEFAULT_WINDOW}
+              drawings={drawings}
+              onDrawings={(next: GraphDrawing[]) => update({ drawings: next.length ? next : undefined })}
+              onPoint={(x, y) => addLine(`(${trim(x)}, ${trim(y)})`)}
+              onLine={(a, b) => addLine(lineThrough(a, b))}
+            />
+          )}
           onResult={onResult}
         />
         <div className="xy-plot-foot">

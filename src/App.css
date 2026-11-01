@@ -6731,3 +6731,41 @@ math-field {
   opacity: 1;
   color: var(--t-blue, #61afef);
 }
+
+/* the xy graph's hand tools: move, point, line, segment… */
+.xy-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.xy-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--t-muted, #7a7a90);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.xy-tool:hover {
+  background: var(--t-bg4, #23232d);
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-tool.is-on {
+  background: color-mix(in srgb, var(--t-pink, #c99bbf) 18%, transparent);
+  border-color: color-mix(in srgb, var(--t-pink, #c99bbf) 45%, transparent);
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-tool.is-text {
+  margin-left: auto;
+}

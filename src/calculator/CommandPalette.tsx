@@ -82,6 +82,7 @@ const SHEET: { where: string; keys: [string, string][] }[] = [
       ["⌘⇧F", "The zone you're in fills the window (again: back)"],
       ["⌘B", "Show or hide Variables"],
       ["⌘E", "Show or hide Equations"],
+      ["⌘Z  ⌘⇧Z", "Undo · redo (in a field: that field's own undo)"],
       ["⌘?", "This sheet"],
     ],
   },

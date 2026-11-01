@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PlotDiv } from "./GraphView";
 import { type GraphDrawing, type GraphWindow, newId } from "./store";
 
-export type GraphTool = "pan" | "point" | "segment" | "arrow" | "pen" | "text" | "eraser";
+export type GraphTool = "pan" | "point" | "line" | "segment" | "arrow" | "pen" | "text" | "eraser";
 
 type Px = { px: number; py: number };
 
@@ -65,6 +65,7 @@ export default function GraphDrawLayer({
   drawings,
   onDrawings,
   onPoint,
+  onLine,
 }: {
   plot: PlotDiv;
   size: { width: number; height: number };
@@ -81,6 +82,8 @@ export default function GraphDrawLayer({
   onDrawings: (drawings: GraphDrawing[]) => void;
   /** the point tool adds a point to the graph's math, not a drawing */
   onPoint: (x: number, y: number) => void;
+  /** the line tool: a line through two points, as math (its equation) */
+  onLine?: (a: [number, number], b: [number, number]) => void;
 }) {
   const layer = useRef<HTMLDivElement>(null);
   const [stroke, setStroke] = useState<Px[] | null>(null);
@@ -177,6 +180,9 @@ export default function GraphDrawLayer({
     const moved = Math.hypot(pts[pts.length - 1].px - pts[0].px, pts[pts.length - 1].py - pts[0].py) > 3;
     if (tool === "pen" && pts.length > 2) {
       commit({ kind: "pen", points: pts.map((p) => geo.toGraph(p).map(round) as [number, number]) });
+    } else if (tool === "line" && moved) {
+      const [a, b] = [snapped(pts[0]), snapped(pts[pts.length - 1])];
+      if (a[0] !== b[0] || a[1] !== b[1]) onLine?.(a, b);
     } else if ((tool === "segment" || tool === "arrow") && moved) {
       commit({ kind: tool, points: [geo.toGraph(pts[0]), geo.toGraph(pts[pts.length - 1])].map((q) => q.map(round) as [number, number]) });
     }
