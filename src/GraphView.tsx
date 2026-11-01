@@ -61,6 +61,7 @@ const MARKER_STYLE: Record<GraphMarker["kind"], { color: string; symbol: string 
   min: { color: "#ff8fb1", symbol: "triangle-down" },
   intersection: { color: "#ffffff", symbol: "star" },
   hole: { color: "#ffffff", symbol: "circle-open" },
+  endpoint: { color: "#ff8fb1", symbol: "circle" },
   tangent: { color: "#f0a35c", symbol: "circle" },
 };
 
@@ -187,7 +188,7 @@ function markerTrace(markers: GraphMarker[], outline: string, ink: string): Trac
 }
 
 type LabelSide = "top right" | "bottom right" | "top left" | "bottom left";
-const RANK: Record<GraphMarker["kind"], number> = { tangent: 0, intersection: 0, hole: 1, vertex: 1, max: 1, min: 1, "x-intercept": 2, "y-intercept": 2 };
+const RANK: Record<GraphMarker["kind"], number> = { tangent: 0, intersection: 0, hole: 1, vertex: 1, max: 1, min: 1, endpoint: 1, "x-intercept": 2, "y-intercept": 2 };
 
 /** Where each point's label goes: beside it, on whichever side keeps it off
  * every other label and point — crossings placed first. A label with no

@@ -108,7 +108,8 @@ export interface GraphSeries {
 export interface GraphMarker {
   x: number;
   y: number;
-  kind: "x-intercept" | "y-intercept" | "vertex" | "intersection" | "max" | "min" | "hole" | "tangent";
+  /** endpoint: where a graph starts or stops (√(x − 1) from x = 1) */
+  kind: "x-intercept" | "y-intercept" | "vertex" | "intersection" | "max" | "min" | "hole" | "tangent" | "endpoint";
   label: string;
   series: number | number[];
 }

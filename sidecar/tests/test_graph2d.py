@@ -356,3 +356,10 @@ def test_a_point_of_two_letters_drives_both():
     s = graph(r"\left(a+1,2b\right)", vars={"a": 1, "b": 2})["series"][0]
     assert s["drives"] == {"x": ["a", 1.0, 1.0], "y": ["b", 2.0, 0.0]}
     assert "drives" not in graph(r"\left(a^{2},b\right)", vars={"a": 1, "b": 2})["series"][0]
+
+
+def test_an_absolute_value_vertex_and_a_square_roots_start_are_marked():
+    kinds = lambda line: [(m["kind"], m["label"]) for m in graph(line)["markers"]]  # noqa: E731
+    assert ("vertex", "(2, 1)") in kinds(r"y=\left|x-2\right|+1")
+    assert ("vertex", "(-1, 3)") in kinds(r"y=-2\left|x+1\right|+3")
+    assert ("endpoint", "(1, 2)") in kinds(r"y=\sqrt{x-1}+2")

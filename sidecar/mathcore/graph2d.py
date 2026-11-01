@@ -320,6 +320,7 @@ def _function_markers(i, expr, window, features):
                 marks.append({"x": r, "y": yv, "kind": "vertex" if quadratic else kind, "series": i, "label": _label(r, yv)})
         except Exception:  # noqa: BLE001
             pass
+        marks += _corners_and_ends(i, expr, lo, hi, value)
     # holes: where a factor cancels (x²−1)/(x−1) has one at x = 1
     try:
         if expr.is_rational_function(X):
@@ -332,6 +333,42 @@ def _function_markers(i, expr, window, features):
                     marks.append({"x": float(r), "y": yv, "kind": "hole", "series": i, "label": _label(float(r), yv)})
     except Exception:  # noqa: BLE001
         pass
+    return marks
+
+
+def _corners_and_ends(i, expr, lo, hi, value):
+    """where the graph turns at a point, not smoothly — |x − 2| + 1's vertex
+    (2, 1) — and where it starts or stops, √(x − 1) + 2 from (1, 2)"""
+    marks = []
+    h = max(1e-4, (hi - lo) * 1e-4)
+    seen = set()
+    for a in expr.atoms(sympy.Abs):
+        try:
+            for r in real_roots(a.args[0], lo, hi)[:10]:
+                r = float(r)
+                if round(r, 9) in seen:
+                    continue
+                seen.add(round(r, 9))
+                yv, left, right = value(r), value(r - h), value(r + h)
+                if not all(v == v for v in (yv, left, right)):
+                    continue
+                if (left > yv) == (right > yv) and abs(left - yv) > 1e-12 and abs(right - yv) > 1e-12:
+                    marks.append({"x": r, "y": yv, "kind": "vertex", "series": i, "label": _label(r, yv)})
+        except Exception:  # noqa: BLE001
+            continue
+    # an even root (√, ⁴√) starts where what's under it is 0
+    for p in expr.atoms(sympy.Pow):
+        if not (p.exp.is_Rational and p.exp.q % 2 == 0 and p.base.has(X)):
+            continue
+        try:
+            for r in real_roots(p.base, lo, hi)[:10]:
+                r = float(r)
+                yv = value(r)
+                if yv == yv and round(r, 9) not in seen and (value(r - h) != value(r - h)) != (value(r + h) != value(r + h)):
+                    seen.add(round(r, 9))
+                    marks.append({"x": r, "y": yv, "kind": "endpoint", "series": i, "label": _label(r, yv)})
+        except Exception:  # noqa: BLE001
+            continue
     return marks
 
 
