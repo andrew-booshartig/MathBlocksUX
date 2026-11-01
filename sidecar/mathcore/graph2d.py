@@ -125,7 +125,25 @@ def _function_series(expr, conds, xr, yr):
     jump = np.abs(np.diff(ys)) > 3 * span
     ys[:-1][jump & (np.sign(ys[:-1]) != np.sign(ys[1:]))] = np.nan
     ys[np.abs(ys) > (1e15 if _LOG["y"] else 1e6)] = np.nan
+    if isinstance(expr, sympy.Piecewise):
+        xs, ys = _break_at_jumps(expr, xs, ys)
     return xs, ys
+
+
+def _break_at_jumps(expr, xs, ys):
+    """a piecewise function's pieces drawn apart where it jumps (no line up
+    the jump) — joined where they meet (x² then x, at 1)"""
+    try:
+        which = _numeric(sympy.Piecewise(*[(k, c) for k, (_, c) in enumerate(expr.args)]), X)(xs)
+        which = np.broadcast_to(np.asarray(which, dtype=float), xs.shape)
+    except Exception:  # noqa: BLE001
+        return xs, ys
+    steps = np.abs(np.diff(ys))
+    usual = np.nanmedian(steps) if np.isfinite(steps).any() else 0.0
+    cut = [k + 1 for k in np.nonzero(which[1:] != which[:-1])[0] if not steps[k] <= 4 * usual + 1e-9]
+    if not cut:
+        return xs, ys
+    return np.insert(xs, cut, np.nan), np.insert(ys, cut, np.nan)
 
 
 def _mask(values, conds, xs, ys):

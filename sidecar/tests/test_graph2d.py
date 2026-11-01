@@ -374,3 +374,9 @@ def test_where_pieces_stop_a_dot_filled_or_open(line, ends):
     marks = [(m["kind"], m["label"]) for m in graph(line)["markers"] if m["kind"] in ("endpoint", "hole", "min", "max")]
     assert sorted(m for m in marks if m[0] != "min") == sorted(ends)
     assert ("min", "(0, 0)") not in marks or not ends  # no "low" at a jump
+
+
+def test_a_piecewise_jump_is_not_drawn_as_a_line():
+    jump = graph(r"y=\begin{cases}-x&x\le-1\\3&x>-1\end{cases}")["series"][0]["y"]
+    joined = graph(r"y=\begin{cases}x^{2}&x<1\\x&x\ge1\end{cases}")["series"][0]["y"]
+    assert jump.count(None) == 1 and joined.count(None) == 0
