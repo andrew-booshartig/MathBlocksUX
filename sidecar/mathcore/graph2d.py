@@ -79,6 +79,18 @@ def _degrees(expr):
 _LOG = {"x": False, "y": False}
 
 
+def _counts_done(e):
+    """[1...n] once n has a value: the list it counts"""
+    if not hasattr(e, "atoms"):
+        return e
+    done = {}
+    for a in e.atoms(sympy.core.function.AppliedUndef):
+        if a.func.__name__ == "counting" and not a.free_symbols:
+            start, step, last = a.args
+            done[a] = sympy.Function("list")(*graphtex._counted([start] if step == 0 else [start, start + step], last))
+    return e.xreplace(done) if done else e
+
+
 def _list_atoms(e) -> list:
     from .stats import is_list
 
@@ -370,7 +382,7 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
     # a locus keeps its moving letter free (it runs over it), whatever the slider says
     if p.sides and geometry.is_shape(p.sides[0]) and p.sides[0].func.__name__ == "locus":
         values = {k: v for k, v in values.items() if k != p.sides[0].args[1]}
-    sides = [fix(s.subs(values)) if hasattr(s, "subs") else s for s in p.sides]
+    sides = [_counts_done(fix(s.subs(values))) if hasattr(s, "subs") else s for s in p.sides]
     conds = [c.subs(values) for c in p.conditions]
 
     def need(*exprs, bound=BOUND):
@@ -382,7 +394,7 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
 
     yr = window[1]
     if p.tuples is not None:
-        items = [sympy.Tuple(*[fix(c.subs(values)) for c in tup]) for tup in p.tuples]
+        items = [sympy.Tuple(*[_counts_done(fix(c.subs(values))) for c in tup]) for tup in p.tuples]
         # a list in a point: a point for each of its numbers — (L, L²)
         items = [sympy.Tuple(*each) for t in items for each in _spread(*t)]
         if any(len(t) != 2 for t in items):

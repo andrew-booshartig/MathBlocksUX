@@ -124,10 +124,12 @@ def tokenize(latex: str) -> list[tuple[str, str]]:
     return out
 
 
-def _counted(items: list, last) -> list:
-    """[1...5] → 1, 2, 3, 4, 5; [5...1] counts down; [0, 0.5...2] by halves"""
+def _counted(items: list, last):
+    """[1...5] → 1, 2, 3, 4, 5; [5...1] counts down; [0, 0.5...2] by halves —
+    and [1...n], with a letter, waits (as counting(1, step, n)) until n has a value"""
     if any(v.free_symbols for v in (*items[:2], last)):
-        raise MathInputError("a list like [1...10] needs numbers at its ends")
+        step = items[1] - items[0] if len(items) > 1 else Integer(0)  # 0: up or down, whichever reaches
+        return sympy.Function("counting")(items[0], step, last)
     start = items[0]
     step = items[1] - items[0] if len(items) > 1 else (Integer(1) if last >= start else Integer(-1))
     if step == 0:
@@ -339,6 +341,9 @@ class Reader:
                         if self.at("sym", ","):
                             self.take()
                         items = _counted(items, self.sum())
+                        if not isinstance(items, list):
+                            self.expect("sym", close)
+                            return items  # [1...n]: counted once n has a value
                     self.expect("sym", close)
                     if value == "[":
                         # [1, 2, 3]: a list (a point is round brackets)
@@ -704,7 +709,8 @@ def read_line(latex: str, functions: dict | None = None, consts: set | None = No
         value = reader.sum()
         # (and d = distance(A, B): a measurement, named to calculate with)
         measured = getattr(reader, "built", False) and not isinstance(value, sympy.Tuple) and not is_shape(value) and not value.has(X, Y)
-        if isinstance(value, sympy.Tuple) or is_shape(value) or measured:
+        counting = getattr(getattr(value, "func", None), "__name__", None) == "counting"  # L = [1...n]
+        if isinstance(value, sympy.Tuple) or is_shape(value) or measured or counting:
             conditions = _restrictions(reader)
             _done(reader)
             return Parsed(sides=[value], ops=[], conditions=conditions, tuples=[value] if isinstance(value, sympy.Tuple) else None, name=named[0], computed=getattr(reader, "built", False), glide=getattr(reader, "glide", None))

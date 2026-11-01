@@ -290,3 +290,10 @@ def test_a_list_in_a_function_is_a_curve_for_each_number():
     s = graph(r"L=\left[1,2,3\right]", r"y=Lx")["series"][1]
     assert s["kind"] == "function" and s["y"].count(None) >= 3  # three lines, gaps between
     assert "intercepts" not in str(graph(r"y=\left[1,2\right]x")["markers"])
+
+
+def test_a_list_counted_to_a_letter_waits_for_its_slider():
+    waiting = graph(r"L=\left[1...n\right]", r"\left(L,L^{2}\right)")["series"]
+    assert [s.get("missing") for s in waiting] == [["n"], ["n"]]
+    s = graph(r"L=\left[1...n\right]", r"\left(L,L^{2}\right)", vars={"n": 3})["series"][1]
+    assert s["x"] == [1, 2, 3] and s["y"] == [1, 4, 9]
