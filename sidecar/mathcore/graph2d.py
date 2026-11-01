@@ -23,7 +23,7 @@ import math
 
 import numpy as np
 import sympy
-from sympy import Symbol
+from sympy import Symbol  # noqa: F401 — also a point's sliding letter
 
 from . import geometry, graphtex
 from .graphtex import DYDX, THETA, T, X, Y
@@ -339,6 +339,9 @@ def _letters(*exprs, bound=()):
 def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
     """a read line → what to draw (a series), and its function (for marks)"""
     fix = (lambda e: _degrees(e)) if degrees else (lambda e: e)
+    # a locus keeps its moving letter free (it runs over it), whatever the slider says
+    if p.sides and geometry.is_shape(p.sides[0]) and p.sides[0].func.__name__ == "locus":
+        values = {k: v for k, v in values.items() if k != p.sides[0].args[1]}
     sides = [fix(s.subs(values)) if hasattr(s, "subs") else s for s in p.sides]
     conds = [c.subs(values) for c in p.conditions]
 
@@ -362,6 +365,8 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
                 out["name"] = p.name
             if p.computed:
                 out["facts"] = [geometry.point_tex(t) for t in items]
+            if p.glide and len(p.tuples) == 1:
+                out.update(_glide_path(p.tuples[0], p.glide, values))
             return out, None
         if len(items) == 1 and T in free:
             need(*items[0], bound={"t"})
@@ -378,7 +383,8 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
         raise MathInputError("a point needs numbers — or use t for a parametric curve: (cos t, sin t)")
 
     if not p.ops and geometry.is_shape(sides[0]):
-        need(sides[0])
+        locus = sides[0].func.__name__ == "locus"
+        need(sides[0], bound=BOUND | ({str(sides[0].args[1])} if locus else set()))
         return geometry.draw(sides[0], window)
 
     if not p.ops:
@@ -623,6 +629,26 @@ def _extras(i, expr, extra, xr, window):
         said = said or f"{value:.6g}"
         out.append({"kind": "area", "x": ax, "y": ay, "index": i, "value": round(value, 6), "from": lo, "to": hi, "facts": [f"\\int_{{{sympy.latex(a)}}}^{{{sympy.latex(b)}}}y\\,dx={said}"]})
     return out
+
+
+def _glide_path(raw, letter, values):
+    """a point slid along a shape by a letter: the path it can take, with that
+    letter's value at each step — so a drag can find the letter that puts it there"""
+    var = Symbol(letter)
+    rest = {k: v for k, v in values.items() if k != var}
+    px, py = (sympy.sympify(c).subs(rest) for c in raw)
+    try:
+        straight = all(sympy.Poly(c, var).degree() <= 1 for c in (px, py) if c.has(var))
+    except Exception:  # noqa: BLE001 — not a polynomial: a circle, a polygon…
+        straight = False
+    ts = np.linspace(-3, 4, 1401) if straight else np.linspace(0, 1, 721)
+    try:
+        xs = np.broadcast_to(np.asarray(_numeric(px, var)(ts), dtype=float), ts.shape)
+        ys = np.broadcast_to(np.asarray(_numeric(py, var)(ts), dtype=float), ts.shape)
+    except Exception:  # noqa: BLE001
+        return {"glide": letter}
+    ok = np.isfinite(xs) & np.isfinite(ys)
+    return {"glide": letter, "path": {"x": xs[ok].round(6).tolist(), "y": ys[ok].round(6).tolist(), "t": ts[ok].round(6).tolist()}}
 
 
 def _through(expr):

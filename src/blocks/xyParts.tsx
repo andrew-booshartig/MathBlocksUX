@@ -75,6 +75,9 @@ export function LineOptions({
   straight,
   onStraight,
   builds = [],
+  trace,
+  onTrace,
+  onClearTrace,
   onStyle,
   onExtra,
   onClose,
@@ -91,6 +94,10 @@ export function LineOptions({
   onStraight?: (kind: "segment" | "ray" | "line", a: string, b: string) => void;
   /** more to build from it: its midpoint, a perpendicular… */
   builds?: { label: string; title: string; run: () => void }[];
+  /** a point: whether it leaves a trail as it moves */
+  trace?: boolean;
+  onTrace?: (on: boolean) => void;
+  onClearTrace?: () => void;
   onStyle: (s: Pick<GraphLineStyle, "color" | "dash" | "width" | "label">) => void;
   onExtra: (e: XYExtra) => void;
   onClose: () => void;
@@ -128,6 +135,19 @@ export function LineOptions({
         <input type="checkbox" checked={!!style.label} onChange={(e) => set({ label: e.target.checked || undefined })} />
         Write its equation on the graph
       </label>
+      {onTrace && (
+        <div className="xy-row">
+          <label className="xy-check">
+            <input type="checkbox" checked={!!trace} onChange={(e) => onTrace(e.target.checked)} />
+            Leave a trace as it moves
+          </label>
+          {trace && onClearTrace && (
+            <button className="xy-zoom-btn is-text" onClick={onClearTrace}>
+              Clear trace
+            </button>
+          )}
+        </div>
+      )}
       {straight && onStraight && (
         <>
           <div className="xy-pop-head">Reaches</div>

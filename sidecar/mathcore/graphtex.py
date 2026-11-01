@@ -61,7 +61,7 @@ _FUNCS = {
 GEOMETRY = (
     "segment", "line", "ray", "vector", "circle", "polygon", "angle", "perpendicular", "parallel", "midpoint", "distance",
     "intersection", "reflect", "rotate", "translate", "dilate", "arc", "sector", "semicircle", "bisector", "tangent",
-    "length", "area", "perimeter", "slope",
+    "length", "area", "perimeter", "slope", "point", "locus",
 )
 _SPELLED = sorted(GEOMETRY, key=len, reverse=True)
 _INVERSE = {"sin": "arcsin", "cos": "arccos", "tan": "arctan", "sec": "arcsec", "csc": "arccsc", "cot": "arccot", "sinh": "arcsinh", "cosh": "arccosh", "tanh": "arctanh"}
@@ -129,6 +129,7 @@ class Parsed:
     define: tuple[str, list[Symbol]] | None = None  # f(x) = … : its name and parameters
     name: str | None = None  # A = (1, 2), s = segment(A, B): what it's called
     computed: bool = False  # built by geometry (midpoint, intersection…), not typed in
+    glide: str | None = None  # point(shape, t): the letter that slides it along
 
 
 class Reader:
@@ -402,6 +403,8 @@ class Reader:
             args.append(self.sum())
         self.expect("sym", ")")
         self.built = True
+        if name == "point" and len(args) == 2 and isinstance(args[1], Symbol):
+            self.glide = str(args[1])
         return build(name, args)
 
     def _raw_script(self) -> str:
@@ -658,10 +661,12 @@ def read_line(latex: str, functions: dict | None = None, consts: set | None = No
 
         reader = Reader(tokenize(named[1]), functions, consts, points)
         value = reader.sum()
-        if isinstance(value, sympy.Tuple) or is_shape(value):
+        # (and d = distance(A, B): a measurement, named to calculate with)
+        measured = getattr(reader, "built", False) and not isinstance(value, sympy.Tuple) and not is_shape(value) and not value.has(X, Y)
+        if isinstance(value, sympy.Tuple) or is_shape(value) or measured:
             conditions = _restrictions(reader)
             _done(reader)
-            return Parsed(sides=[value], ops=[], conditions=conditions, tuples=[value] if isinstance(value, sympy.Tuple) else None, name=named[0], computed=getattr(reader, "built", False))
+            return Parsed(sides=[value], ops=[], conditions=conditions, tuples=[value] if isinstance(value, sympy.Tuple) else None, name=named[0], computed=getattr(reader, "built", False), glide=getattr(reader, "glide", None))
     reader = Reader(tokenize(latex), functions, consts, points)
     sides, ops = reader.relation()
     tuples = None
@@ -677,7 +682,7 @@ def read_line(latex: str, functions: dict | None = None, consts: set | None = No
         tuples = [sides[0]]
     conditions = _restrictions(reader)
     _done(reader)
-    return Parsed(sides=sides, ops=ops, conditions=conditions, tuples=tuples, computed=getattr(reader, "built", False))
+    return Parsed(sides=sides, ops=ops, conditions=conditions, tuples=tuples, computed=getattr(reader, "built", False), glide=getattr(reader, "glide", None))
 
 
 def _restrictions(reader: Reader) -> list:

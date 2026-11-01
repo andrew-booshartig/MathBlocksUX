@@ -15,7 +15,7 @@ import { type GraphDrawing, type GraphWindow, newId } from "./store";
 export type GraphTool =
   | "pan" | "move" | "point" | "line" | "segment" | "ray" | "circle" | "polygon" | "angle" | "perpendicular" | "parallel"
   | "intersect" | "midpoint" | "bisector" | "anglebisector" | "tangents" | "circle3" | "compass" | "arc" | "sector" | "semicircle"
-  | "regular" | "reflect" | "rotate" | "translate" | "dilate" | "measure" | "rectangle"
+  | "regular" | "reflect" | "rotate" | "translate" | "dilate" | "measure" | "rectangle" | "glider" | "locus"
   | "arrow" | "pen" | "text" | "eraser";
 
 /** a point plotted as math (its line's key), to snap to and drag — unless
@@ -97,6 +97,8 @@ export const PLAN: Partial<Record<GraphTool, Want[]>> = {
   translate: ["thing", "point", "point"],
   dilate: ["thing", "point"],
   measure: ["object"],
+  glider: ["object"],
+  locus: ["point", "point"],
 };
 
 /** the tools that build, given onConstruct */

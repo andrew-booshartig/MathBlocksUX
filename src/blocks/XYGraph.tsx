@@ -10,7 +10,7 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GraphView, { DEFAULT_WINDOW, THEMES, useAppGraphColors } from "../GraphView";
 import type { XYSettings } from "../store";
-import type { GraphResult } from "../mathSidecar";
+import type { GraphResult, GraphSeries } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { type GraphDrawing, type XYPlot, newId } from "../store";
 import { Tex } from "../ui";
@@ -62,6 +62,8 @@ const HINTS: Record<GraphTool, string> = {
   parallel: "Click a line, segment or ray — then a point the parallel goes through",
   intersect: "Click two things — a point where they cross (click near the crossing you want)",
   midpoint: "Click two points — the point halfway between",
+  glider: "Click a circle, segment, line, arc or polygon — a point that slides along it (drag it, or ▶ its slider)",
+  locus: "Click the point to follow, then the sliding point that moves it — the path it sweeps out",
   bisector: "Click two points — the line through the middle, at right angles",
   anglebisector: "Click a point, the corner, another point — the line halving the angle",
   tangents: "Click a point, then a circle — the lines from the point that just touch it",
@@ -169,6 +171,8 @@ const fit = (el: HTMLTextAreaElement) => {
 const MORE: { id: GraphTool; group: string; label: string }[] = [
   { id: "intersect", group: "Points", label: "Intersect" },
   { id: "midpoint", group: "Points", label: "Midpoint" },
+  { id: "glider", group: "Points", label: "Point on object" },
+  { id: "locus", group: "Points", label: "Locus" },
   { id: "bisector", group: "Lines", label: "Perpendicular bisector" },
   { id: "anglebisector", group: "Lines", label: "Angle bisector" },
   { id: "tangents", group: "Lines", label: "Tangents to a circle" },
@@ -208,6 +212,29 @@ function crossings(a: [number, number][], b: [number, number][]): [number, numbe
   }
   return out.sort((m, n) => m[0] - n[0] || m[1] - n[1]);
 }
+
+/** how far along a drawn path (0 at its start, 1 at its end) the point nearest (x, y) is */
+function alongFraction(pts: [number, number][], x: number, y: number): number {
+  let total = 0;
+  let at = 0;
+  let best = Infinity;
+  for (let k = 1; k < pts.length; k++) {
+    const [p, q] = [pts[k - 1], pts[k]];
+    if (!Number.isFinite(p[0] + p[1] + q[0] + q[1])) continue;
+    const len = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    const u = len ? Math.max(0, Math.min(1, ((x - p[0]) * (q[0] - p[0]) + (y - p[1]) * (q[1] - p[1])) / (len * len))) : 0;
+    const d = Math.hypot(p[0] + u * (q[0] - p[0]) - x, p[1] + u * (q[1] - p[1]) - y);
+    if (d < best) [best, at] = [d, total + u * len];
+    total += len;
+  }
+  return total ? at / total : 0;
+}
+
+/** a hex color, see-through */
+const faint = (hex: string, alpha: number) => {
+  const n = parseInt(hex.slice(1), 16);
+  return hex.length === 7 ? `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})` : hex;
+};
 
 /** shapes perpendicular and parallel can be built from */
 const STRAIGHT = new Set(["segment", "line", "ray", "vector", "perpendicular", "parallel"]);
@@ -375,7 +402,7 @@ export default function XYGraph({
   });
   const targets: GraphTarget[] = (result?.series ?? []).flatMap((s) =>
     s.kind === "points" && lines[s.index] && !lines[s.index].hidden && s.x?.length === 1 && s.y?.[0] != null
-      ? [{ key: lines[s.index].id, x: s.x[0], y: s.y[0] as number, name: s.name, movable: literalPoint(lines[s.index].latex) }]
+      ? [{ key: lines[s.index].id, x: s.x[0], y: s.y[0] as number, name: s.name, movable: literalPoint(lines[s.index].latex) || !!s.glide }]
       : [],
   );
   /** names in use: the list's points and shapes, and letters with values */
@@ -524,6 +551,33 @@ export default function XYGraph({
       case "midpoint":
         add(op("midpoint", r), true);
         break;
+      case "glider": {
+        // a point that slides along it, by a letter of its own (0 to 1 round a
+        // closed shape, or between a line's two points)
+        const shape = shapes.find((s) => s.key === picks[0].shape);
+        const s = shapeOf(0);
+        if (!shape || !s?.shape || s.through) return setNotice("A point can slide along a segment, line, circle, arc or polygon");
+        const letter = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => `t_${k}`).find((n) => !used.includes(n) && !(n in (plot.letters ?? {}))) ?? "t_9";
+        const straightish = ["segment", "line", "ray", "vector", "perpendicular", "parallel"].includes(s.shape);
+        let t = 0;
+        if (straightish && s.anchor) {
+          const [ax, ay, bx, by] = s.anchor;
+          t = ((picks[0].x - ax) * (bx - ax) + (picks[0].y - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2 || 1);
+          if (s.shape === "segment" || s.shape === "vector") t = Math.min(1, Math.max(0, t));
+        } else t = alongFraction(shape.pts, picks[0].x, picks[0].y);
+        add(op("point", [r[0], letter.replace(/_(\d+)/, "_{$1}")]), true);
+        const range: [number, number] = s.shape === "segment" || s.shape === "vector" || !straightish ? [0, 1] : [-2, 3];
+        update({ lines: next, letters: { ...(plot.letters ?? {}), [letter]: Math.round(t * 1e4) / 1e4 }, ranges: { ...(plot.ranges ?? {}), [letter]: range } });
+        return;
+      }
+      case "locus": {
+        const driver = seriesOf(lines.findIndex((l) => l.id === picks[1].key)).find((s) => s.glide)?.glide;
+        if (!driver) return setNotice("Locus: click the point to follow, then a point on an object that moves it");
+        const [lo, hi] = plot.ranges?.[driver] ?? [0, 1];
+        const v = driver.replace(/_(\d+)/, "_{$1}");
+        add(op("locus", lo === 0 && hi === 1 ? [r[0], v] : [r[0], v, fracTex(lo), fracTex(hi)]));
+        break;
+      }
       case "rectangle": {
         // the other two corners follow the two clicked: (C.x, A.y), (A.x, C.y)
         const [a, c] = r;
@@ -569,6 +623,48 @@ export default function XYGraph({
     }
     setLines(next);
   };
+  /** a sliding point dragged to (x, y): its letter's value there, kept in its slider's range */
+  const tAt = (s: GraphSeries, x: number, y: number) => {
+    const { path, glide } = s;
+    let best = 0;
+    let near = Infinity;
+    path!.x.forEach((px, k) => {
+      const d = (px - x) ** 2 + (path!.y[k] - y) ** 2;
+      if (d < near) [near, best] = [d, k];
+    });
+    const [lo, hi] = plot.ranges?.[glide!] ?? [0, 1];
+    return Math.round(Math.min(hi, Math.max(lo, path!.t[best])) * 1e4) / 1e4;
+  };
+  // a point with trace on leaves a trail as it moves (kept until cleared — not saved)
+  const trails = useRef<Record<string, [number, number][]>>({});
+  const [, redraw] = useState(0);
+  useEffect(() => {
+    let changed = false;
+    lines.forEach((l, i) => {
+      if (!l.trace) {
+        if (trails.current[l.id]) {
+          delete trails.current[l.id];
+          changed = true;
+        }
+        return;
+      }
+      const s = seriesOf(i).find((q) => q.kind === "points" && q.x?.length === 1);
+      if (!s?.x || s.y?.[0] == null) return;
+      const p: [number, number] = [s.x[0], s.y[0] as number];
+      const trail = (trails.current[l.id] ??= []);
+      const last = trail[trail.length - 1];
+      if (!last || Math.hypot(last[0] - p[0], last[1] - p[1]) > 1e-9) {
+        trail.push(p);
+        if (trail.length > 5000) trail.shift();
+        changed = true;
+      }
+    });
+    if (changed) redraw((n) => n + 1);
+  }, [result]); // eslint-disable-line react-hooks/exhaustive-deps
+  const traceLines = lines.flatMap((l, i) => {
+    const trail = trails.current[l.id];
+    return trail?.length ? [{ x: trail.map((p) => p[0]), y: trail.map((p) => p[1]), type: "scatter", mode: "lines", line: { color: faint(colorOf(i), 0.55), width: 2 }, hoverinfo: "skip" }] : [];
+  });
   /** a point dragged to x, y — its name kept */
   const movedTo = (latex: string, x: number, y: number) => {
     const name = nameOf(latex);
@@ -866,6 +962,12 @@ export default function XYGraph({
                       straight={straightOf(line.latex)}
                       onStraight={(kind, a, b) => setLine(i, { latex: `\\operatorname{${kind}}\\left(${texName(a)},${texName(b)}\\right)` })}
                       builds={buildsOf(i)}
+                  trace={line.trace}
+                  onTrace={seriesOf(i).some((s) => s.kind === "points") ? (on) => setLine(i, { trace: on || undefined }) : undefined}
+                  onClearTrace={() => {
+                    trails.current[line.id] = [];
+                    redraw((n) => n + 1);
+                  }}
                       onStyle={(st) => setLine(i, { style: Object.values(st).some((v) => v !== undefined) ? st : undefined })}
                       onExtra={(ex: XYExtra) => setLine(i, { extra: Object.keys(ex).length ? ex : undefined })}
                       onClose={() => setOptionsFor(null)}
@@ -982,6 +1084,7 @@ export default function XYGraph({
               ]}
               appearance={{ grid: settings.grid, numbers: settings.numbers, xLabel: settings.xLabel, yLabel: settings.yLabel, piX: settings.piX, logX: settings.logX, logY: settings.logY, xStep: settings.xStep, yStep: settings.yStep, unit: settings.unit, dims: settings.dims }}
               onPlot={setPlotDiv}
+              extraTraces={traceLines}
               focus={focusIndex >= 0 ? focusIndex : null}
               onPick={pick}
               wheel={!!fill}
@@ -1006,7 +1109,12 @@ export default function XYGraph({
                   onPoint={(x, y) => addLine(pointLatex(freshName(takenNames()), fracTex(x), fracTex(y)))}
                   targets={targets}
                   shapes={shapes}
-                  onMovePoint={(key, x, y) => setLines(lines.map((l) => (l.id === key ? { ...l, latex: movedTo(l.latex, x, y) } : l)))}
+                  onMovePoint={(key, x, y) => {
+                // a point on a shape slides along it: its letter follows the drag
+                const s = seriesOf(lines.findIndex((l) => l.id === key)).find((q) => q.glide && q.path);
+                if (s?.glide && s.path) return update({ letters: { ...(plot.letters ?? {}), [s.glide]: tAt(s, x, y) } });
+                setLines(lines.map((l) => (l.id === key ? { ...l, latex: movedTo(l.latex, x, y) } : l)));
+              }}
                   onConstruct={construct}
                 />
               )}

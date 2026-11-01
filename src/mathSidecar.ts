@@ -50,6 +50,11 @@ export interface GraphSeries {
   arrow?: boolean;
   /** what's true about it, as math: a segment's length, a line's equation, ∫ … = … */
   facts?: string[];
+  /** a straight shape: the two points it's drawn through (x, y, x, y) */
+  anchor?: [number, number, number, number];
+  /** a point slid along a shape: the letter that slides it, and the path it can take (that letter's value at each step) */
+  glide?: string;
+  path?: { x: number[]; y: number[]; t: number[] };
   /** a straight shape's equation alone (y = mx + b) */
   equation?: string;
   /** a straight line (y = 2x + 1, x = 3): two points on it, as math — to build a perpendicular or parallel from */

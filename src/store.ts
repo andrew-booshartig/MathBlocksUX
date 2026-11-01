@@ -301,6 +301,8 @@ export interface XYPlot {
     extra?: XYExtra;
     /** a note: words in the list, not math */
     note?: string;
+    /** a point leaves a trail as it moves (not saved — like chalk) */
+    trace?: boolean;
     /** a triangle from what's known of it: sides a, b, c, angles A, B, C (degrees) */
     triangle?: { given: Partial<Record<"a" | "b" | "c" | "A" | "B" | "C", number>>; pick?: 1 | 2; at?: [number, number]; turn?: number };
   }[];

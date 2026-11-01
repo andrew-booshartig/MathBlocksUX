@@ -21,7 +21,7 @@ from .graphtex import GEOMETRY, X
 from .parsing import MathInputError
 
 # what can be drawn (the rest of geometry's words make points, numbers or one of these)
-SHAPES = ("segment", "line", "ray", "vector", "circle", "polygon", "angle", "perpendicular", "parallel", "arc", "sector", "points", "group")
+SHAPES = ("segment", "line", "ray", "vector", "circle", "polygon", "angle", "perpendicular", "parallel", "arc", "sector", "points", "group", "locus")
 STRAIGHT = ("segment", "line", "ray", "vector", "perpendicular", "parallel")
 FAR = 1e5
 
@@ -263,6 +263,16 @@ def draw(shape, window=None):
         return _angle(shape, window, num), None
     if kind in ("arc", "sector"):
         return _arc_draw(shape, num), None
+    if kind == "locus":
+        p, var, lo, hi = shape.args
+        free = (p[0].free_symbols | p[1].free_symbols) - {var}
+        if free:
+            raise MathInputError(f"give {', '.join(sorted(str(f) for f in free))} a value first")
+        ts = np.linspace(num(lo), num(hi), 900)
+        fx, fy = (sympy.lambdify(var, c, modules=["numpy"]) for c in p)
+        xs = np.broadcast_to(np.asarray(fx(ts), dtype=float), ts.shape)
+        ys = np.broadcast_to(np.asarray(fy(ts), dtype=float), ts.shape)
+        return {"kind": "curve", "x": [float(v) if np.isfinite(v) else None for v in xs], "y": [float(v) if np.isfinite(v) else None for v in ys], "shape": kind}, None
     if kind == "points":
         pts = list(shape.args)
         return {"kind": "points", "x": [num(p[0]) for p in pts], "y": [num(p[1]) for p in pts], "shape": kind, "facts": [point_tex(p) for p in pts]}, None
@@ -308,7 +318,7 @@ def draw(shape, window=None):
     if abs(ax - bx) < 1e-12 and abs(ay - by) < 1e-12:
         raise MathInputError("its two points are the same point — move one")
     equation, fx = line_tex(a, b)
-    s = {"kind": "curve", "shape": kind, "equation": equation}
+    s = {"kind": "curve", "shape": kind, "equation": equation, "anchor": [ax, ay, bx, by]}
     vertical = fx is None
     var = "y" if vertical else "x"
     lo, hi = (a[1], b[1]) if vertical else (a[0], b[0])
@@ -487,8 +497,55 @@ def _regular(a, b, n):
     return F("polygon")(*pts)
 
 
+def _on(obj, t):
+    """point(shape, t): where t (0 to 1) puts a point along it — around a circle
+    from its right, along a polygon's sides from its first corner, an arc from
+    its start; along a line, t = 0 and 1 are the two points it's drawn through"""
+    if not is_shape(obj):
+        raise MathInputError("point( ) puts a point on a shape: point(circle(A, 3), t)")
+    kind = obj.func.__name__
+    if kind in STRAIGHT:
+        a, b = _through(obj)
+        return Tuple(a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+    if kind == "circle":
+        c, r = _circle_parts(obj)
+        return Tuple(c[0] + r * sympy.cos(2 * sympy.pi * t), c[1] + r * sympy.sin(2 * sympy.pi * t))
+    if kind == "arc":
+        o, a, b = obj.args
+        n = lambda v: float(sympy.N(v))  # noqa: E731
+        start = math.atan2(n(a[1] - o[1]), n(a[0] - o[0]))
+        sweep = (math.atan2(n(b[1] - o[1]), n(b[0] - o[0])) - start) % (2 * math.pi) or 2 * math.pi
+        r = sympy.sqrt((a[0] - o[0]) ** 2 + (a[1] - o[1]) ** 2)
+        return Tuple(o[0] + r * sympy.cos(start + t * sweep), o[1] + r * sympy.sin(start + t * sweep))
+    if kind == "polygon":
+        # along the sides, by how far around: t = 0.5 is halfway round
+        pts = list(obj.args)
+        n = len(pts)
+        lengths = [float(sympy.N(sympy.sqrt((pts[(i + 1) % n][0] - pts[i][0]) ** 2 + (pts[(i + 1) % n][1] - pts[i][1]) ** 2))) for i in range(n)]
+        total = sum(lengths)
+        s = sympy.Mod(t, 1) * total
+        pieces, done = [], 0.0
+        for i in range(n):
+            p, q = pts[i], pts[(i + 1) % n]
+            k = (s - done) / lengths[i] if lengths[i] else 0
+            pieces.append(((p[0] + k * (q[0] - p[0]), p[1] + k * (q[1] - p[1])), s <= done + lengths[i]))
+            done += lengths[i]
+        return Tuple(*(sympy.Piecewise(*[(c[j], cond) for c, cond in pieces[:-1]], (pieces[-1][0][j], True)) for j in (0, 1)))
+    raise MathInputError(f"point( ) works on segments, lines, circles, arcs and polygons — not a {kind}")
+
+
 def build_more(name: str, args: list):
     """the constructions past the basic ones — None when the name isn't one of them"""
+    if name == "point":
+        if len(args) != 2:
+            raise MathInputError("point( ) takes a shape and how far along it: point(circle(A, 3), t)")
+        return _on(args[0], args[1])
+    if name == "locus":
+        # the path a point takes as one letter runs (0 to 1, unless said)
+        if len(args) not in (2, 4) or not isinstance(args[0], Tuple) or not isinstance(args[1], sympy.Symbol):
+            raise MathInputError("locus( ) takes a point and the letter that moves it: locus(P, t) — or locus(P, t, 0, 5)")
+        lo, hi = (args[2], args[3]) if len(args) == 4 else (0, 1)
+        return F("locus")(args[0], args[1], lo, hi)
     if name == "intersection":
         if len(args) not in (2, 3):
             raise MathInputError("intersection( ) takes two things — and which crossing: intersection(a, b, 2)")
