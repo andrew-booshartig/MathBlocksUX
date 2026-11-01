@@ -11,6 +11,20 @@ use std::path::PathBuf;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
+/// The third-party notices: in a built app, Contents/Resources; in
+/// development, what `npm run build:notices` made.
+#[tauri::command]
+pub fn notices_read(app: AppHandle) -> Result<String, String> {
+    let bundled = app.path().resource_dir().ok().map(|d| d.join("THIRD_PARTY_NOTICES.txt"));
+    let dev = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/THIRD_PARTY_NOTICES.txt"));
+    for path in bundled.into_iter().chain([dev]) {
+        if let Ok(text) = fs::read_to_string(&path) {
+            return Ok(text);
+        }
+    }
+    Err("the notices aren't made yet (npm run build:notices)".into())
+}
+
 /// ~/Documents/MatrixLab/init.js: the user's own config, run like a plugin (Neovim's init.lua)
 fn init_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().document_dir().map_err(|e| e.to_string())?.join("MatrixLab");

@@ -9,7 +9,8 @@ import Icon from "../Icon";
 import { TILES } from "./CalcDock";
 import { languages } from "../notebook/languages";
 import { type LoadedPlugin, loadPlugins, usePlugins } from "../plugins";
-import { toggleTile, togglePlugin, useParts } from "../parts";
+import { toggleCell, toggleTile, togglePlugin, useParts } from "../parts";
+import { NEW_CELLS } from "../notebook/NotebookTile";
 
 function Switch({ on, onChange, label }: { on: boolean; onChange: () => void; label: string }) {
   return (
@@ -78,6 +79,23 @@ export default function Extensions({ onClose, onNewPlugin }: { onClose: () => vo
                   <span className="ext-dim">{[t.blurb, `from ${t.plugin}`, t.replaces && `in place of ${TILES.find((o) => o.id === t.replaces)?.title ?? t.replaces}`].filter(Boolean).join(" · ")}</span>
                 </span>
                 <Switch on={!parts.offTiles.includes(t.id)} onChange={() => toggleTile(t.id)} label={t.title} />
+              </div>
+            ))}
+          </section>
+
+          <section>
+            <h3>Notebook cells</h3>
+            <div className="ext-dim ext-note">Which kinds the notebook offers to add (cells already in a notebook stay)</div>
+            {[...NEW_CELLS.map((c) => ({ id: c.lang, label: c.label, icon: c.icon, from: "" })), ...plugins.cells.map((c) => ({ id: c.id, label: c.label, icon: "source", from: c.plugin }))].map((c) => (
+              <div key={c.id} className="ext-row">
+                <span className="ext-icon">
+                  <Icon name={c.icon} size={16} />
+                </span>
+                <span className="ext-text">
+                  <span className="ext-name">{c.label}</span>
+                  {c.from && <span className="ext-dim">from {c.from}</span>}
+                </span>
+                <Switch on={!parts.offCells.includes(c.id)} onChange={() => toggleCell(c.id)} label={`${c.label} cells`} />
               </div>
             ))}
           </section>

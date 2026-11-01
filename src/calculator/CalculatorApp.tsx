@@ -21,6 +21,7 @@ import type { Equation } from "../equations";
 import { INIT_TEMPLATE, SAMPLE_PLUGIN, loadPlugins, runKeymap, setAppCommands, usePlugins } from "../plugins";
 import { setVimKeys, useVimKeys } from "../notebook/editorSettings";
 import Extensions from "./Extensions";
+import About from "./About";
 import { tilesOn } from "./CalcDock";
 import { useParts } from "../parts";
 
@@ -97,6 +98,7 @@ export default function CalculatorApp() {
   const plugins = usePlugins();
   const vimKeys = useVimKeys();
   const [extOpen, setExtOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   useParts(); // the ⌘K list follows tiles turned on and off
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
@@ -318,6 +320,7 @@ export default function CalculatorApp() {
       keys: i < 9 ? `⌘${i + 1}` : undefined,
       run: () => dock.current?.show(t.id as `plugin-${string}`, true),
     })),
+    { id: "about", label: "About MatrixLab — version, and the open-source software it's built with", group: "App", icon: "reference", run: () => setAboutOpen(true) },
     { id: "extensions", label: "Extensions — tiles, languages, plugins (turn parts off, add your own)", group: "App", icon: "panel", run: () => setExtOpen(true) },
     { id: "fill", label: "Fill the window with this zone (or bring the rest back)", group: "Tiles", icon: "maximize", keys: "⌘⇧F", run: () => dock.current?.fill() },
     ...PRESETS.map((p) => ({ id: `preset:${p.id}`, label: `${p.name} layout`, group: "Layout", icon: "layout", run: () => dock.current?.preset(p.id) })),
@@ -409,6 +412,7 @@ export default function CalculatorApp() {
       {palette && <CommandPalette commands={commands()} onClose={() => setPalette(false)} />}
       {notice && <div className="calc-app-notice">{notice}</div>}
       {extOpen && <Extensions onClose={() => setExtOpen(false)} onNewPlugin={newPlugin} />}
+      {aboutOpen && <About onClose={() => setAboutOpen(false)} />}
       {sheet && <ShortcutSheet onClose={() => setSheet(false)} />}
       {layoutOpen && (
         <LayoutMenu

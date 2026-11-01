@@ -10,6 +10,8 @@ export interface Parts {
   offPlugins: string[];
   /** a plugin's tile → the app's tile it takes the place of (remembered, to put back if the plugin goes) */
   swaps: Record<string, string>;
+  /** kinds of notebook cell left out of the notebook's add buttons ("numberline", "work", a plugin's "csv"…) */
+  offCells: string[];
 }
 
 const KEY = "mlx-parts";
@@ -17,9 +19,9 @@ const listeners = new Set<() => void>();
 let parts: Parts = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}");
-    return { offTiles: saved.offTiles ?? [], offPlugins: saved.offPlugins ?? [], swaps: saved.swaps ?? {} };
+    return { offTiles: saved.offTiles ?? [], offPlugins: saved.offPlugins ?? [], swaps: saved.swaps ?? {}, offCells: saved.offCells ?? [] };
   } catch {
-    return { offTiles: [], offPlugins: [], swaps: {} };
+    return { offTiles: [], offPlugins: [], swaps: {}, offCells: [] };
   }
 })();
 
@@ -42,6 +44,12 @@ export const pluginOn = (folder: string) => !parts.offPlugins.includes(folder);
 
 export function toggleTile(id: string) {
   setParts({ offTiles: tileOn(id) ? [...parts.offTiles, id] : parts.offTiles.filter((t) => t !== id) });
+}
+
+export const cellOn = (kind: string) => !parts.offCells.includes(kind);
+
+export function toggleCell(kind: string) {
+  setParts({ offCells: cellOn(kind) ? [...parts.offCells, kind] : parts.offCells.filter((c) => c !== kind) });
 }
 
 export function togglePlugin(folder: string) {

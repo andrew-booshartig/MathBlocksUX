@@ -29,6 +29,7 @@ import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { setVimKeys, useVimKeys } from "./editorSettings";
+import { useParts } from "../parts";
 import "./notebook.css";
 
 type Listing = { name: string; modified: number }[];
@@ -68,8 +69,8 @@ const HEADER_FIELDS: [string, string][] = [
   ["date", "Date"],
 ];
 
-/** what each kind of cell starts as */
-const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon: string; start: string }[] = [
+/** what each kind of cell starts as (the Extensions panel can leave any out of the add buttons) */
+export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon: string; start: string }[] = [
   { lang: "text", label: "Text", icon: "text", start: "" },
   { lang: "math", label: "Math", icon: "equations", start: "$$\n\n$$" },
   { lang: "vars", label: "Variables", icon: "variables", start: "m = 2.5 kg  # the cart's mass\ng = 9.81  # gravity, m/s²" },
@@ -218,6 +219,7 @@ export default function NotebookTile({
   const [running, setRunning] = useState<Set<string>>(new Set());
   const allLanguages = useLanguages();
   const plugins = usePlugins();
+  const { offCells } = useParts();
   const [codeMenu, setCodeMenu] = useState(false);
   /** the notebook's Python: off (not started), idle, or running a cell */
   const [kernel, setKernel] = useState<"off" | "idle" | "busy">("off");
@@ -1513,7 +1515,7 @@ export default function NotebookTile({
           })}
           {!doc.blocks.length && <div className="nb-empty">An empty page — add something below, or open the file in another editor.</div>}
           <div className="nb-add">
-            {NEW_CELLS.map((c) => (
+            {NEW_CELLS.filter((c) => !offCells.includes(c.lang)).map((c) => (
               <button key={c.lang} className="nb-add-btn" onClick={() => addBlock(c)}>
                 <Icon name={c.icon} size={13} /> {c.label}
               </button>
@@ -1524,7 +1526,7 @@ export default function NotebookTile({
               </button>
               {codeMenu && (
                 <div className="nb-pop is-up" onMouseLeave={() => setCodeMenu(false)}>
-                  {plugins.cells.map((c) => (
+                  {plugins.cells.filter((c) => !offCells.includes(c.id)).map((c) => (
                     <button key={`cell:${c.id}`} className="nb-pop-item" title={`A ${c.label} cell, from the plugin ${c.plugin}`} onClick={() => (setCodeMenu(false), addBlock({ lang: c.id, start: c.starter ?? "" }))}>
                       {c.label}
                       <span className="nb-pop-dim">{c.plugin}</span>

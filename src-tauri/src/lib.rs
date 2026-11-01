@@ -54,6 +54,7 @@ pub fn run() {
             plugins::init_edit,
             plugins::plugin_edit,
             plugins::plugins_stamp,
+            plugins::notices_read,
             workspace::save_document,
             workspace::print_document,
             workspace::theme_folder,

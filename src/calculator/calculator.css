@@ -1677,3 +1677,67 @@ body {
   font-size: 12.5px;
   color: var(--t-muted);
 }
+
+.ext-note {
+  padding: 0 6px 4px;
+}
+
+/* About: the libraries, each one's license */
+.about-find {
+  width: 100%;
+  margin: 12px 0 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: var(--t-bg1, #14141a);
+  color: var(--t-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.about-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-text);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.about-line:disabled {
+  cursor: default;
+}
+
+.about-line:not(:disabled):hover {
+  background: color-mix(in srgb, var(--t-text) 5%, transparent);
+}
+
+.about-part {
+  flex: 0 0 48px;
+  color: var(--t-muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.about-name {
+  font-family: var(--t-mono, "SF Mono", Menlo, monospace);
+}
+
+.about-text {
+  max-height: 260px;
+  overflow: auto;
+  margin: 4px 6px 10px 64px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--t-bg1, #14141a);
+  color: var(--t-muted);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
