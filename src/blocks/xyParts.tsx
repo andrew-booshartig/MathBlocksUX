@@ -609,6 +609,10 @@ export function GraphSettings({ settings, onChange, onClose }: { settings: XYSet
         </label>
       ))}
       <span className="xy-dim">Holes always show — they're part of the curve.</span>
+      <label className="xy-check">
+        <input type="checkbox" checked={settings.forms !== false} onChange={(e) => set({ forms: e.target.checked ? undefined : false })} />
+        Other forms under each line <span className="xy-dim">(y = mx + b, vertex form, factored, how it grows)</span>
+      </label>
       <div className="xy-pop-head">Axis labels</div>
       <div className="xy-row">
         <input className="xy-text" value={settings.xLabel ?? ""} placeholder="x axis — time (s)" onChange={(e) => set({ xLabel: e.target.value || undefined })} />

@@ -73,7 +73,7 @@ export interface GraphBlockData extends BlockBase {
   window?: GraphWindow;
   /** Keep 1 unit of x the same length as 1 unit of y (true slopes). */
   equalAspect?: boolean;
-  hideMarkers?: ("intercepts" | "vertices" | "intersections")[];
+  hideMarkers?: ("intercepts" | "vertices" | "intersections" | "forms")[];
   /** how each line is drawn — same order as the lines of `expr` */
   styles?: GraphLineStyle[];
   /** letters like m and b come from Variable/Slider blocks (default), or
@@ -401,6 +401,8 @@ export interface XYSettings {
   intercepts?: boolean;
   extremes?: boolean;
   crossings?: boolean;
+  /** under a line, the other ways to write it (y = mx + b, vertex form…) — on unless turned off */
+  forms?: boolean;
 }
 
 /** An inequality drawn on a number line (the calculator's Graph tab) —

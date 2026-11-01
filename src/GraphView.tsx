@@ -19,7 +19,7 @@ export const SERIES_COLORS = ["#7c9bf7", "#e07ce0", "#55d6be", "#f0a35c", "#8fd6
 export const DEFAULT_WINDOW: GraphWindow = { xmin: -10, xmax: 10, ymin: -10, ymax: 10 };
 const FAR = 1e5;
 
-export type MarkerFeature = "intercepts" | "vertices" | "intersections";
+export type MarkerFeature = "intercepts" | "vertices" | "intersections" | "forms";
 
 /** How a theme paints the plot. `palette` is for lines without their own color. */
 export const THEMES: Record<GraphTheme, { label: string; bg: string; grid: string; minor: string; axis: string; ink: string; palette: string[] }> = {
@@ -555,7 +555,7 @@ export default function GraphView({
         ...(logX || logY ? { log: { x: logX, y: logY } } : {}),
         xrange: logX ? [Math.max(window.xmin, 1e-12) / 10, window.xmax * 10] : [window.xmin - span, window.xmax + span],
         yrange: [window.ymin, window.ymax],
-        features: (["intercepts", "vertices", "intersections"] as MarkerFeature[]).filter((f) => !hide.includes(f)),
+        features: (["intercepts", "vertices", "intersections", "forms"] as MarkerFeature[]).filter((f) => !hide.includes(f)),
       }
     : null;
   const { result, error } = useLiveMath<GraphResult>(request, live ? 60 : 120, live ? "throttle" : "debounce");

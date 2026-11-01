@@ -611,7 +611,7 @@ def op_graph2d(req: dict) -> dict:
     else:
         third = (xr[1] - xr[0]) / 3
         window = ((xr[0] + third, xr[1] - third), (yr[0], yr[1]))
-    features = set(req.get("features") or ["intercepts", "vertices", "intersections"])
+    features = set(req.get("features") or ["intercepts", "vertices", "intersections", "forms"])
     log = req.get("log") or {}
     _LOG.update(x=bool(log.get("x")), y=bool(log.get("y")))
     extras = req.get("extras") or []
@@ -647,10 +647,10 @@ def op_graph2d(req: dict) -> dict:
             through = _through(expr) if s["kind"] == "function" and expr is not None else _through_vertical(s)
             if through:
                 s["through"] = through
-                said = _slope_intercept(text, p, expr) if s["kind"] == "function" else None
+                said = _slope_intercept(text, p, expr) if s["kind"] == "function" and "forms" in features else None
                 if said:
                     s["facts"] = [said, *s.get("facts", [])]
-            elif s["kind"] == "function" and expr is not None and not p.conditions:
+            elif s["kind"] == "function" and expr is not None and not p.conditions and "forms" in features:
                 s["facts"] = [*_other_forms(text, expr), *s.get("facts", [])]
             if expr is not None:
                 graphed.append((i, expr))
