@@ -7638,3 +7638,52 @@ math-field {
 .xy-tools .xy-tools-sep {
   margin: 0 3px;
 }
+
+/* the rest of the building tools: one menu */
+.xy-tools .xy-tool.xy-more-tools {
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.xy-pop.xy-more-pop {
+  left: 0;
+  right: auto;
+  width: 300px;
+  max-width: none;
+  gap: 4px;
+}
+
+.xy-add-item.is-on {
+  background: color-mix(in srgb, var(--t-pink, #c99bbf) 16%, transparent);
+}
+
+.xy-tool-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-tool-option .xy-num {
+  width: 48px;
+  height: 22px;
+}
+
+/* drafting: a length (and angle) typed at the cursor */
+.graph-draw-entry {
+  position: absolute;
+  z-index: 8;
+  width: 110px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1.5px solid var(--t-pink, #c99bbf);
+  border-radius: 7px;
+  background: var(--t-bg3, #1c1c24);
+  color: var(--t-text, #e8e8f0);
+  font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+  outline: none;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--t-bg0, #000) 40%, transparent);
+}

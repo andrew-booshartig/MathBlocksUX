@@ -139,6 +139,8 @@ export interface GraphAppearance {
   logY?: boolean;
   /** a unit after each axis number: 3 ft */
   unit?: string;
+  /** drafting: lengths along sides, angles in corners */
+  dims?: boolean;
 }
 
 export type SolveMethod = "auto" | "factor" | "formula" | "complete" | "sqrt" | "substitution" | "elimination";
@@ -350,6 +352,8 @@ export interface XYSettings {
   unit?: string;
   /** points land where you click, not on the grid — on unless turned off */
   snap?: boolean;
+  /** drafting: every side's length and corner's angle written on the graph */
+  dims?: boolean;
   /** each kind of marked point, on unless turned off */
   intercepts?: boolean;
   extremes?: boolean;

@@ -58,7 +58,11 @@ _FUNCS = {
     "erf": sympy.erf, "gamma": sympy.gamma,
 }
 # geometry's words, typed whole (\operatorname{segment}) or letter by letter
-GEOMETRY = ("segment", "line", "ray", "vector", "circle", "polygon", "angle", "perpendicular", "parallel", "midpoint", "distance")
+GEOMETRY = (
+    "segment", "line", "ray", "vector", "circle", "polygon", "angle", "perpendicular", "parallel", "midpoint", "distance",
+    "intersection", "reflect", "rotate", "translate", "dilate", "arc", "sector", "semicircle", "bisector", "tangent",
+    "length", "area", "perimeter", "slope",
+)
 _SPELLED = sorted(GEOMETRY, key=len, reverse=True)
 _INVERSE = {"sin": "arcsin", "cos": "arccos", "tan": "arctan", "sec": "arcsec", "csc": "arccsc", "cot": "arccot", "sinh": "arcsinh", "cosh": "arccosh", "tanh": "arctanh"}
 
@@ -124,6 +128,7 @@ class Parsed:
     tuples: list | None = None  # (a, b), (c, d) … at the top level
     define: tuple[str, list[Symbol]] | None = None  # f(x) = … : its name and parameters
     name: str | None = None  # A = (1, 2), s = segment(A, B): what it's called
+    computed: bool = False  # built by geometry (midpoint, intersection…), not typed in
 
 
 class Reader:
@@ -396,6 +401,7 @@ class Reader:
             self.take()
             args.append(self.sum())
         self.expect("sym", ")")
+        self.built = True
         return build(name, args)
 
     def _raw_script(self) -> str:
@@ -655,7 +661,7 @@ def read_line(latex: str, functions: dict | None = None, consts: set | None = No
         if isinstance(value, sympy.Tuple) or is_shape(value):
             conditions = _restrictions(reader)
             _done(reader)
-            return Parsed(sides=[value], ops=[], conditions=conditions, tuples=[value] if isinstance(value, sympy.Tuple) else None, name=named[0])
+            return Parsed(sides=[value], ops=[], conditions=conditions, tuples=[value] if isinstance(value, sympy.Tuple) else None, name=named[0], computed=getattr(reader, "built", False))
     reader = Reader(tokenize(latex), functions, consts, points)
     sides, ops = reader.relation()
     tuples = None
@@ -671,7 +677,7 @@ def read_line(latex: str, functions: dict | None = None, consts: set | None = No
         tuples = [sides[0]]
     conditions = _restrictions(reader)
     _done(reader)
-    return Parsed(sides=sides, ops=ops, conditions=conditions, tuples=tuples)
+    return Parsed(sides=sides, ops=ops, conditions=conditions, tuples=tuples, computed=getattr(reader, "built", False))
 
 
 def _restrictions(reader: Reader) -> list:

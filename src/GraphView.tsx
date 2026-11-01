@@ -518,6 +518,32 @@ export default function GraphView({
   const hidden = (index: number) => !!styles[index]?.hidden;
 
   const drawn = useMemo(() => drawingLayers(drawings), [drawings]);
+  // drafting: lengths along each side (turned to read along it), angles in the corners
+  const dimLabels = useMemo(() => {
+    if (!appearance.dims) return [];
+    const unit = appearance.unit ? ` ${appearance.unit}` : "";
+    return (result?.series ?? []).flatMap((s) =>
+      hidden(s.index)
+        ? []
+        : (s.dims ?? []).map((d) => {
+            let deg = -(d.deg ?? 0);
+            if (deg > 90) deg -= 180;
+            if (deg <= -90) deg += 180;
+            return {
+              x: d.x,
+              y: d.y,
+              xref: "x",
+              yref: "y",
+              text: escapeHtml(d.side ? `${d.text}${unit}` : d.text),
+              showarrow: false,
+              textangle: d.side ? deg : 0,
+              yshift: d.side ? 9 : 0,
+              font: { color: d.side ? theme.ink : colorOf(s.index), size: 11 },
+              bgcolor: toRgba(theme.bg, 0.8),
+            };
+          }),
+    );
+  }, [result, styles, theme, appearance.dims, appearance.unit]); // eslint-disable-line react-hooks/exhaustive-deps
   // a vector's arrowhead, at its end
   const arrows = useMemo(
     () =>
@@ -694,14 +720,14 @@ export default function GraphView({
       hoverlabel: { bgcolor: theme.bg, font: { color: theme.ink, size: 12, family: "-apple-system, BlinkMacSystemFont, Inter, sans-serif" } },
       width: plotWidth,
       height: plotHeight,
-      annotations: [...drawn.annotations, ...curveLabels, ...arrows],
+      annotations: [...drawn.annotations, ...curveLabels, ...arrows, ...dimLabels],
       xaxis: axis([window.xmin, window.xmax], gridSteps.x, per(perX), appearance.xLabel, !!appearance.piX && !logX, logX),
       yaxis: {
         ...axis([window.ymin, window.ymax], gridSteps.y, per(perY), appearance.yLabel, false, logY),
         ...(equal ? { scaleanchor: "x" as const, scaleratio: 1 } : {}),
       },
     };
-  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels, arrows, gridSteps, logX, logY]);
+  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels, arrows, dimLabels, gridSteps, logX, logY]);
 
   const [plot, setPlot] = useState<PlotDiv>(null);
   const ready = (_figure: unknown, div: PlotDiv) => {

@@ -545,6 +545,30 @@ export function TriangleRow({ tri, color, hidden, onChange, onHide, onRemove }: 
   );
 }
 
+// ---- the rest of the building tools
+
+export function MoreTools<T extends string>({ tools, on, onPick, onClose }: { tools: { id: T; group: string; label: string }[]; on: string; onPick: (id: T) => void; onClose: () => void }) {
+  const groups = [...new Set(tools.map((t) => t.group))];
+  return (
+    <Pop onClose={onClose} className="xy-more-pop">
+      {groups.map((g) => (
+        <div key={g} className="xy-add-group">
+          <div className="xy-pop-head">{g}</div>
+          <div className="xy-add-items">
+            {tools
+              .filter((t) => t.group === g)
+              .map((t) => (
+                <button key={t.id} className={`xy-add-item${on === t.id ? " is-on" : ""}`} onClick={() => onPick(t.id)}>
+                  <span className="xy-add-label">{t.label}</span>
+                </button>
+              ))}
+          </div>
+        </div>
+      ))}
+    </Pop>
+  );
+}
+
 // ---- saving the graph as a picture
 
 export function SaveMenu({ onPick, onClose }: { onPick: (kind: "png" | "svg") => void; onClose: () => void }) {

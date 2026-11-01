@@ -166,3 +166,33 @@ def test_a_point_with_a_bare_fraction():
 def test_names_as_mathlive_saves_them_once_edited():
     s = shapes(A, B, r"\operatorname{\mathrm{segment}}\left(A,B\right)", r"y=\operatorname{\mathrm{floor}}\left(x\right)")
     assert s[2]["shape"] == "segment" and s[3]["kind"] == "function"
+
+
+O3 = [r"A=\left(0,0\right)", r"B=\left(4,0\right)", r"C=\left(0,3\right)"]
+
+
+def test_intersections_exact_and_by_number():
+    s = shapes(*O3, r"intersection(line(A,C),circle(B,5))", r"P=intersection(circle(A,3),circle(B,3),1)", r"intersection(segment(A,B),segment(C,(1,5)))")
+    assert s[3]["facts"] == [r"\left(0,-3\right)", r"\left(0,3\right)"]
+    assert s[4]["name"] == "P" and s[4]["y"][0] == pytest.approx(-5 ** 0.5)
+    assert s[5]["error"] == "they don't cross"
+
+
+def test_transformations():
+    s = shapes(*O3, r"rotate(B,90,A)", r"reflect(polygon(A,B,C),line((0,5),(1,5)))", r"dilate(circle(B,1),3,A)", r"translate(B,vector(A,C))")
+    assert (s[3]["x"], s[3]["y"]) == ([0.0], [4.0])
+    assert s[4]["facts"][0] == r"\text{area }6" and max(s[4]["y"]) == 10.0
+    assert s[5]["facts"][0] == r"\left(x-12\right)^{2}+y^{2}=9"
+    assert (s[6]["x"], s[6]["y"]) == ([4.0], [3.0])
+
+
+def test_circles_arcs_bisectors_polygons_tangents_measures():
+    s = shapes(*O3, r"circle(A,B,C)", r"arc(A,B,C)", r"semicircle(A,B)", r"bisector(A,B)", r"bisector(B,A,C)", r"polygon(A,B,6)",
+               r"tangent((10,0),circle(A,5))", r"area(polygon(A,B,C))", r"slope(line(B,C))", r"circle(A,B,(8,0))")
+    assert s[3]["facts"][1] == r"r=\frac{5}{2}\approx2.5"
+    assert s[4]["facts"][0] == r"90^{\circ}" and s[5]["facts"][0] == r"180^{\circ}"
+    assert s[6]["facts"] == ["x=2"] and s[7]["facts"] == ["y=x"]
+    assert s[8]["facts"][0] == r"\text{area }24\sqrt{3}\approx41.57"
+    assert len(s[9]["facts"]) == 2
+    assert s[10]["facts"] == ["=6"] and s[11]["facts"] == [r"=-\frac{3}{4}\approx-0.75"]
+    assert "in a line" in s[12]["error"]

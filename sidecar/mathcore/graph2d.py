@@ -360,6 +360,8 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
             out = {"kind": "points", "x": [a for a, _ in pts], "y": [b for _, b in pts], "latex": ", ".join(_label(a, b) for a, b in pts)}
             if p.name:
                 out["name"] = p.name
+            if p.computed:
+                out["facts"] = [geometry.point_tex(t) for t in items]
             return out, None
         if len(items) == 1 and T in free:
             need(*items[0], bound={"t"})

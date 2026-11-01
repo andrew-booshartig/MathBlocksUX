@@ -54,6 +54,8 @@ export interface GraphSeries {
   equation?: string;
   /** a straight line (y = 2x + 1, x = 3): two points on it, as math — to build a perpendicular or parallel from */
   through?: [string, string];
+  /** drafting labels: each side's length (turned along it), each corner's angle */
+  dims?: { x: number; y: number; text: string; deg?: number; side?: boolean }[];
   /** words written on the graph beside it: an angle's size */
   label?: { x: number; y: number; text: string };
   /** a function drawn for another line: its derivative, or a tangent line */

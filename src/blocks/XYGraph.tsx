@@ -21,7 +21,7 @@ import { Plotly } from "../PlotlyChart";
 import type { PlotDiv } from "../GraphView";
 import type { XYExtra, XYTable } from "../store";
 import { solveTriangle, triangleCorners } from "../triangle";
-import { ADDS, AddMenu, TriangleRow, DataTable, Examples, GraphSettings, LineOptions, SaveMenu, readNumber, tablePoints } from "./xyParts";
+import { ADDS, AddMenu, MoreTools, TriangleRow, DataTable, Examples, GraphSettings, LineOptions, SaveMenu, readNumber, tablePoints } from "./xyParts";
 import { plainMath } from "../plainMath";
 
 /** the hand tools, in three groups: getting around; building — each puts
@@ -35,6 +35,7 @@ const TOOLS: { id: GraphTool; icon: string; title: string; group: number }[] = [
   { id: "line", icon: "line", title: "Line — through two points, on forever both ways", group: 1 },
   { id: "ray", icon: "ray", title: "Ray — from one point, through another, on forever", group: 1 },
   { id: "circle", icon: "circle", title: "Circle — click its center, then a point on it", group: 1 },
+  { id: "rectangle", icon: "rectangle", title: "Rectangle — click a corner, then the opposite one (or type across, up: 4,3)", group: 1 },
   { id: "polygon", icon: "polygon", title: "Polygon — click each corner, then the first again", group: 1 },
   { id: "angle", icon: "angle", title: "Angle — click a point, the corner, then another point", group: 1 },
   { id: "perpendicular", icon: "perpendicular", title: "Perpendicular — click a line, then a point it goes through", group: 1 },
@@ -50,14 +51,31 @@ const HINTS: Record<GraphTool, string> = {
   pan: "Drag the graph to move around · hover a curve to read it",
   move: "Drag a point — whatever's built on it follows",
   point: "Click to plot a point (A, B, C…) — for exact numbers like 2/3: + → Point",
-  segment: "Click a point, then another — or anywhere, to make new ones · Esc lets go",
-  line: "Click two points: the line through them, both ways · Esc lets go",
-  ray: "Click where it starts, then a point it goes through · Esc lets go",
-  circle: "Click the center, then a point on the circle · Esc lets go",
-  polygon: "Click each corner, then the first again (or Enter) to close it · Esc lets go",
+  segment: "Click a point, then another — or type its length: 5, or 5<30 for 30° · Shift locks to 15° steps",
+  line: "Click two points — or type a length and angle (5<30) for the second · Shift locks to 15° steps",
+  ray: "Click where it starts, then a point it goes through (or type 5<30) · Shift locks to 15° steps",
+  circle: "Click the center, then a point on it — or type the radius",
+  rectangle: "Click a corner, then the opposite one — or type across, up: 4,3",
+  polygon: "Click each corner (or type each side: 5<90), then the first again (or Enter) · Shift locks to 15°",
   angle: "Click a point, then the corner, then another point · Esc lets go",
   perpendicular: "Click a line, segment or ray — then a point the perpendicular goes through",
   parallel: "Click a line, segment or ray — then a point the parallel goes through",
+  intersect: "Click two things — a point where they cross (click near the crossing you want)",
+  midpoint: "Click two points — the point halfway between",
+  bisector: "Click two points — the line through the middle, at right angles",
+  anglebisector: "Click a point, the corner, another point — the line halving the angle",
+  tangents: "Click a point, then a circle — the lines from the point that just touch it",
+  circle3: "Click three points — the circle through all of them",
+  compass: "Click two points for the radius, then the center",
+  arc: "Click the center, where it starts, where it ends (counterclockwise)",
+  sector: "Click the center, where it starts, where it ends (counterclockwise)",
+  semicircle: "Click the two ends",
+  regular: "Click two points — one side; the rest follow",
+  reflect: "Click what to reflect (a point or a shape), then the line or point to reflect in",
+  rotate: "Click what to turn, then the center",
+  translate: "Click what to move, then two points: from, to",
+  dilate: "Click what to scale, then the center",
+  measure: "Click a segment (length), a line (slope), a polygon or circle (area, perimeter)",
   arrow: "Drag to draw an arrow",
   pen: "Draw freehand",
   text: "Click, type, Enter",
@@ -65,7 +83,11 @@ const HINTS: Record<GraphTool, string> = {
 };
 
 /** geometry's words: typed out in a line, they turn into names, like sin */
-const GEO_WORDS = ["segment", "line", "ray", "vector", "circle", "polygon", "angle", "midpoint", "distance", "perpendicular", "parallel"] as const;
+const GEO_WORDS = [
+  "segment", "line", "ray", "vector", "circle", "polygon", "angle", "midpoint", "distance", "perpendicular", "parallel",
+  "intersection", "reflect", "rotate", "translate", "dilate", "arc", "sector", "semicircle", "bisector", "tangent",
+  "length", "area", "perimeter", "slope",
+] as const;
 
 /** A = …, B_1 = …: the name a line gives its point (or shape), if it has one */
 export function nameOf(latex: string): string | null {
@@ -142,6 +164,50 @@ const fit = (el: HTMLTextAreaElement) => {
   el.style.height = "auto";
   el.style.height = `${el.scrollHeight}px`;
 };
+
+/** the rest of the building tools, GeoGebra's toolbox: in one menu */
+const MORE: { id: GraphTool; group: string; label: string }[] = [
+  { id: "intersect", group: "Points", label: "Intersect" },
+  { id: "midpoint", group: "Points", label: "Midpoint" },
+  { id: "bisector", group: "Lines", label: "Perpendicular bisector" },
+  { id: "anglebisector", group: "Lines", label: "Angle bisector" },
+  { id: "tangents", group: "Lines", label: "Tangents to a circle" },
+  { id: "circle3", group: "Circles", label: "Circle through 3 points" },
+  { id: "compass", group: "Circles", label: "Compass" },
+  { id: "arc", group: "Circles", label: "Arc" },
+  { id: "sector", group: "Circles", label: "Sector" },
+  { id: "semicircle", group: "Circles", label: "Semicircle" },
+  { id: "regular", group: "Polygons", label: "Regular polygon" },
+  { id: "reflect", group: "Move a copy", label: "Reflect" },
+  { id: "rotate", group: "Move a copy", label: "Rotate" },
+  { id: "translate", group: "Move a copy", label: "Translate" },
+  { id: "dilate", group: "Move a copy", label: "Dilate" },
+  { id: "measure", group: "Measure", label: "Length, slope, area" },
+];
+
+/** where two drawn things cross, near enough (each a line of points): left to right, as the engine counts them */
+function crossings(a: [number, number][], b: [number, number][]): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = 1; i < a.length; i++) {
+    const [p, q] = [a[i - 1], a[i]];
+    if (!Number.isFinite(p[0] + p[1] + q[0] + q[1])) continue;
+    for (let j = 1; j < b.length; j++) {
+      const [r, s] = [b[j - 1], b[j]];
+      if (!Number.isFinite(r[0] + r[1] + s[0] + s[1])) continue;
+      if (Math.max(p[0], q[0]) < Math.min(r[0], s[0]) || Math.max(r[0], s[0]) < Math.min(p[0], q[0])) continue;
+      if (Math.max(p[1], q[1]) < Math.min(r[1], s[1]) || Math.max(r[1], s[1]) < Math.min(p[1], q[1])) continue;
+      const d = (q[0] - p[0]) * (s[1] - r[1]) - (q[1] - p[1]) * (s[0] - r[0]);
+      if (Math.abs(d) < 1e-15) continue;
+      const t = ((r[0] - p[0]) * (s[1] - r[1]) - (r[1] - p[1]) * (s[0] - r[0])) / d;
+      const u = ((r[0] - p[0]) * (q[1] - p[1]) - (r[1] - p[1]) * (q[0] - p[0])) / d;
+      if (t < -1e-9 || t > 1 + 1e-9 || u < -1e-9 || u > 1 + 1e-9) continue;
+      const x = p[0] + t * (q[0] - p[0]);
+      const y = p[1] + t * (q[1] - p[1]);
+      if (!out.some(([ox, oy]) => Math.hypot(ox - x, oy - y) < 1e-6 * (1 + Math.abs(x) + Math.abs(y)))) out.push([x, y]);
+    }
+  }
+  return out.sort((m, n) => m[0] - n[0] || m[1] - n[1]);
+}
 
 /** shapes perpendicular and parallel can be built from */
 const STRAIGHT = new Set(["segment", "line", "ray", "vector", "perpendicular", "parallel"]);
@@ -297,12 +363,15 @@ export default function XYGraph({
   /** the points plotted from the list: ends snap onto them, Move drags them */
   /** straight things to build perpendicular and parallel lines from: shapes,
    * and plain lines like y = 2x + 1 (the engine gives two points on them) */
-  const shapes: GraphShape[] = (result?.series ?? []).flatMap((s) => {
+  const shapes: GraphShape[] = (result?.series ?? []).flatMap((s): GraphShape[] => {
     const line = lines[s.index];
-    if (!line || line.hidden || s.role || !s.x?.length || !s.y?.length) return [];
-    const [x0, y0, x1, y1] = [s.x[0], s.y[0], s.x[s.x.length - 1], s.y[s.y.length - 1]];
-    if (y0 === null || y1 === null || y0 === undefined || y1 === undefined) return [];
-    return (s.shape && STRAIGHT.has(s.shape) && s.x.length === 2) || s.through ? [{ key: line.id, a: [x0, y0], b: [x1, y1] }] : [];
+    if (!line || line.hidden || s.role || s.kind === "points" || s.kind === "error" || s.kind === "field" || s.kind === "value") return [];
+    if (s.kind === "vline" && s.x0 !== undefined) return [{ key: line.id, kind: "straight", pts: [[s.x0, -1e5], [s.x0, 1e5]] }];
+    if (!s.x?.length || !s.y?.length) return [];
+    // a gap in a curve stays a gap
+    const pts = s.x.map((x, k) => [x ?? NaN, s.y![k] ?? NaN] as [number, number]);
+    const straight = (!!s.shape && STRAIGHT.has(s.shape) && s.x.length === 2) || !!s.through;
+    return [{ key: line.id, kind: straight ? "straight" : s.shape === "circle" ? "circle" : "curve", pts: straight ? [pts[0], pts[pts.length - 1]] : pts }];
   });
   const targets: GraphTarget[] = (result?.series ?? []).flatMap((s) =>
     s.kind === "points" && lines[s.index] && !lines[s.index].hidden && s.x?.length === 1 && s.y?.[0] != null
@@ -316,6 +385,9 @@ export default function XYGraph({
   const [selected, setSelected] = useState<string | null>(null);
   const rows = useRef<Record<string, HTMLDivElement | null>>({});
   const [saveOpen, setSaveOpen] = useState(false);
+  /** the regular polygon's sides, rotate's angle, dilate's factor */
+  const [opts, setOpts] = useState({ sides: 6, angle: 90, factor: 2 });
+  const [moreOpen, setMoreOpen] = useState(false);
   /** letters playing: each sweeps its slider back and forth */
   const [playing, setPlaying] = useState<string[]>([]);
   // Esc (when you're not typing): put the tool down, back to the hand
@@ -405,13 +477,13 @@ export default function XYGraph({
     };
     const names = picks.map((p) => {
       if (p.shape) {
-        // a line picked to build from: by its name, as it's written — or, for
+        // a thing picked to build from: by its name, as it's written — or, for
         // y = 2x + 1, as the line through two of its points
         const i = next.findIndex((l) => l.id === p.shape);
         if (i < 0) return "";
         const named = nameOf(next[i].latex);
         const through = seriesOf(lines.findIndex((l) => l.id === p.shape)).find((s) => s.through)?.through;
-        return named ?? (through ? `\\operatorname{line}\\left(${through[0]},${through[1]}\\right)` : next[i].latex);
+        return named ?? (through ? `\\operatorname{line}\\left(${through[0]},${through[1]}\\right)` : exprOf(next[i]));
       }
       const i = p.key ? next.findIndex((l) => l.id === p.key) : -1;
       if (i >= 0) {
@@ -421,12 +493,80 @@ export default function XYGraph({
         next[i] = { ...next[i], latex: `${texName(name)}=${next[i].latex}` };
         return name;
       }
+      if (p.radius !== undefined) return fracTex(p.radius);
       const name = fresh();
-      next.push({ id: newId("xy"), latex: pointLatex(name, fracTex(p.x), fracTex(p.y)) });
+      next.push({ id: newId("xy"), latex: pointLatex(name, p.tex?.[0] ?? fracTex(p.x), p.tex?.[1] ?? fracTex(p.y)) });
       return name;
     });
     if (names.some((n) => !n)) return;
-    next.push({ id: newId("xy"), latex: `\\operatorname{${kind}}\\left(${names.map((n, k) => (picks[k].shape ? n : texName(n))).join(",")}\\right)` });
+    const r = names.map((n, k) => (picks[k].shape || picks[k].radius !== undefined ? n : texName(n)));
+    const op = (word: string, args: string[]) => `\\operatorname{${word}}\\left(${args.join(",")}\\right)`;
+    const shapeOf = (k: number) => seriesOf(lines.findIndex((l) => l.id === picks[k].shape)).find((s) => s.shape || s.through);
+    const add = (latex: string, named = false) => next.push({ id: newId("xy"), latex: named ? `${texName(fresh())}=${latex}` : latex });
+    // a copy of a point is a point, named, to build on; of a shape, a shape
+    const point = !picks[0]?.shape;
+    switch (kind) {
+      case "intersect": {
+        // which crossing: the one nearest the second click
+        const [a, b] = [shapes.find((s) => s.key === picks[0].shape), shapes.find((s) => s.key === picks[1].shape)];
+        const found = a && b ? crossings(a.pts, b.pts) : [];
+        if (!found.length) return setNotice("Those two don't cross where they're drawn");
+        const near = found.reduce((best, p, k) => (Math.hypot(p[0] - picks[1].x, p[1] - picks[1].y) < Math.hypot(found[best][0] - picks[1].x, found[best][1] - picks[1].y) ? k : best), 0);
+        const exact = [0, 1].every((k) => {
+          const s = shapeOf(k);
+          return !!s && (!!s.through || ["segment", "line", "ray", "vector", "perpendicular", "parallel", "circle", "polygon"].includes(s.shape ?? ""));
+        });
+        if (exact) add(op("intersection", found.length > 1 ? [...r, String(near + 1)] : r), true);
+        // curves the engine can't solve exactly: the crossing as numbers
+        else add(`\\left(${trim(found[near][0])},${trim(found[near][1])}\\right)`, true);
+        break;
+      }
+      case "midpoint":
+        add(op("midpoint", r), true);
+        break;
+      case "rectangle": {
+        // the other two corners follow the two clicked: (C.x, A.y), (A.x, C.y)
+        const [a, c] = r;
+        add(op("polygon", [a, `\\left(${c}.x,${a}.y\\right)`, c, `\\left(${a}.x,${c}.y\\right)`]));
+        break;
+      }
+      case "anglebisector":
+        add(op("bisector", r));
+        break;
+      case "tangents":
+        add(op("tangent", r));
+        break;
+      case "circle3":
+        add(op("circle", r));
+        break;
+      case "compass":
+        add(op("circle", [r[2], op("distance", [r[0], r[1]])]));
+        break;
+      case "regular":
+        add(op("polygon", [...r, String(opts.sides)]));
+        break;
+      case "reflect":
+        add(op("reflect", r), point);
+        break;
+      case "rotate":
+        add(op("rotate", [r[0], fracTex(opts.angle), r[1]]), point);
+        break;
+      case "translate":
+        add(op("translate", [r[0], op("vector", [r[1], r[2]])]), point);
+        break;
+      case "dilate":
+        add(op("dilate", [r[0], fracTex(opts.factor), r[1]]), point);
+        break;
+      case "measure": {
+        const s = shapeOf(0);
+        const what = s?.through || ["line", "ray", "perpendicular", "parallel"].includes(s?.shape ?? "") ? ["slope"] : ["segment", "vector"].includes(s?.shape ?? "") ? ["length"] : ["circle", "polygon"].includes(s?.shape ?? "") ? ["area", "perimeter"] : [];
+        if (!what.length) return setNotice("Measure works on segments, lines, polygons and circles");
+        for (const w of what) add(op(w, r));
+        break;
+      }
+      default:
+        add(op(kind, r));
+    }
     setLines(next);
   };
   /** a point dragged to x, y — its name kept */
@@ -774,12 +914,39 @@ export default function XYGraph({
                 </button>
               </Fragment>
             ))}
+            <span className="xy-add-anchor">
+              <button
+                className={`xy-tool xy-more-tools xy-pop-anchor${MORE.some((m) => m.id === tool) || moreOpen ? " is-on" : ""}`}
+                title="More constructions — intersect, bisectors, tangents, arcs, regular polygons, reflect, rotate, translate, dilate, measure"
+                onClick={() => setMoreOpen(!moreOpen)}
+              >
+                {MORE.find((m) => m.id === tool)?.label ?? "More"} ▾
+              </button>
+              {moreOpen && (
+                <MoreTools
+                  tools={MORE}
+                  on={tool}
+                  onPick={(id) => {
+                    setTool(id);
+                    setMoreOpen(false);
+                  }}
+                  onClose={() => setMoreOpen(false)}
+                />
+              )}
+            </span>
             {drawings.length > 0 && (
               <button className="xy-tool is-text" title="Remove every drawing (not the lines and points in the list)" onClick={() => update({ drawings: undefined })}>
                 Clear drawings
               </button>
             )}
             <span className="xy-tools-end">
+              <button
+                className={`xy-tool${settings.dims ? " is-on" : ""}`}
+                title={settings.dims ? "Dimensions on — click to hide the lengths and angles" : "Dimensions — write every side's length and corner's angle on the drawing"}
+                onClick={() => setSettings({ ...settings, dims: settings.dims ? undefined : true })}
+              >
+                <Icon name="ruler" size={15} />
+              </button>
               <button
                 className={`xy-tool${settings.snap !== false ? " is-on" : ""}`}
                 title={settings.snap !== false ? "Snapping to the grid — click for freeform (points land exactly where you click)" : "Freeform — click to snap to the grid again"}
@@ -813,7 +980,7 @@ export default function XYGraph({
                 ...(settings.marks === false || settings.extremes === false ? ["vertices" as const] : []),
                 ...(settings.marks === false || settings.crossings === false ? ["intersections" as const] : []),
               ]}
-              appearance={{ grid: settings.grid, numbers: settings.numbers, xLabel: settings.xLabel, yLabel: settings.yLabel, piX: settings.piX, logX: settings.logX, logY: settings.logY, xStep: settings.xStep, yStep: settings.yStep, unit: settings.unit }}
+              appearance={{ grid: settings.grid, numbers: settings.numbers, xLabel: settings.xLabel, yLabel: settings.yLabel, piX: settings.piX, logX: settings.logX, logY: settings.logY, xStep: settings.xStep, yStep: settings.yStep, unit: settings.unit, dims: settings.dims }}
               onPlot={setPlotDiv}
               focus={focusIndex >= 0 ? focusIndex : null}
               onPick={pick}
@@ -847,6 +1014,20 @@ export default function XYGraph({
             />
             <div className="xy-plot-foot">
               <span>{notice ?? HINTS[tool]}</span>
+                {(tool === "regular" || tool === "rotate" || tool === "dilate") && (
+                  <label className="xy-tool-option">
+                    {tool === "regular" ? "sides" : tool === "rotate" ? "angle °" : "factor"}
+                    <input
+                      className="xy-num"
+                      value={tool === "regular" ? opts.sides : tool === "rotate" ? opts.angle : opts.factor}
+                      onChange={(e) => {
+                        const n = readNumber(e.target.value);
+                        if (n === null) return;
+                        setOpts({ ...opts, ...(tool === "regular" ? { sides: Math.max(3, Math.round(n)) } : tool === "rotate" ? { angle: n } : { factor: n }) });
+                      }}
+                    />
+                  </label>
+                )}
               <span className="xy-zoom">
                 {onNotebook && (
                   <button className="xy-zoom-btn is-text" title="Put this graph in the notebook — its lines, letters and window" onClick={() => onNotebook(notebookCode())}>
