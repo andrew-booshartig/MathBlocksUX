@@ -339,3 +339,10 @@ def test_a_system_on_two_lines_and_the_same_line_twice():
     assert op_smart({"latex": r"y=2x+1\\y=-x+4"})["result_latex"] == r"(x, y) = \left(1, 3\right)"
     same = op_smart({"latex": "x+y=2,2x+2y=4"})
     assert "infinitely many" in same["result_latex"] and same["others"] == []
+
+
+def test_a_saved_value_with_nothing_in_it_is_left_out():
+    from mathcore.smartcalc import op_smart
+
+    out = op_smart({"latex": "F = m g", "angle": "deg", "vars": {"m": "5/2", "g": "981/100", "F": None}})
+    assert out["kind"] == "assign" and "981" in out["result_latex"]

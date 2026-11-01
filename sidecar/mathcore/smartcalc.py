@@ -446,6 +446,9 @@ def _decimal_latex(decimal: str) -> str | None:
 
 
 def op_smart(req: dict) -> dict:
+    # a saved value with nothing in it (one that couldn't be worked out) isn't one
+    if isinstance(req.get("vars"), dict):
+        req = {**req, "vars": {k: v for k, v in req["vars"].items() if v is not None and v != ""}}
     out = _smart(req)
     if out.get("decimal") and not out.get("decimal_latex"):
         out["decimal_latex"] = _decimal_latex(out["decimal"])
