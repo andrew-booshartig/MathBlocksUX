@@ -13,6 +13,7 @@
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { type Language, forgetPluginLanguages, registerLanguage } from "./notebook/languages";
+import { partsNow, pluginOn, setParts } from "./parts";
 
 /** a kind of notebook cell a plugin adds: ```<id> fences, shown as what render returns (HTML) */
 export interface CellKind {
@@ -37,6 +38,8 @@ export interface TileDef {
   title: string;
   /** a few words for the + menu */
   blurb?: string;
+  /** one of the app's tiles this takes the place of ("calc", "work"…): in every layout, and in the menus */
+  replaces?: string;
   mount: (el: HTMLElement) => void | (() => void);
   plugin: string;
 }
@@ -49,10 +52,13 @@ export interface LoadedPlugin {
   /** what it added: "language MATLAB", "cell csv", "command …" */
   adds: string[];
   error?: string;
+  /** turned off: not loaded */
+  off?: boolean;
 }
 
-type State = { cells: CellKind[]; commands: PluginCommand[]; tiles: TileDef[]; loaded: LoadedPlugin[] };
-let state: State = { cells: [], commands: [], tiles: [], loaded: [] };
+/** ready: the plugins folder has been read (until then, a saved layout's plugin tile is left be) */
+type State = { cells: CellKind[]; commands: PluginCommand[]; tiles: TileDef[]; loaded: LoadedPlugin[]; ready: boolean };
+let state: State = { cells: [], commands: [], tiles: [], loaded: [], ready: false };
 const listeners = new Set<() => void>();
 const changed = (next: Partial<State>) => {
   state = { ...state, ...next };
@@ -65,6 +71,9 @@ export function usePlugins(): State {
     () => state,
   );
 }
+
+export const pluginTiles = (): TileDef[] => state.tiles;
+export const pluginsReady = () => state.ready;
 
 export function pluginTile(id: string): TileDef | undefined {
   return state.tiles.find((t) => t.id === id);
@@ -96,6 +105,7 @@ function apiFor(plugin: LoadedPlugin) {
         if (!tile?.id || !tile.title || typeof tile.mount !== "function") throw new Error("a tile needs an id, a title and a mount(element) function");
         const id = tile.id.startsWith("plugin-") ? tile.id : `plugin-${tile.id}`;
         changed({ tiles: [...state.tiles.filter((t) => t.id !== id), { ...tile, id, plugin: plugin.folder }] });
+        if (tile.replaces && partsNow().swaps[id] !== tile.replaces) setParts({ swaps: { ...partsNow().swaps, [id]: tile.replaces } });
         plugin.adds.push(`tile ${tile.title}`);
       },
     },
@@ -131,6 +141,10 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       plugin.name = manifest.displayName ?? manifest.name ?? f.folder;
       plugin.version = manifest.version;
       plugin.description = manifest.description;
+      if (!pluginOn(f.folder)) {
+        plugin.off = true;
+        continue;
+      }
       for (const lang of manifest.contributes?.languages ?? []) {
         if (!lang.id || !lang.label) throw new Error("each language needs an id and a label");
         registerLanguage({ extension: lang.id, ...lang }, f.folder);
@@ -149,7 +163,7 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       plugin.error = err instanceof Error ? err.message : String(err);
     }
   }
-  changed({ loaded });
+  changed({ loaded, ready: true });
   return loaded;
 }
 

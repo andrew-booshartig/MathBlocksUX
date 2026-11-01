@@ -20,6 +20,9 @@ import mark from "../assets/mx-mark.png";
 import type { Equation } from "../equations";
 import { SAMPLE_PLUGIN, loadPlugins, usePlugins } from "../plugins";
 import { setVimKeys, useVimKeys } from "../notebook/editorSettings";
+import Extensions from "./Extensions";
+import { tilesOn } from "./CalcDock";
+import { useParts } from "../parts";
 
 const SAVE = "__calculator__";
 const SETTINGS = "__settings__";
@@ -93,6 +96,8 @@ export default function CalculatorApp() {
   // plugins: loaded at the start (and again on ⌘K → Reload plugins); a plugin's words shown a moment
   const plugins = usePlugins();
   const vimKeys = useVimKeys();
+  const [extOpen, setExtOpen] = useState(false);
+  useParts(); // the ⌘K list follows tiles turned on and off
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     loadPlugins();
@@ -106,6 +111,18 @@ export default function CalculatorApp() {
     return () => window.removeEventListener("matrixlab-notice", show);
   }, []);
   const say = (text: string) => window.dispatchEvent(new CustomEvent("matrixlab-notice", { detail: text }));
+  /** a plugin started from the sample, in its own folder, shown in Finder */
+  const newPlugin = async () => {
+    const taken = new Set(plugins.loaded.map((p) => p.folder));
+    const folder = ["my-plugin", ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => `my-plugin-${n}`)].find((f) => !taken.has(f)) ?? `my-plugin-${Date.now()}`;
+    try {
+      const at = await invoke<string>("plugins_create", { folder, files: SAMPLE_PLUGIN });
+      await reloadPlugins();
+      revealItemInDir(at).catch(() => {});
+    } catch (err) {
+      say(String(err));
+    }
+  };
   const reloadPlugins = async () => {
     const loaded = await loadPlugins();
     const broken = loaded.filter((p) => p.error);
@@ -274,7 +291,15 @@ export default function CalculatorApp() {
 
   /** everything ⌘K offers */
   const commands = (): Command[] => [
-    ...TILES.map((t, i) => ({ id: `tile:${t.id}`, label: `Go to ${t.title}`, group: "Tile", icon: t.id, keys: `⌘${i + 1}`, run: () => dock.current?.show(t.id, true) })),
+    ...tilesOn().map((t, i) => ({
+      id: `tile:${t.id}`,
+      label: `Go to ${t.title}`,
+      group: t.id.startsWith("plugin-") ? "Tile · plugin" : "Tile",
+      icon: TILES.some((o) => o.id === t.id) ? t.id : "source",
+      keys: i < 9 ? `⌘${i + 1}` : undefined,
+      run: () => dock.current?.show(t.id as `plugin-${string}`, true),
+    })),
+    { id: "extensions", label: "Extensions — tiles, languages, plugins (turn parts off, add your own)", group: "App", icon: "panel", run: () => setExtOpen(true) },
     { id: "fill", label: "Fill the window with this zone (or bring the rest back)", group: "Tiles", icon: "maximize", keys: "⌘⇧F", run: () => dock.current?.fill() },
     ...PRESETS.map((p) => ({ id: `preset:${p.id}`, label: `${p.name} layout`, group: "Layout", icon: "layout", run: () => dock.current?.preset(p.id) })),
     ...layouts.map((l) => ({ id: `mine:${l.name}`, label: `${l.name} layout`, group: "Your layout", icon: "layout", run: () => dock.current?.load(l.layout) })),
@@ -282,7 +307,6 @@ export default function CalculatorApp() {
     ...workspaces.map((w) => ({ id: `ws:${w}`, label: `Open ${w}`, group: "Workspace", icon: "folder", run: () => openWorkspace(w) })),
     ...themes.map((t) => ({ id: `theme:${t.name}`, label: `${t.name} theme`, group: "Theme", icon: "eye", run: () => setThemeName(t.name) })),
     { id: "sheet", label: "Keyboard shortcuts", group: "Help", icon: "text", keys: "⌘?", run: () => setSheet(true) },
-    ...plugins.tiles.map((t) => ({ id: `tile:${t.id}`, label: `Go to ${t.title}`, group: `Tile · ${t.plugin}`, icon: "source", run: () => dock.current?.show(t.id as `plugin-${string}`, true) })),
     ...plugins.commands.map((c) => ({ id: `plugin:${c.id}`, label: c.title, group: `Plugin · ${c.plugin}`, icon: "source", run: () => void c.run() })),
     { id: "plugins:reload", label: "Reload plugins", group: "Plugins", icon: "reset", run: reloadPlugins },
     { id: "vim", label: vimKeys ? "Vim keys off (code and notebook text)" : "Vim keys on (code and notebook text)", group: "Editing", icon: "source", run: () => (setVimKeys(!vimKeys), say(vimKeys ? "Vim keys off" : "Vim keys on — Space r runs a cell, :w is done")) },
@@ -298,17 +322,7 @@ export default function CalculatorApp() {
       label: "New plugin (from a sample)",
       group: "Plugins",
       icon: "plus",
-      run: async () => {
-        const taken = new Set(plugins.loaded.map((p) => p.folder));
-        const folder = ["my-plugin", ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => `my-plugin-${n}`)].find((f) => !taken.has(f)) ?? `my-plugin-${Date.now()}`;
-        try {
-          const at = await invoke<string>("plugins_create", { folder, files: SAMPLE_PLUGIN });
-          await reloadPlugins();
-          revealItemInDir(at).catch(() => {});
-        } catch (err) {
-          say(String(err));
-        }
-      },
+      run: newPlugin,
     },
     ...plugins.loaded.map((p) => ({ id: `plugins:about:${p.folder}`, label: `${p.name}${p.error ? ` — didn't load: ${p.error}` : p.adds.length ? ` — ${p.adds.join(", ")}` : ""}`, group: "Plugin installed", icon: "source", run: async () => revealItemInDir(`${await invoke<string>("plugins_folder")}/${p.folder}`).catch(() => {}) })),
   ];
@@ -354,6 +368,9 @@ export default function CalculatorApp() {
             <Icon name="layout" size={15} />
             <span className="calc-app-label">Layout</span>
           </button>
+          <button className={`calc-app-layout calc-app-cmd${extOpen ? " is-on" : ""}`} title="Extensions — turn parts of the app off, add plugins of your own" onClick={() => setExtOpen(true)}>
+            <Icon name="panel" size={15} />
+          </button>
           <button className={`calc-app-theme${menuOpen ? " is-on" : ""}`} title="Theme" onClick={() => setMenuOpen((open) => !open)}>
             <span className="calc-app-swatch" style={{ background: `linear-gradient(135deg, ${theme.ui.raised} 0 50%, ${theme.numberline.solution} 50% 100%)` }} />
             {theme.name}
@@ -362,6 +379,7 @@ export default function CalculatorApp() {
       </header>
       {palette && <CommandPalette commands={commands()} onClose={() => setPalette(false)} />}
       {notice && <div className="calc-app-notice">{notice}</div>}
+      {extOpen && <Extensions onClose={() => setExtOpen(false)} onNewPlugin={newPlugin} />}
       {sheet && <ShortcutSheet onClose={() => setSheet(false)} />}
       {layoutOpen && (
         <LayoutMenu

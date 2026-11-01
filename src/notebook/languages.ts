@@ -37,6 +37,8 @@ export interface LanguageRun {
   done?: string;
   /** seconds a run-once gets (60) */
   timeout?: number;
+  /** lines it prints that aren't the cell's (a library's chatter): patterns, left out */
+  quiet?: string[];
 }
 
 export interface Language {
@@ -90,13 +92,16 @@ export const BUILT_IN_LANGUAGES: Language[] = [
     run: [
       {
         needs: "octave",
-        session: ["octave", "--no-gui", "--quiet", "--no-window-system", "--interactive", "--no-line-editing"],
+        // the prompts blank before the first one shows (--eval, then --persist on into the session)
+        session: ["octave", "--no-gui", "--quiet", "--interactive", "--no-line-editing", "--persist", "--eval", "PS1(''); PS2('');"],
         init: [
-          "PS1(''); PS2(''); more off; page_screen_output(false); set(0, 'defaultfigurevisible', 'off');",
+          // figures drawn off screen (Qt), each saved as a picture after the cell
+          "more off; page_screen_output(false); try; graphics_toolkit('qt'); catch; end; set(0, 'defaultfigurevisible', 'off');",
           // after each cell: its figures saved as pictures, said by a line the app reads
           "function __mlx_figs__(); h = get(0, 'children'); for k = 1:numel(h); f = [tempdir() sprintf('mlx_%d_%d_%d.png', getpid(), round(rem(now, 1) * 1e8), k)]; print(h(k), f, '-dpng', '-r110'); printf('__matrixlab_image__:%s\\n', f); end; close all; end",
         ],
         done: "__mlx_figs__(); disp('{marker}')",
+        quiet: ["^FALLBACK \\(log once\\)"],
       },
       { needs: "matlab", once: ["matlab", "-batch", "run('{file}')"], timeout: 120 },
     ],
@@ -231,7 +236,12 @@ export function useLanguages(): Language[] {
 export type OutputPart = { text: string } | { latex: string };
 
 const NUM = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$|^-?Inf$|^NaN$/i;
-const texNum = (n: string) => n.replace(/^(-?)Inf$/i, "$1\\infty").replace(/e([+-]?)0*(\d+)$/i, (_, s, d) => `\\times10^{${s === "-" ? "-" : ""}${d}}`);
+/** a number as printed, as math: 4.5000 → 4.5, 1.5e-03 → 1.5×10⁻³, Inf → ∞ */
+const texNum = (n: string) =>
+  n
+    .replace(/^(-?\d+)\.(\d*?)0+(?=$|e)/i, (_, whole, frac) => (frac ? `${whole}.${frac}` : whole))
+    .replace(/^(-?)Inf$/i, "$1\\infty")
+    .replace(/e([+-]?)0*(\d+)$/i, (_, s, d) => `\\times10^{${s === "-" ? "-" : ""}${d}}`);
 
 /** Octave's and MATLAB's way of showing what a line made — `x = 5`, and
  * `A =` over rows of numbers — as math; anything else as it printed */

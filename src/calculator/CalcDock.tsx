@@ -21,7 +21,8 @@ import {
 } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
 import Icon from "../Icon";
-import { pluginTile, usePlugins } from "../plugins";
+import { pluginTile, pluginTiles, pluginsReady, usePlugins } from "../plugins";
+import { partsNow, tileOn, useParts } from "../parts";
 
 export const TILES = [
   { id: "calc", title: "Calculate", hue: "teal", blurb: "Type math, get answers — steps, units and decimals" },
@@ -43,6 +44,55 @@ const tileOf = (id: string): TileMeta => {
   return { id, title: plugin?.title ?? "Plugin", hue: "blue", blurb: plugin?.blurb ?? `From the plugin ${plugin?.plugin ?? "(not loaded)"}` };
 };
 const isOwnTile = (id: string) => TILES.some((t) => t.id === id);
+
+/** what stands in a layout for a tile: itself, a plugin's tile that takes
+ * its place, or nothing (turned off) */
+export function standIn(id: string): string | null {
+  if (!isOwnTile(id)) {
+    // a plugin's tile: itself while it's there (or before the plugins are read); gone, what it took the place of
+    if (!pluginsReady() || (pluginTile(id) && tileOn(id))) return id;
+    const was = partsNow().swaps[id];
+    return was && isOwnTile(was) && tileOn(was) ? was : null;
+  }
+  const swap = pluginTiles().find((t) => t.replaces === id && tileOn(t.id));
+  if (swap) return swap.id;
+  return tileOn(id) ? id : null;
+}
+
+/** the tiles there are to open, in order: the app's that are on (and not
+ * swapped for a plugin's), then the plugins' */
+export function tilesOn(): { id: string; title: string }[] {
+  const own = TILES.filter((t) => standIn(t.id) === t.id);
+  const theirs = pluginTiles().filter((t) => tileOn(t.id));
+  return [...own, ...theirs];
+}
+
+/** the open tiles as the parts say: one turned off closed, one a plugin's tile takes the place of swapped for it */
+function tidy(api: DockviewApi) {
+  for (const panel of [...api.panels]) {
+    const stand = standIn(panel.id);
+    if (stand === panel.id) continue;
+    if (stand && !api.getPanel(stand)) api.addPanel({ id: stand, component: "tile", title: tileOf(stand).title, position: { referencePanel: panel.id } });
+    panel.api.close();
+  }
+  for (const group of [...api.groups]) if (!group.panels.length && api.groups.length > 1) api.removeGroup(group);
+}
+
+/** a layout's zones with what's turned off taken out (and what's swapped, swapped) */
+function livable(zones: Zone[]): Zone[] {
+  const out: Zone[] = [];
+  for (const zone of zones) {
+    const tiles = zone.tiles.map(standIn).filter((t): t is string => !!t) as TileId[];
+    if (!tiles.length) continue;
+    if (!out.length) {
+      out.push({ tiles, share: zone.share });
+      continue;
+    }
+    const from = zone.from ? (standIn(zone.from) as TileId | null) : null;
+    out.push({ ...zone, tiles, from: from && out.some((z) => z.tiles.includes(from)) ? from : out[out.length - 1].tiles[0] });
+  }
+  return out;
+}
 /** a plugin's tile: what its mount puts in the element */
 function PluginTile({ id }: { id: string }) {
   const { tiles } = usePlugins();
@@ -71,8 +121,11 @@ function PluginTile({ id }: { id: string }) {
 }
 /** a tile's color, for whatever's inside the element it's set on */
 export const hueStyle = (id: string) => ({ "--tile-hue": `var(--t-${tileOf(id).hue})` }) as CSSProperties;
-/** ⌘1 … ⌘7 */
-const shortcut = (id: string) => `⌘${TILES.findIndex((t) => t.id === id) + 1}`;
+/** ⌘1 … ⌘9: the tiles that are on, in order */
+const shortcut = (id: string) => {
+  const n = tilesOn().findIndex((t) => t.id === id) + 1;
+  return n >= 1 && n <= 9 ? `⌘${n}` : "⌘K";
+};
 
 const THEME = { ...themeDark, name: "matrix", className: "dockview-theme-dark dock-matrix", gap: 6 };
 
@@ -238,8 +291,10 @@ function dropRetired(api: DockviewApi) {
   for (const group of [...api.groups]) if (!group.panels.length && api.groups.length > 1) api.removeGroup(group);
 }
 
-function build(api: DockviewApi, zones: Zone[]) {
+function build(api: DockviewApi, wanted: Zone[]) {
   api.clear();
+  const zones = livable(wanted);
+  if (!zones.length) return;
   for (const zone of zones) {
     const [first, ...rest] = zone.tiles;
     const across = zone.dir === "left" || zone.dir === "right";
@@ -399,7 +454,9 @@ function ZoneActions({ containerApi, group, api }: IDockviewHeaderActionsProps) 
 
 /** an empty zone: every tile, to pick what goes in it */
 function EmptyZone({ containerApi, group }: IWatermarkPanelProps) {
-  const pluginTiles = usePlugins().tiles;
+  // (shown again when a plugin's tile comes or a part's turned on or off)
+  usePlugins();
+  useParts();
   const [, redraw] = useState(0);
   useEffect(() => {
     const sub = containerApi.onDidLayoutChange(() => redraw((n) => n + 1));
@@ -419,7 +476,7 @@ function EmptyZone({ containerApi, group }: IWatermarkPanelProps) {
       <div className="dock-empty-title">What goes here?</div>
       <div className="dock-empty-sub">Pick a tile, or drag a tab in from any zone</div>
       <div className="dock-empty-grid">
-        {[...TILES, ...pluginTiles.map((t) => tileOf(t.id))].map((t) => {
+        {tilesOn().map((t) => tileOf(t.id)).map((t) => {
           const elsewhere = !!containerApi.getPanel(t.id);
           return (
             <button key={t.id} className="dock-card" style={hueStyle(t.id)} onClick={() => putIn(containerApi, t.id as TileId, group as DockviewGroupPanel)}>
@@ -495,9 +552,11 @@ export default function CalcDock({
   };
 
   useImperativeHandle(ref, () => ({
-    show: (id, glowing) => {
+    show: (wanted, glowing) => {
       const a = api.current;
-      if (!a) return;
+      // a tile turned off doesn't open; one a plugin's takes the place of, opens that
+      const id = standIn(wanted) as TileId | null;
+      if (!a || !id) return;
       let panel = a.getPanel(id);
       if (panel) panel.api.setActive();
       else {
@@ -519,6 +578,7 @@ export default function CalcDock({
       try {
         a.fromJSON(saved as SerializedDockview);
         dropRetired(a);
+        tidy(a);
       } catch {
         startLayout(a);
       }
@@ -530,14 +590,22 @@ export default function CalcDock({
     },
   }));
 
+  // a part turned on or off, a plugin's tile loaded: the open tiles follow
+  const parts = useParts();
+  const { tiles: theirTiles, ready } = usePlugins();
+  useEffect(() => {
+    if (api.current) tidy(api.current);
+  }, [parts, theirTiles, ready]);
+
   // ⌘1–⌘7: to a tile; ⌘⇧F: the zone in use fills the window (and back)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
       const n = Number(e.key);
-      if (!e.shiftKey && n >= 1 && n <= TILES.length) {
+      const on_ = tilesOn();
+      if (!e.shiftKey && n >= 1 && n <= on_.length) {
         e.preventDefault();
-        on.current.onJump(TILES[n - 1].id);
+        on.current.onJump(on_[n - 1].id as TileId);
       } else if (e.shiftKey && e.key.toLowerCase() === "f") {
         const group = api.current?.activeGroup;
         if (!group || group.api.location.type !== "grid") return;
@@ -567,6 +635,7 @@ export default function CalcDock({
             if (layout) {
               a.fromJSON(layout as SerializedDockview);
               dropRetired(a);
+              tidy(a);
             } else startLayout(a);
           } catch {
             startLayout(a); // a saved layout from an older version: start fresh

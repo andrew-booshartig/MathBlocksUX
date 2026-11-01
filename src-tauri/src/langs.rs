@@ -83,6 +83,8 @@ pub struct Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
+        // the whole group: a language's launcher may start the real program as a child (Octave does)
+        stop_group(self.pid);
         if let Ok(mut child) = self.child.lock() {
             let _ = child.kill();
             let _ = child.wait();
@@ -252,6 +254,8 @@ impl Session {
             .arg(format!("exec {line} 2>&1"))
             .current_dir(cell_dir()?)
             .env("PATH", path_var())
+            // its own process group: stopping or ending it reaches whatever it started
+            .process_group(0)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -367,9 +371,8 @@ pub fn lang_output(sessions: State<'_, Sessions>, notebook: String, lang: String
 pub fn lang_stop(sessions: State<'_, Sessions>, notebook: String, lang: String) {
     let k = key(&notebook, &lang);
     if let Some(s) = sessions.running.lock().ok().and_then(|all| all.get(&k).cloned()) {
-        // the shell's child is the language itself
-        let _ = Command::new("pkill").arg("-INT").arg("-P").arg(s.pid.to_string()).status();
-        let _ = Command::new("kill").arg("-INT").arg(s.pid.to_string()).status();
+        // an interrupt to its whole group (Ctrl-C), as a terminal sends it
+        let _ = Command::new("kill").arg("-INT").arg(format!("-{}", s.pid)).status();
     }
     if let Some(pid) = sessions.once.lock().ok().and_then(|all| all.get(&k).cloned()).and_then(|r| r.pid.lock().ok().and_then(|p| *p)) {
         stop_group(pid);
@@ -434,5 +437,44 @@ mod tests {
         let run = OnceRun::default();
         let ran = run_once(&strings(&["sh", "{file}"]), "sh", "sleep 5", 1, &run).unwrap();
         assert_eq!(ran.error.as_deref(), Some("Stopped after 1 s."));
+    }
+}
+
+#[cfg(test)]
+mod octave {
+    use super::*;
+
+    /// MATLAB through Octave, as the built-in language runs it — only when Octave is installed
+    #[test]
+    fn matlab_cells_through_octave() {
+        if which("octave").is_none() {
+            return;
+        }
+        let cmd: Vec<String> = ["octave", "--no-gui", "--quiet", "--interactive", "--no-line-editing", "--persist", "--eval", "PS1(''); PS2('');"].iter().map(|s| s.to_string()).collect();
+        let s = Session::spawn(&cmd, &["more off; page_screen_output(false);".to_string()]).unwrap();
+        let a = s.run("A = [1 2; 3 4];\nx = A \\ [5; 6]", "disp('{marker}')").unwrap();
+        assert_eq!(a.stdout, "x =\n\n  -4.0000\n   4.5000\n\n");
+        let b = s.run("y = x(2) * 2", "disp('{marker}')").unwrap();
+        assert_eq!(b.stdout, "y = 9.0000\n");
+        let c = s.run("nope + 1", "disp('{marker}')").unwrap();
+        assert!(c.stdout.starts_with("error: 'nope' undefined"));
+    }
+}
+
+#[cfg(test)]
+mod ending {
+    use super::*;
+
+    /// a session's program and whatever it started end with it (Octave's launcher starts octave-gui)
+    #[test]
+    fn ending_a_session_ends_what_it_started() {
+        let cmd: Vec<String> = ["sh", "-c", "sleep 300 & wait"].iter().map(|s| s.to_string()).collect();
+        let s = Session::spawn(&cmd, &[]).unwrap();
+        let pid = s.pid;
+        std::thread::sleep(Duration::from_millis(200));
+        drop(s);
+        std::thread::sleep(Duration::from_millis(200));
+        let left = Command::new("pgrep").arg("-g").arg(pid.to_string()).output().unwrap();
+        assert!(String::from_utf8_lossy(&left.stdout).trim().is_empty(), "left running: {}", String::from_utf8_lossy(&left.stdout));
     }
 }

@@ -1,0 +1,141 @@
+/** Extensions: the app's parts and the plugins, each on or off — the way
+ * VS Code's Extensions view does it. Tiles (Calculate, Work…, and plugins'
+ * own), the languages code cells can be in (and whether what runs them is
+ * installed), and every plugin in ~/Documents/MatrixLab/Plugins. */
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import Icon from "../Icon";
+import { TILES } from "./CalcDock";
+import { languages } from "../notebook/languages";
+import { type LoadedPlugin, loadPlugins, usePlugins } from "../plugins";
+import { toggleTile, togglePlugin, useParts } from "../parts";
+
+function Switch({ on, onChange, label }: { on: boolean; onChange: () => void; label: string }) {
+  return (
+    <button className={`ext-switch${on ? " is-on" : ""}`} role="switch" aria-checked={on} aria-label={label} title={on ? `On — turn ${label} off` : `Off — turn ${label} on`} onClick={onChange}>
+      <span className="ext-knob" />
+    </button>
+  );
+}
+
+export default function Extensions({ onClose, onNewPlugin }: { onClose: () => void; onNewPlugin: () => void }) {
+  const parts = useParts();
+  const plugins = usePlugins();
+  const langs = languages();
+  // which programs the languages need are installed
+  const [found, setFound] = useState<Record<string, string | null>>({});
+  useEffect(() => {
+    const programs = [...new Set(langs.flatMap((l) => (l.run ?? []).map((r) => r.needs)))];
+    invoke<Record<string, string | null>>("lang_which", { programs })
+      .then(setFound)
+      .catch(() => {});
+  }, [langs]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [onClose]);
+  const folder = async (sub?: string) => revealItemInDir(`${await invoke<string>("plugins_folder")}${sub ? `/${sub}` : ""}`).catch(() => {});
+  const replacedBy = (id: string) => plugins.tiles.find((t) => t.replaces === id && !parts.offTiles.includes(t.id));
+  const pluginState = (p: LoadedPlugin) => (p.off ? "off" : p.error ? `didn't load: ${p.error}` : p.adds.join(" · ") || "adds nothing yet");
+
+  return (
+    <div className="ext-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="ext" role="dialog" aria-label="Extensions">
+        <div className="ext-head">
+          <span className="ext-title">Extensions</span>
+          <span className="ext-sub">The app is only what you want of it — turn parts off, add your own</span>
+          <button className="ext-close" title="Close (Esc)" onClick={onClose}>
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+        <div className="ext-body">
+          <section>
+            <h3>Tiles</h3>
+            {TILES.map((t) => {
+              const swap = replacedBy(t.id);
+              return (
+                <div key={t.id} className="ext-row">
+                  <span className="ext-icon">
+                    <Icon name={t.id} size={16} />
+                  </span>
+                  <span className="ext-text">
+                    <span className="ext-name">{t.title}</span>
+                    <span className="ext-dim">{swap ? `Replaced by ${swap.title} (${swap.plugin})` : t.blurb}</span>
+                  </span>
+                  <Switch on={!parts.offTiles.includes(t.id)} onChange={() => toggleTile(t.id)} label={t.title} />
+                </div>
+              );
+            })}
+            {plugins.tiles.map((t) => (
+              <div key={t.id} className="ext-row">
+                <span className="ext-icon">
+                  <Icon name="source" size={16} />
+                </span>
+                <span className="ext-text">
+                  <span className="ext-name">{t.title}</span>
+                  <span className="ext-dim">{[t.blurb, `from ${t.plugin}`, t.replaces && `in place of ${TILES.find((o) => o.id === t.replaces)?.title ?? t.replaces}`].filter(Boolean).join(" · ")}</span>
+                </span>
+                <Switch on={!parts.offTiles.includes(t.id)} onChange={() => toggleTile(t.id)} label={t.title} />
+              </div>
+            ))}
+          </section>
+
+          <section>
+            <h3>Languages for code cells</h3>
+            {langs.map((l) => {
+              const way = (l.run ?? []).find((r) => found[r.needs]);
+              return (
+                <div key={l.id} className="ext-row">
+                  <span className={`ext-dot${way ? " is-ready" : l.run?.length ? " is-missing" : ""}`} />
+                  <span className="ext-text">
+                    <span className="ext-name">{l.label}</span>
+                    <span className="ext-dim">
+                      {way ? `runs with ${way.needs}` : l.run?.length ? `needs ${l.run.map((r) => r.needs).join(" or ")}${l.install ? ` — ${l.install}` : ""}` : "colored, not run"}
+                      {l.plugin !== "built-in" ? ` · from ${l.plugin}` : ""}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </section>
+
+          <section>
+            <h3>Plugins</h3>
+            {plugins.loaded.length === 0 && <div className="ext-empty">None yet. A plugin is a folder with a plugin.json — start from the sample.</div>}
+            {plugins.loaded.map((p) => (
+              <div key={p.folder} className={`ext-row${p.error ? " is-broken" : ""}`}>
+                <span className="ext-icon">
+                  <Icon name="source" size={16} />
+                </span>
+                <span className="ext-text">
+                  <span className="ext-name">
+                    {p.name} {p.version && <span className="ext-dim">{p.version}</span>}
+                  </span>
+                  {p.description && <span className="ext-dim">{p.description}</span>}
+                  <span className={`ext-dim${p.error ? " is-error" : ""}`}>{pluginState(p)}</span>
+                </span>
+                <button className="ext-link" title="Show it in Finder" onClick={() => folder(p.folder)}>
+                  <Icon name="folder" size={13} />
+                </button>
+                <Switch on={!p.off} onChange={() => (togglePlugin(p.folder), loadPlugins())} label={p.name} />
+              </div>
+            ))}
+            <div className="ext-actions">
+              <button onClick={onNewPlugin}>
+                <Icon name="plus" size={13} /> New plugin from a sample
+              </button>
+              <button onClick={() => loadPlugins()}>
+                <Icon name="reset" size={13} /> Reload plugins
+              </button>
+              <button onClick={() => folder()}>
+                <Icon name="folder" size={13} /> Open the plugins folder
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -496,7 +496,10 @@ export default function NotebookTile({
             spec: { once: way.once, session: way.session, init: way.init, done: way.done, timeout: way.timeout, extension: lang.extension },
             code: lang.assign ? [...Object.entries(notebookVarsRef.current).map(([n, v]) => lang.assign!.split("{name}").join(n).split("{value}").join(String(v))), code].join("\n") : code,
           });
-          out = { stdout: ran.stdout, error: ran.error, seconds: ran.seconds, images: ran.images };
+          // a library's chatter (a graphics driver's notes…) left out
+          const quiet = (way.quiet ?? []).map((q) => new RegExp(q));
+          const stdout = quiet.length ? ran.stdout.split("\n").filter((l) => !quiet.some((q) => q.test(l))).join("\n") : ran.stdout;
+          out = { stdout, error: ran.error, seconds: ran.seconds, images: ran.images };
         } catch (err) {
           out = { error: errorText(err) };
         }
