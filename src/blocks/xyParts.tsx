@@ -342,6 +342,32 @@ export function GraphSettings({ settings, onChange, onClose }: { settings: XYSet
       </label>
       <div className="xy-pop-head">Grid</div>
       {seg(settings.grid ?? "major", [["none", "None"], ["major", "Lines"], ["minor", "Fine"]], (v) => set({ grid: v === "major" ? undefined : v }))}
+      <div className="xy-row">
+        <span>Each line is worth</span>
+        {(["Auto", 0.5, 1, 2, 5, 10] as const).map((v) => {
+          const step = v === "Auto" ? undefined : v;
+          const on = settings.xStep === step && settings.yStep === step;
+          return (
+            <button key={v} className={`xy-step${on ? " is-on" : ""}`} onClick={() => set({ xStep: step, yStep: step })}>
+              {v}
+            </button>
+          );
+        })}
+      </div>
+      <div className="xy-row">
+        <span>Units</span>
+        {(["", "in", "ft", "yd", "mm", "cm", "m"] as const).map((u) => (
+          <button key={u || "none"} className={`xy-step${(settings.unit ?? "") === u ? " is-on" : ""}`} title={u ? `Drafting: each number in ${u}` : "Plain numbers"} onClick={() => set({ unit: u || undefined })}>
+            {u || "none"}
+          </button>
+        ))}
+      </div>
+      <div className="xy-row">
+        <span>Or across</span>
+        <NumberBox value={settings.xStep} placeholder="auto" title="What each line across is worth — 0.25, 2/3, π…" onChange={(n) => set({ xStep: n !== undefined && n > 0 ? n : undefined })} />
+        <span>up</span>
+        <NumberBox value={settings.yStep} placeholder="auto" title="What each line up is worth" onChange={(n) => set({ yStep: n !== undefined && n > 0 ? n : undefined })} />
+      </div>
       <label className="xy-check">
         <input type="checkbox" checked={settings.numbers !== false} onChange={(e) => set({ numbers: e.target.checked ? undefined : false })} />
         Numbers on the axes

@@ -137,6 +137,8 @@ export interface GraphAppearance {
   /** logarithmic axes (1, 10, 100…), for data that spans powers of ten */
   logX?: boolean;
   logY?: boolean;
+  /** a unit after each axis number: 3 ft */
+  unit?: string;
 }
 
 export type SolveMethod = "auto" | "factor" | "formula" | "complete" | "sqrt" | "substitution" | "elimination";
@@ -339,6 +341,13 @@ export interface XYSettings {
   yLabel?: string;
   logX?: boolean;
   logY?: boolean;
+  /** what each grid line is worth, across and up (none: automatic) */
+  xStep?: number;
+  yStep?: number;
+  /** drafting: a unit on the axes' numbers (in, ft, cm…) */
+  unit?: string;
+  /** points land where you click, not on the grid — on unless turned off */
+  snap?: boolean;
 }
 
 /** An inequality drawn on a number line (the calculator's Graph tab) —

@@ -749,6 +749,13 @@ export default function XYGraph({
               </button>
             )}
             <span className="xy-tools-end">
+              <button
+                className={`xy-tool${settings.snap !== false ? " is-on" : ""}`}
+                title={settings.snap !== false ? "Snapping to the grid — click for freeform (points land exactly where you click)" : "Freeform — click to snap to the grid again"}
+                onClick={() => setSettings({ ...settings, snap: settings.snap !== false ? false : undefined })}
+              >
+                <Icon name="magnet" size={15} />
+              </button>
               <button className={`xy-tool xy-pop-anchor${settingsOpen ? " is-on" : ""}`} title="Graph settings — degrees, π on the axis, grid, labels" onClick={() => setSettingsOpen(!settingsOpen)}>
                 <Icon name="gear" size={15} />
               </button>
@@ -771,7 +778,7 @@ export default function XYGraph({
               degrees={!!settings.degrees}
               equalAspect={settings.equal !== false}
               hide={settings.marks === false ? ["intercepts", "vertices", "intersections"] : []}
-              appearance={{ grid: settings.grid, numbers: settings.numbers, xLabel: settings.xLabel, yLabel: settings.yLabel, piX: settings.piX, logX: settings.logX, logY: settings.logY }}
+              appearance={{ grid: settings.grid, numbers: settings.numbers, xLabel: settings.xLabel, yLabel: settings.yLabel, piX: settings.piX, logX: settings.logX, logY: settings.logY, xStep: settings.xStep, yStep: settings.yStep, unit: settings.unit }}
               onPlot={setPlotDiv}
               focus={focusIndex >= 0 ? focusIndex : null}
               onPick={pick}
@@ -788,7 +795,7 @@ export default function XYGraph({
                   tool={tool}
                   color={colors.ink ?? "#e8e8f0"}
                   width={2.5}
-                  snap
+                  snap={settings.snap !== false}
                   fine={false}
                   grid={gridLines}
                   window={plot.window ?? DEFAULT_WINDOW}

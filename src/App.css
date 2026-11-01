@@ -7471,3 +7471,49 @@ math-field {
   color: var(--t-text, #e8e8f0);
   font: 14px/1.45 -apple-system, "Inter", sans-serif;
 }
+
+/* what each grid line is worth: quick picks */
+.xy-step {
+  min-width: 30px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 6px;
+  background: var(--t-bg1, #0e0e12);
+  color: var(--t-muted, #7a7a90);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.xy-step:hover,
+.xy-step.is-on {
+  color: var(--t-text, #e8e8f0);
+  border-color: var(--t-pink, #c99bbf);
+}
+
+/* a narrow graph tile: the hint stays one line, the tools pack tighter */
+.xy-plot-foot > span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@container (max-width: 520px) {
+  .xy-tool {
+    min-width: 26px;
+    height: 26px;
+    padding: 0 4px;
+  }
+
+  .xy-tools-sep {
+    margin: 0 2px;
+  }
+
+  .xy-plot-foot > span:first-child {
+    display: none;
+  }
+
+  .xy-plot-foot .xy-zoom {
+    margin-left: auto;
+  }
+}

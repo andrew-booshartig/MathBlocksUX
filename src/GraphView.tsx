@@ -669,6 +669,7 @@ export default function GraphView({
         showticklabels: numbers,
         tickangle: 0,
         tickfont: { color: theme.ink, size: 10 },
+        ...(appearance.unit ? { ticksuffix: ` ${appearance.unit}` } : {}),
         ...(step ? { dtick: step * every } : {}),
         ...lines,
         ...(pi ? piTicks(range, pixelsPerUnit) : {}),
