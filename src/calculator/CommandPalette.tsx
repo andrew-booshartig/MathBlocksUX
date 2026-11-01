@@ -114,6 +114,16 @@ const SHEET: { where: string; keys: [string, string][] }[] = [
       ["↑ ↓  Enter", "In the list of names: pick one"],
       ["Enter", "In a work cell's step: the next step"],
       ["⌫", "In an empty step: take it out"],
+      ["⌘/  ⌥↑ ⌥↓", "In code: comment the line · move it up or down"],
+    ],
+  },
+  {
+    where: "Notebook, vim keys on (⌘K → Vim keys)",
+    keys: [
+      ["Space r", "Run the cell (Space is the leader)"],
+      [":w  :q  Esc", "Done editing (Esc in normal mode)"],
+      ["yy  dd  …", "Yanks and cuts go to the clipboard too"],
+      ["1 2 3", "Line numbers count from where you are (plain while inserting)"],
     ],
   },
   {

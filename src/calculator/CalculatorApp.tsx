@@ -19,6 +19,7 @@ import Icon from "../Icon";
 import mark from "../assets/mx-mark.png";
 import type { Equation } from "../equations";
 import { SAMPLE_PLUGIN, loadPlugins, usePlugins } from "../plugins";
+import { setVimKeys, useVimKeys } from "../notebook/editorSettings";
 
 const SAVE = "__calculator__";
 const SETTINGS = "__settings__";
@@ -91,6 +92,7 @@ export default function CalculatorApp() {
   const [sheet, setSheet] = useState(false);
   // plugins: loaded at the start (and again on ⌘K → Reload plugins); a plugin's words shown a moment
   const plugins = usePlugins();
+  const vimKeys = useVimKeys();
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     loadPlugins();
@@ -282,6 +284,7 @@ export default function CalculatorApp() {
     { id: "sheet", label: "Keyboard shortcuts", group: "Help", icon: "text", keys: "⌘?", run: () => setSheet(true) },
     ...plugins.commands.map((c) => ({ id: `plugin:${c.id}`, label: c.title, group: `Plugin · ${c.plugin}`, icon: "source", run: () => void c.run() })),
     { id: "plugins:reload", label: "Reload plugins", group: "Plugins", icon: "reset", run: reloadPlugins },
+    { id: "vim", label: vimKeys ? "Vim keys off (code and notebook text)" : "Vim keys on (code and notebook text)", group: "Editing", icon: "source", run: () => (setVimKeys(!vimKeys), say(vimKeys ? "Vim keys off" : "Vim keys on — Space r runs a cell, :w is done")) },
     {
       id: "plugins:folder",
       label: "Open the plugins folder",

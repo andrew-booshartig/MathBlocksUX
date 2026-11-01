@@ -24,9 +24,11 @@ import Preview from "./Preview";
 import { notebookHtml } from "./print";
 import { TEMPLATES, type Template, problemSection, userTemplate } from "./templates";
 import { fromIpynb, toIpynb, toScript } from "./jupyter";
-import { highlightCode, highlightPython, highlightWithError } from "./highlight";
+import { highlightCode, highlightWithError } from "./highlight";
 import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
+import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
+import { setVimKeys, useVimKeys } from "./editorSettings";
 import "./notebook.css";
 
 type Listing = { name: string; modified: number }[];
@@ -382,18 +384,17 @@ export default function NotebookTile({
   }, [running.size]); // eslint-disable-line react-hooks/exhaustive-deps
   const calcVarsRef = useRef(calcVars);
   calcVarsRef.current = calcVars;
-  // Tab completion: the names that could finish the word, one picked with ↑ ↓
-  const [complete, setComplete] = useState<{ word: string; items: string[]; at: number } | null>(null);
-  const completeEl = useRef<HTMLTextAreaElement | null>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
-  /** the word before the cursor (np.lin) swapped for what's picked (np.linspace) */
-  const finishWord = (el: HTMLTextAreaElement, word: string, full: string) => {
-    const at = el.selectionStart;
-    const next = `${el.value.slice(0, at - word.length)}${full}${el.value.slice(at)}`;
-    setDraft(next);
-    const caret = at - word.length + full.length;
-    requestAnimationFrame(() => el.setSelectionRange(caret, caret));
+  const vimKeys = useVimKeys();
+  /** what's typed in the block being edited, as of now (an editor's callbacks run between renders) */
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const type = (v: string) => {
+    draftRef.current = v;
+    setDraft(v);
   };
+  /** Tab after a name in a Python cell: what Python knows that could finish it */
+  const completePython = (before: string) => invoke<{ word: string; matches: string[] }>("kernel_complete", { notebook: name, code: before });
   const turn = useRef<Promise<unknown>>(Promise.resolve());
   const keepOutputs = (next: Record<string, PyOutput>) => {
     // only what's in the notebook now is kept
@@ -607,85 +608,51 @@ export default function NotebookTile({
     const b = doc.blocks.find((x) => x.id === editing);
     setEditing(null);
     if (!b) return;
+    const draft = draftRef.current;
     if (b.kind === "text") {
       if (!draft.trim()) removeBlock(b.id, true);
       else if (draft !== b.text) updateBlock(b.id, { text: draft });
     } else if (draft !== b.code) updateBlock(b.id, { code: draft });
   };
-  const editKeys = (e: KeyboardEvent<HTMLTextAreaElement>, b: Block) => {
-    if (b.kind === "cell" && b.lang === "python") {
-      if (complete) {
-        const n = complete.items.length;
-        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-          e.preventDefault();
-          return setComplete({ ...complete, at: (complete.at + (e.key === "ArrowDown" ? 1 : -1) + n) % n });
-        }
-        if (e.key === "Enter" || e.key === "Tab") {
-          e.preventDefault();
-          finishWord(e.currentTarget, complete.word, complete.items[complete.at]);
-          return setComplete(null);
-        }
-        if (e.key === "Escape") {
-          e.preventDefault();
-          return setComplete(null);
-        }
-        setComplete(null);
-      }
-      const el = e.currentTarget;
-      const before = el.value.slice(0, el.selectionStart);
-      // Tab after a name: finish it (from what Python knows right now) — else it indents
-      if (e.key === "Tab" && !e.shiftKey && el.selectionStart === el.selectionEnd && /[A-Za-z_][\w.]*$/.test(before) && name) {
-        e.preventDefault();
-        completeEl.current = el;
-        invoke<{ word: string; matches: string[] }>("kernel_complete", { notebook: name, code: before })
-          .then(({ word, matches }) => {
-            if (!matches.length) return;
-            if (matches.length === 1) return finishWord(el, word, matches[0]);
-            let common = matches[0];
-            for (const m of matches) while (!m.startsWith(common)) common = common.slice(0, -1);
-            if (common.length > word.length) finishWord(el, word, common);
-            setComplete({ word: common.length > word.length ? common : word, items: matches, at: 0 });
-          })
-          .catch(() => {});
-        return;
-      }
+  /** ⌘⏎: done editing — and run it, if it runs */
+  const runEdited = (b: Block) => {
+    const code = draftRef.current;
+    finishEditing();
+    if (runnable(b)) setTimeout(() => runBlock(b, code), 60);
+  };
+  /** ⇧⏎: run it, and on to the next cell of its kind (a new one at the end) — as in Jupyter */
+  const runAndNext = (b: Block) => {
+    if (b.kind !== "cell") return;
+    const code = draftRef.current;
+    finishEditing();
+    setTimeout(() => runBlock(b, code), 60);
+    const blocks = doc!.blocks;
+    const at = blocks.findIndex((x) => x.id === b.id);
+    const nextBlock = blocks.slice(at + 1).find((x) => x.kind === "cell" && x.lang === b.lang);
+    if (nextBlock) setTimeout(() => startEditing(nextBlock), 80);
+    else {
+      const id = blockId();
+      commit({ ...doc!, blocks: [...blocks.map((x) => (x.id === b.id ? { ...x, code } : x)), { id, kind: "cell", lang: b.lang, info: "", code: "" }] });
+      setTimeout(() => (setEditing(id), type("")), 80);
     }
+  };
+  /** ⌥⏎: run it, and a new cell right under it — as in Jupyter */
+  const runAndInsert = (b: Block) => {
+    if (b.kind !== "cell") return;
+    const code = draftRef.current;
+    finishEditing();
+    setTimeout(() => runBlock(b, code), 60);
+    const id = blockId();
+    const blocks = doc!.blocks.map((x) => (x.id === b.id ? { ...x, code } : x));
+    const at = blocks.findIndex((x) => x.id === b.id);
+    commit({ ...doc!, blocks: [...blocks.slice(0, at + 1), { id, kind: "cell", lang: b.lang, info: "", code: "" }, ...blocks.slice(at + 1)] });
+    setTimeout(() => (setEditing(id), type("")), 80);
+  };
+  /** a text block's keys (the plain editor): Esc or ⌘⏎ is done */
+  const editKeys = (e: KeyboardEvent<HTMLTextAreaElement>, b: Block) => {
     if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
       e.preventDefault();
-      finishEditing();
-      if (runnable(b) && e.key === "Enter") setTimeout(() => runBlock(b, draft), 60);
-    } else if (e.key === "Enter" && e.shiftKey && runnable(b) && b.kind === "cell") {
-      // ⇧⏎: run it, and on to the next cell (a new one at the end) — as in Jupyter
-      e.preventDefault();
-      finishEditing();
-      setTimeout(() => runBlock(b, draft), 60);
-      const blocks = doc!.blocks;
-      const at = blocks.findIndex((x) => x.id === b.id);
-      const nextBlock = blocks.slice(at + 1).find((x) => x.kind === "cell" && x.lang === b.lang);
-      if (nextBlock) setTimeout(() => startEditing(nextBlock), 80);
-      else {
-        const id = blockId();
-        commit({ ...doc!, blocks: [...blocks.map((x) => (x.id === b.id ? { ...x, code: draft } : x)), { id, kind: "cell", lang: b.lang, info: "", code: "" }] });
-        setTimeout(() => (setEditing(id), setDraft("")), 80);
-      }
-    } else if (e.key === "Enter" && e.altKey && runnable(b) && b.kind === "cell") {
-      // ⌥⏎: run it, and a new cell right under it — as in Jupyter
-      e.preventDefault();
-      finishEditing();
-      setTimeout(() => runBlock(b, draft), 60);
-      const id = blockId();
-      const blocks = doc!.blocks.map((x) => (x.id === b.id ? { ...x, code: draft } : x));
-      const at = blocks.findIndex((x) => x.id === b.id);
-      commit({ ...doc!, blocks: [...blocks.slice(0, at + 1), { id, kind: "cell", lang: b.lang, info: "", code: "" }, ...blocks.slice(at + 1)] });
-      setTimeout(() => (setEditing(id), setDraft("")), 80);
-    } else if (e.key === "Tab" && b.kind === "cell") {
-      // code indents with spaces (Python cares)
-      e.preventDefault();
-      const el = e.currentTarget;
-      const at = el.selectionStart;
-      const next = `${draft.slice(0, at)}    ${draft.slice(el.selectionEnd)}`;
-      setDraft(next);
-      requestAnimationFrame(() => el.setSelectionRange(at + 4, at + 4));
+      runEdited(b);
     }
   };
 
@@ -983,6 +950,9 @@ export default function NotebookTile({
                 <button className="nb-pop-item" onClick={copyLatex}>
                   <Icon name="copy" size={14} /> Copy as LaTeX
                 </button>
+                <button className="nb-pop-item" title="Vim in code cells and text, set up like Neovim: Space is the leader (Space r runs), :w is done, yanks go to the clipboard" onClick={() => setVimKeys(!vimKeys)}>
+                  <Icon name="source" size={14} /> Vim keys {vimKeys ? "on — turn off" : "off — turn on"}
+                </button>
                 <div className="nb-pop-line" />
                 <button className="nb-pop-item" onClick={() => exportAs("ipynb")}>
                   <Icon name="download" size={14} /> Save as a Jupyter notebook (.ipynb)
@@ -1136,7 +1106,11 @@ export default function NotebookTile({
       return (
         <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}`}>
           {isEditing ? (
-            <AutoText value={draft} onChange={setDraft} onBlur={finishEditing} onKeyDown={(e) => editKeys(e, b)} placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
+            vimKeys ? (
+              <CodeEditor value={draft} onChange={type} onDone={finishEditing} vimKeys prose placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
+            ) : (
+              <AutoText value={draft} onChange={type} onBlur={finishEditing} onKeyDown={(e) => editKeys(e, b)} placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
+            )
           ) : (
             <div className="nb-md" onClick={(e) => followLinks(e) || startEditing(b)} dangerouslySetInnerHTML={{ __html: renderMarkdown(b.text) }} />
           )}
@@ -1227,13 +1201,17 @@ export default function NotebookTile({
           (isEditing && b.lang === "work" ? (
             <WorkCellEditor code={draft} onChange={setDraft} onDone={finishEditing} />
           ) : isEditing ? (
-            <AutoText
+            <CodeEditor
               value={draft}
-              onChange={setDraft}
-              onBlur={() => (setComplete(null), finishEditing())}
-              onKeyDown={(e) => editKeys(e, b)}
-              mono
-              highlight={b.lang === "python" ? highlightPython : language ? (c: string) => highlightCode(c, language.highlight) : undefined}
+              onChange={type}
+              onDone={finishEditing}
+              vimKeys={vimKeys}
+              python={b.lang === "python"}
+              spec={b.lang === "python" ? PYTHON_SPEC : language?.highlight}
+              onRun={() => runEdited(b)}
+              onRunNext={runnable(b) ? () => runAndNext(b) : undefined}
+              onRunInsert={runnable(b) ? () => runAndInsert(b) : undefined}
+              complete={b.lang === "python" && name ? completePython : undefined}
             />
           ) : (
             b.lang === "python" ? (
@@ -1250,22 +1228,6 @@ export default function NotebookTile({
               </pre>
             )
           ))}
-        {isEditing && complete && (
-          <div className="nb-complete" onMouseDown={(e) => e.preventDefault()}>
-            {complete.items.map((item, k) => (
-              <button
-                key={item}
-                className={`nb-complete-item${k === complete.at ? " is-at" : ""}`}
-                onClick={() => {
-                  if (completeEl.current) finishWord(completeEl.current, complete.word, item);
-                  setComplete(null);
-                }}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        )}
         {result && (
           <div className="nb-cell-result" onClick={() => !isEditing && b.lang !== "python" && !language && b.lang !== "graph" && startEditing(b)}>
             {result}

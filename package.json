@@ -12,6 +12,12 @@
     "build:engine": "cd sidecar && .venv/bin/python -m PyInstaller --noconfirm --clean --onedir --name engine --distpath dist --workpath build/pyinstaller --specpath build --collect-submodules mathcore --exclude-module tkinter --exclude-module PyInstaller --exclude-module pytest --log-level WARN engine.py"
   },
   "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.14",
+    "@lezer/highlight": "1.2.5",
+    "@replit/codemirror-vim": "6.4.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "@xyflow/react": "^12.12.0",
