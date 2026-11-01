@@ -10,7 +10,7 @@
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import GraphView, { DEFAULT_WINDOW, THEMES, useAppGraphColors } from "../GraphView";
 import type { XYSettings } from "../store";
-import type { GraphResult, GraphSeries } from "../mathSidecar";
+import { type GraphResult, type GraphSeries, mathRequest } from "../mathSidecar";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { type GraphDrawing, type XYPlot, newId } from "../store";
 import { Tex } from "../ui";
@@ -19,7 +19,7 @@ import Icon from "../Icon";
 import { invoke } from "@tauri-apps/api/core";
 import { Plotly } from "../PlotlyChart";
 import type { PlotDiv } from "../GraphView";
-import type { XYExtra, XYTable } from "../store";
+import type { XYExtra, XYImage, XYTable } from "../store";
 import { solveTriangle, triangleCorners } from "../triangle";
 import { ADDS, AddMenu, MoreTools, TriangleRow, DataTable, Examples, GraphSettings, LineOptions, SaveMenu, readNumber, tablePoints } from "./xyParts";
 import { plainMath } from "../plainMath";
@@ -64,6 +64,7 @@ const HINTS: Record<GraphTool, string> = {
   midpoint: "Click two points — the point halfway between",
   glider: "Click a circle, segment, line, arc or polygon — a point that slides along it (drag it, or ▶ its slider)",
   locus: "Click the point to follow, then the sliding point that moves it — the path it sweeps out",
+  calibrate: "Click two spots on the picture a known distance apart (the ends of a map's scale bar), then type that distance",
   bisector: "Click two points — the line through the middle, at right angles",
   anglebisector: "Click a point, the corner, another point — the line halving the angle",
   tangents: "Click a point, then a circle — the lines from the point that just touch it",
@@ -88,7 +89,9 @@ const HINTS: Record<GraphTool, string> = {
 const GEO_WORDS = [
   "segment", "line", "ray", "vector", "circle", "polygon", "angle", "midpoint", "distance", "perpendicular", "parallel",
   "intersection", "reflect", "rotate", "translate", "dilate", "arc", "sector", "semicircle", "bisector", "tangent",
-  "length", "area", "perimeter", "slope",
+  "length", "area", "perimeter", "slope", "point", "locus", "triangulate",
+  "mean", "median", "stdev", "stdevp", "total", "count", "quantile", "normalpdf", "normalcdf", "binompdf", "binomcdf",
+  "histogram", "boxplot", "dotplot", "scatter",
 ] as const;
 
 /** A = …, B_1 = …: the name a line gives its point (or shape), if it has one */
@@ -235,6 +238,15 @@ const faint = (hex: string, alpha: number) => {
   const n = parseInt(hex.slice(1), 16);
   return hex.length === 7 ? `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})` : hex;
 };
+
+/** a length across dx, dy, as math: 5, or √13 when it's a whole number's root */
+function lengthTex(dx: number, dy: number): string {
+  const sq = dx * dx + dy * dy;
+  const root = Math.sqrt(sq);
+  if (Math.abs(root - Math.round(root)) < 1e-9) return String(Math.round(root));
+  if (Math.abs(sq - Math.round(sq)) < 1e-9) return `\\sqrt{${Math.round(sq)}}`;
+  return String(Math.round(root * 1e6) / 1e6);
+}
 
 /** shapes perpendicular and parallel can be built from */
 const STRAIGHT = new Set(["segment", "line", "ray", "vector", "perpendicular", "parallel"]);
@@ -470,6 +482,12 @@ export default function XYGraph({
    * bisector; any shape's equation, as a line of its own */
   const buildsOf = (i: number) => {
     const out: { label: string; title: string; run: () => void }[] = [];
+    if (seriesOf(i).some((s) => s.kind === "function" && !s.role && !s.shape))
+      out.push({
+        label: "Table of values",
+        title: "x from −2 to 2 (type any), and its y worked out — the points plotted on it",
+        run: () => setTables([...tables, { id: newId("table"), of: lines[i].id, rows: ["-2", "-1", "0", "1", "2"].map((x) => [x, ""] as [string, string]) }]),
+      });
     const st = straightOf(lines[i].latex);
     if (st) {
       const [a, b] = [texName(st.a), texName(st.b)];
@@ -488,9 +506,83 @@ export default function XYGraph({
           run: () => addLine(`\\operatorname{perpendicular}\\left(\\operatorname{segment}\\left(${a},${b}\\right),\\operatorname{midpoint}\\left(${a},${b}\\right)\\right)`),
         });
     }
+    if (st?.kind === "segment") {
+      // a CAD constraint: B stays this far from A — dragging it turns it round A
+      const [ia, ib] = [nameRow(st.a), nameRow(st.b)];
+      const [pa, pb] = [targets.find((t) => t.key === lines[ia]?.id), targets.find((t) => t.key === lines[ib]?.id)];
+      if (pa && pb && literalPoint(lines[ib].latex))
+        out.push({
+          label: "Keep its length",
+          title: `${st.b} stays ${trim(Math.hypot(pb.x - pa.x, pb.y - pa.y))} from ${st.a}: dragging ${st.b} turns it round ${st.a}`,
+          run: () => {
+            const [dx, dy] = [pb.x - pa.x, pb.y - pa.y];
+            const letter = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => `t_${k}`).find((n) => !used.includes(n) && !(n in (plot.letters ?? {}))) ?? "t_9";
+            const t = (Math.atan2(dy, dx) / (2 * Math.PI) + 1) % 1;
+            update({
+              lines: lines.map((l, j) => (j === ib ? { ...l, latex: `${texName(st.b)}=\\operatorname{point}\\left(\\operatorname{circle}\\left(${texName(st.a)},${lengthTex(dx, dy)}\\right),${letter.replace(/_(\d+)/, "_{$1}")}\\right)` } : l)),
+              letters: { ...(plot.letters ?? {}), [letter]: Math.round(t * 1e6) / 1e6 },
+              ranges: { ...(plot.ranges ?? {}), [letter]: [0, 1] },
+            });
+          },
+        });
+    }
     const equation = seriesOf(i).find((s) => s.equation)?.equation;
     if (equation) out.push({ label: "Its equation", title: `${plainMath(equation)} — as a line of its own`, run: () => addLine(equation) });
     return out;
+  };
+  /** the row that names a point */
+  const nameRow = (name: string) => lines.findIndex((l) => nameOf(l.latex) === name);
+  /** a table of values: the row it's of, and a way to work out its y at each x */
+  const linkOf = (id: string) => {
+    const at = lines.findIndex((l) => l.id === id);
+    if (at < 0 || !exprOf(lines[at])) return null;
+    return {
+      latex: exprOf(lines[at]),
+      key: JSON.stringify([exprOf(lines[at]), graphVars, !!settings.degrees]),
+      compute: (xs: string[]) =>
+        mathRequest<{ rows: { text: string }[] }>({ op: "values", exprs: lines.map(exprOf), index: at, xs: xs.map((x) => (readNumber(x) ?? "nan").toString()), vars: graphVars, degrees: !!settings.degrees }).then((r) => r.rows),
+    };
+  };
+  // ---- pictures under the graph: a map, a photo
+  const images = plot.images ?? [];
+  const setImages = (next: XYImage[]) => update({ images: next.length ? next : undefined });
+  const imagePicker = useRef<HTMLInputElement>(null);
+  /** setting a picture's scale: the two spots clicked on it, waiting for the real distance between them */
+  const [scaling, setScaling] = useState<{ id: string; a: [number, number]; b: [number, number]; text: string } | null>(null);
+  const [scaleFor, setScaleFor] = useState<string | null>(null);
+  const addImage = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        // kept to 1600px across: plenty to trace on, light to save
+        const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * k);
+        canvas.height = Math.round(img.height * k);
+        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const src = canvas.toDataURL(file.type === "image/png" ? "image/png" : "image/jpeg", 0.88);
+        const w = plot.window ?? DEFAULT_WINDOW;
+        const width = Math.round((w.xmax - w.xmin) * 0.6 * 100) / 100;
+        const aspect = img.height / img.width;
+        setImages([...images, { id: newId("img"), src, name: file.name, x: Math.round(((w.xmin + w.xmax) / 2 - width / 2) * 100) / 100, y: Math.round(((w.ymin + w.ymax) / 2 - (width * aspect) / 2) * 100) / 100, w: width, aspect, opacity: 0.85 }]);
+        setNotice("To measure on it, set its scale: the ruler in its row");
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+  /** the picture grown or shrunk so the two spots are the typed distance apart (the first spot stays put) */
+  const applyScale = () => {
+    if (!scaling) return;
+    const real = readNumber(scaling.text);
+    const now = Math.hypot(scaling.b[0] - scaling.a[0], scaling.b[1] - scaling.a[1]);
+    setScaling(null);
+    if (!real || real <= 0 || !now) return;
+    const k = real / now;
+    const [ax, ay] = scaling.a;
+    setImages(images.map((im) => (im.id === scaling.id ? { ...im, x: ax - (ax - im.x) * k, y: ay - (ay - im.y) * k, w: im.w * k } : im)));
+    setNotice(`Scaled: those two spots are now ${trim(real)} apart — a grid square is one unit on the picture`);
   };
   /** build from the points picked (or typed): each one already there by its
    * name — one with none gets one, where it is — and new ones added first */
@@ -533,6 +625,13 @@ export default function XYGraph({
     // a copy of a point is a point, named, to build on; of a shape, a shape
     const point = !picks[0]?.shape;
     switch (kind) {
+      case "calibrate": {
+        if (!scaleFor) return;
+        setScaling({ id: scaleFor, a: [picks[0].x, picks[0].y], b: [picks[1].x, picks[1].y], text: "" });
+        setScaleFor(null);
+        setTool("pan");
+        return;
+      }
       case "intersect": {
         // which crossing: the one nearest the second click
         const [a, b] = [shapes.find((s) => s.key === picks[0].shape), shapes.find((s) => s.key === picks[1].shape)];
@@ -770,12 +869,13 @@ export default function XYGraph({
     setAddOpen(false);
     setExamplesOpen(false);
     if (id === "table") return setTables([...tables, { id: newId("table"), rows: [["", ""], ["", ""], ["", ""]] }]);
+    if (id === "image") return imagePicker.current?.click();
     if (id === "triangle") return setLines([...lines.filter((l) => !isBlank(l)), { id: newId("xy"), latex: "", triangle: { given: {} } }]);
     const row = { id: newId("xy"), latex: "", ...(id === "note" ? { note: "" } : {}) };
     setLines([...lines.filter((l) => !isBlank(l)), row]);
     const taken = takenNames();
     const fn = ["f", "g", "h", "p", "q", "u", "v", "w"].find((n) => !lines.some((l) => new RegExp(`^\\s*${n}\\s*(\\\\left)?\\(`).test(l.latex))) ?? "f";
-    const template = (ADDS.find((a) => a.id === id)?.template ?? "").replace("NAME", texName(freshName(taken))).replace("FN", fn);
+    const template = (ADDS.find((a) => a.id === id)?.template ?? "").replace("NAME", texName(id === "list" && !taken.has("L") ? "L" : freshName(taken))).replace("FN", fn);
     // the new field is on the page a frame or two later
     const start = (tries: number) => {
       if (id === "note") return notes.current[row.id]?.focus();
@@ -984,8 +1084,43 @@ export default function XYGraph({
                 onChange={(next) => setTables(tables.map((x) => (x.id === t.id ? next : x)))}
                 onRemove={() => setTables(tables.filter((x) => x.id !== t.id))}
                 onUseFit={(latex) => addLine(latex)}
+                linked={t.of ? linkOf(t.of) : undefined}
               />
             ))}
+            {images.map((im) => (
+              <div key={im.id} className={`xy-image${im.hidden ? " is-hidden" : ""}`}>
+                <div className="xy-table-head">
+                  <img className="xy-image-thumb" src={im.src} alt="" onClick={() => setImages(images.map((x) => (x.id === im.id ? { ...x, hidden: !x.hidden || undefined } : x)))} title={im.hidden ? "Show it" : "Hide it"} />
+                  <span className="xy-table-title">{im.name ?? "Picture"}</span>
+                  <button className={`xy-zoom-btn is-text${scaleFor === im.id ? " is-on" : ""}`} title="Set its scale: click two spots a known distance apart, then type it" onClick={() => (setScaleFor(im.id), setTool("calibrate"))}>
+                    <Icon name="ruler" size={13} /> Scale
+                  </button>
+                  <button className="xy-remove" title="Remove this picture" onClick={() => setImages(images.filter((x) => x.id !== im.id))}>
+                    ×
+                  </button>
+                </div>
+                {scaling?.id === im.id && (
+                  <div className="xy-row">
+                    <span>Those two spots are really</span>
+                    <input autoFocus className="xy-num" value={scaling.text} placeholder="5" onChange={(e) => setScaling({ ...scaling, text: e.target.value })} onKeyDown={(e) => e.key === "Enter" && applyScale()} />
+                    <span className="xy-dim">apart</span>
+                    <button className="xy-zoom-btn is-text" onClick={applyScale}>
+                      Set
+                    </button>
+                  </div>
+                )}
+                <div className="xy-row">
+                  <span className="xy-dim">corner (</span>
+                  <input className="xy-num" value={trim(im.x)} onChange={(e) => readNumber(e.target.value) !== null && setImages(images.map((x) => (x.id === im.id ? { ...x, x: readNumber(e.target.value)! } : x)))} />
+                  <span className="xy-dim">,</span>
+                  <input className="xy-num" value={trim(im.y)} onChange={(e) => readNumber(e.target.value) !== null && setImages(images.map((x) => (x.id === im.id ? { ...x, y: readNumber(e.target.value)! } : x)))} />
+                  <span className="xy-dim">) wide</span>
+                  <input className="xy-num" value={trim(im.w)} onChange={(e) => (readNumber(e.target.value) ?? 0) > 0 && setImages(images.map((x) => (x.id === im.id ? { ...x, w: readNumber(e.target.value)! } : x)))} />
+                  <input className="xy-image-fade" type="range" min={0.1} max={1} step={0.05} value={im.opacity ?? 1} title="How see-through it is" onChange={(e) => setImages(images.map((x) => (x.id === im.id ? { ...x, opacity: Number(e.target.value) } : x)))} />
+                </div>
+              </div>
+            ))}
+            <input ref={imagePicker} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && (addImage(e.target.files[0]), (e.target.value = ""))} />
           </div>
 
           {used.length > 0 && (
@@ -1084,6 +1219,7 @@ export default function XYGraph({
               ]}
               appearance={{ grid: settings.grid, numbers: settings.numbers, xLabel: settings.xLabel, yLabel: settings.yLabel, piX: settings.piX, logX: settings.logX, logY: settings.logY, xStep: settings.xStep, yStep: settings.yStep, unit: settings.unit, dims: settings.dims }}
               onPlot={setPlotDiv}
+              images={images}
               extraTraces={traceLines}
               focus={focusIndex >= 0 ? focusIndex : null}
               onPick={pick}

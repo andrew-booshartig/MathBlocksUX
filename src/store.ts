@@ -313,6 +313,8 @@ export interface XYPlot {
   letters?: Record<string, number>;
   /** a letter's slider: from, to */
   ranges?: Record<string, [number, number]>;
+  /** pictures under it: maps, photos */
+  images?: XYImage[];
   window?: GraphWindow;
   /** drawn by hand: segments, arrows, pen, text */
   drawings?: GraphDrawing[];
@@ -331,6 +333,24 @@ export interface XYTable {
   /** the curve fit to them (linear, quadratic…), and what came out */
   model?: string;
   fit?: { latex: string; r2: number } | null;
+  hidden?: boolean;
+  /** a table of values: its y worked out from this row (its id) at each x typed */
+  of?: string;
+}
+
+/** a picture under the graph — a map, a photo, a scan — placed in graph units */
+export interface XYImage {
+  id: string;
+  /** as a data URL (it's saved with the workspace) */
+  src: string;
+  name?: string;
+  /** its bottom-left corner, and how wide it is (its height follows) */
+  x: number;
+  y: number;
+  w: number;
+  /** height ÷ width */
+  aspect: number;
+  opacity?: number;
   hidden?: boolean;
 }
 

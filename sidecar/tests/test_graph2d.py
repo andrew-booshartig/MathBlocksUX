@@ -196,3 +196,35 @@ def test_circles_arcs_bisectors_polygons_tangents_measures():
     assert len(s[9]["facts"]) == 2
     assert s[10]["facts"] == ["=6"] and s[11]["facts"] == [r"=-\frac{3}{4}\approx-0.75"]
     assert "in a line" in s[12]["error"]
+
+
+def test_lists_statistics_and_distributions():
+    L = r"L=\left\lbrack3,7,7,2,9,4,7,5\right\rbrack"
+    s = shapes(L, r"mean(L)", r"median(L)", r"stdev(L)", r"quantile(L,0.25)", r"\max\left(L\right)", r"normalcdf(-1,1)", r"binompdf(10,0.5,3)", r"binomcdf(10,\frac{1}{2},3)", r"length(L)")
+    assert s[0]["facts"][0] == "n=8"
+    assert [s[k]["facts"][0] for k in (1, 2, 4, 5, 9)] == [r"=\frac{11}{2}\approx5.5", "=6", r"=\frac{15}{4}\approx3.75", "=9", "=8"]
+    assert s[3]["facts"][0] == r"=\frac{2\sqrt{70}}{7}\approx2.39"
+    assert s[6]["facts"][0] == "=0.6827" and s[7]["facts"][0] == r"=\frac{15}{128}\approx0.1172" and s[8]["facts"][0] == r"=\frac{11}{64}\approx0.1719"
+
+
+def test_pictures_of_data():
+    L = r"L=\left\lbrack3,7,7,2,9,4,7,5\right\rbrack"
+    s = shapes(L, r"histogram(L,2)", r"boxplot(L)", r"dotplot(L)", r"scatter([1,2,3],[2,4,5])", r"y=normalpdf(x,0,1)")
+    assert s[1]["kind"] == "polygon" and s[1]["facts"][2] == r"\text{tallest }3"
+    assert "2, 3.75, 6, 7, 9" in s[2]["facts"][0]
+    assert s[3]["y"].count(3) == 1 and s[4]["x"] == [1.0, 2.0, 3.0]
+    assert s[5]["kind"] == "function"
+
+
+def test_triangulate_from_two_bearings():
+    s = shapes(r"A=\left(0,0\right)", r"B=\left(10,0\right)", r"P=triangulate(A,45,B,315)", r"triangulate(A,45,B,45)")
+    assert (s[2]["x"], s[2]["y"]) == ([5.0], [5.0])
+    assert "never meet" in s[3]["error"]
+
+
+def test_table_of_values():
+    from mathcore.graph2d import op_values
+
+    rows = op_values({"exprs": [r"f(x)=\frac{1}{x}"], "index": 0, "xs": ["-2", "0", "3"]})["rows"]
+    assert [r["text"] for r in rows] == ["-1/2", "undefined", "1/3"]
+    assert [r["text"] for r in op_values({"exprs": [r"y=mx+1"], "index": 0, "xs": ["2"], "vars": {"m": "3"}})["rows"]] == ["7"]

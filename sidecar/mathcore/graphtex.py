@@ -42,6 +42,7 @@ _AS_SYM = {
     "\\lt": "<", "\\gt": ">", "\\ne": "!=", "\\neq": "!=",
     "\\{": "LB", "\\}": "RB", "\\lbrace": "LB", "\\rbrace": "RB", "\\\\": "ROW", "\\|": "|", "\\vert": "|", "\\mid": "|",
     "\\lfloor": "LFLOOR", "\\rfloor": "RFLOOR", "\\lceil": "LCEIL", "\\rceil": "RCEIL", "\\prime": "'",
+    "\\lbrack": "[", "\\rbrack": "]",
 }
 _GREEK = {"alpha", "beta", "gamma", "delta", "epsilon", "varepsilon", "zeta", "eta", "theta", "vartheta", "iota", "kappa", "lambda", "mu", "nu", "xi", "rho", "sigma", "tau", "upsilon", "phi", "varphi", "chi", "psi", "omega"}
 
@@ -61,7 +62,10 @@ _FUNCS = {
 GEOMETRY = (
     "segment", "line", "ray", "vector", "circle", "polygon", "angle", "perpendicular", "parallel", "midpoint", "distance",
     "intersection", "reflect", "rotate", "translate", "dilate", "arc", "sector", "semicircle", "bisector", "tangent",
-    "length", "area", "perimeter", "slope", "point", "locus",
+    "length", "area", "perimeter", "slope", "point", "locus", "triangulate",
+    # statistics (stats.py)
+    "mean", "median", "stdev", "stdevp", "var", "total", "count", "quantile",
+    "normalpdf", "normalcdf", "binompdf", "binomcdf", "histogram", "boxplot", "dotplot", "scatter",
 )
 _SPELLED = sorted(GEOMETRY, key=len, reverse=True)
 _INVERSE = {"sin": "arcsin", "cos": "arccos", "tan": "arctan", "sec": "arcsec", "csc": "arccsc", "cot": "arccot", "sinh": "arcsinh", "cosh": "arccosh", "tanh": "arctanh"}
@@ -309,6 +313,11 @@ class Reader:
                         self.take()
                         items.append(self.sum())
                     self.expect("sym", close)
+                    if value == "[":
+                        # [1, 2, 3]: a list (a point is round brackets)
+                        from .stats import build as stats
+
+                        return stats("list", items)
                     return sympy.Tuple(*items)
                 self.expect("sym", close)
                 return first
@@ -462,6 +471,11 @@ class Reader:
                 self.take()
                 args.append(self.sum())
             self.expect("sym", ")")
+            from .stats import is_list, numbers
+
+            if any(is_list(a) for a in args):
+                vals = numbers(args, name)
+                return (min if name == "min" else max)(vals, key=float)
             return (sympy.Min if name == "min" else sympy.Max)(*args)
         if name in _FUNCS or name == "log":
             return self.function(name)

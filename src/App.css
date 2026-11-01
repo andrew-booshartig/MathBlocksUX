@@ -7687,3 +7687,43 @@ math-field {
   outline: none;
   box-shadow: 0 6px 16px color-mix(in srgb, var(--t-bg0, #000) 40%, transparent);
 }
+
+/* a table of values: its y worked out, not typed */
+.xy-cell.is-computed {
+  border-style: dashed;
+  color: var(--t-subtle, #a9a9bd);
+}
+
+/* a picture under the graph: a map, a photo */
+.xy-image {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px 8px 10px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 10px;
+  background: var(--t-bg1, #0e0e12);
+  font-size: 12.5px;
+}
+
+.xy-image-thumb {
+  width: 34px;
+  height: 26px;
+  object-fit: cover;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.xy-image.is-hidden .xy-image-thumb {
+  opacity: 0.35;
+}
+
+.xy-image .xy-num {
+  width: 52px;
+}
+
+.xy-image-fade {
+  flex: 1;
+  min-width: 50px;
+  accent-color: var(--t-pink, #c99bbf);
+}

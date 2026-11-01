@@ -8,7 +8,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { plainMath } from "./plainMath";
 import Plot from "./PlotlyChart";
 import { type GraphMarker, type GraphResult, type GraphSeries, useLiveMath } from "./mathSidecar";
-import type { GraphAppearance, GraphDrawing, GraphLineStyle, GraphTheme, GraphWindow } from "./store";
+import type { GraphAppearance, GraphDrawing, GraphLineStyle, GraphTheme, GraphWindow, XYImage } from "./store";
 import { minorStep, niceStep } from "./GraphDraw";
 import { Tex } from "./ui";
 
@@ -415,6 +415,7 @@ export default function GraphView({
   degrees = false,
   colors,
   focus = null,
+  images = [],
   onPick,
   wheel = false,
   onResult,
@@ -452,6 +453,8 @@ export default function GraphView({
   /** the line picked (in the list, or by clicking its curve): drawn with a
    * glow, and only its marked points labelled — the rest say theirs when hovered */
   focus?: number | null;
+  /** pictures under the graph (maps, photos), placed in graph units */
+  images?: XYImage[];
   /** a click on the graph: the line whose curve is under it, or null */
   onPick?: (index: number | null) => void;
   /** pinch or ⌘-scroll zooms, two-finger scrolling moves around (a tile; not the canvas, where scrolling scrolls the page) */
@@ -721,13 +724,16 @@ export default function GraphView({
       width: plotWidth,
       height: plotHeight,
       annotations: [...drawn.annotations, ...curveLabels, ...arrows, ...dimLabels],
+      images: images
+        .filter((im) => !im.hidden)
+        .map((im) => ({ source: im.src, xref: "x", yref: "y", x: im.x, y: im.y + im.w * im.aspect, sizex: im.w, sizey: im.w * im.aspect, xanchor: "left", yanchor: "top", sizing: "stretch", opacity: im.opacity ?? 1, layer: "below" })),
       xaxis: axis([window.xmin, window.xmax], gridSteps.x, per(perX), appearance.xLabel, !!appearance.piX && !logX, logX),
       yaxis: {
         ...axis([window.ymin, window.ymax], gridSteps.y, per(perY), appearance.yLabel, false, logY),
         ...(equal ? { scaleanchor: "x" as const, scaleratio: 1 } : {}),
       },
     };
-  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels, arrows, dimLabels, gridSteps, logX, logY]);
+  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels, arrows, dimLabels, gridSteps, logX, logY, images]);
 
   const [plot, setPlot] = useState<PlotDiv>(null);
   const ready = (_figure: unknown, div: PlotDiv) => {

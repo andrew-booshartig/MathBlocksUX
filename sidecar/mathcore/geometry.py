@@ -21,7 +21,10 @@ from .graphtex import GEOMETRY, X
 from .parsing import MathInputError
 
 # what can be drawn (the rest of geometry's words make points, numbers or one of these)
-SHAPES = ("segment", "line", "ray", "vector", "circle", "polygon", "angle", "perpendicular", "parallel", "arc", "sector", "points", "group", "locus")
+SHAPES = (
+    "segment", "line", "ray", "vector", "circle", "polygon", "angle", "perpendicular", "parallel", "arc", "sector", "points", "group", "locus",
+    "list", "histogram", "boxplot", "dotplot",
+)
 STRAIGHT = ("segment", "line", "ray", "vector", "perpendicular", "parallel")
 FAR = 1e5
 
@@ -38,6 +41,10 @@ def _point(p, name):
 
 def build(name: str, args: list):
     """name(args…), as read → a point (midpoint), a number (distance), or a shape"""
+    from . import stats
+
+    if name in stats.WORDS:
+        return stats.build(name, args)
     more = build_more(name, args)
     if more is not None:
         return more
@@ -263,6 +270,10 @@ def draw(shape, window=None):
         return _angle(shape, window, num), None
     if kind in ("arc", "sector"):
         return _arc_draw(shape, num), None
+    if kind in ("list", "histogram", "boxplot", "dotplot"):
+        from . import stats
+
+        return stats.draw(shape), None
     if kind == "locus":
         p, var, lo, hi = shape.args
         free = (p[0].free_symbols | p[1].free_symbols) - {var}
@@ -638,6 +649,24 @@ def build_more(name: str, args: list):
         if len(args) == 3:
             return lines[int(args[2]) - 1]
         return F("group")(*lines)
+    if name == "length" and len(args) == 1 and is_shape(args[0]) and args[0].func.__name__ == "list":
+        return sympy.Integer(len(args[0].args))
+    if name == "triangulate":
+        # where two sightings meet: from A on one compass bearing, from B on
+        # another (degrees clockwise from north, as on a map)
+        if len(args) != 4:
+            raise MathInputError("triangulate( ) takes a point and its bearing, then another: triangulate(A, 40, B, 310)")
+        a, b = _point(args[0], name), _point(args[2], name)
+        da = (sympy.sin(args[1] * sympy.pi / 180), sympy.cos(args[1] * sympy.pi / 180))
+        db = (sympy.sin(args[3] * sympy.pi / 180), sympy.cos(args[3] * sympy.pi / 180))
+        det = _exact(_cross(da, db))
+        if det == 0:
+            raise MathInputError("those bearings run side by side — they never meet")
+        w = (b[0] - a[0], b[1] - a[1])
+        t, s = _exact(_cross(w, db) / det), _exact(_cross(w, da) / det)
+        if (_num_or_none(t) or 0) < -1e-9 or (_num_or_none(s) or 0) < -1e-9:
+            raise MathInputError("those sightings meet behind one of the points — check the bearings")
+        return _pt(a[0] + t * da[0], a[1] + t * da[1])
     if name in ("length", "area", "perimeter", "slope"):
         if len(args) != 1 or not is_shape(args[0]):
             raise MathInputError(f"{name}( ) takes one shape: {name}(segment(A, B))")

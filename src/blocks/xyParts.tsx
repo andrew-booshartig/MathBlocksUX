@@ -229,8 +229,40 @@ export const tablePoints = (t: XYTable): [number, number][] =>
     return x !== null && y !== null ? [[x, y] as [number, number]] : [];
   });
 
-export function DataTable({ table, color, onChange, onRemove, onUseFit }: { table: XYTable; color: string; onChange: (t: XYTable) => void; onRemove: () => void; onUseFit: (latex: string) => void }) {
+export function DataTable({
+  table,
+  color,
+  linked,
+  onChange,
+  onRemove,
+  onUseFit,
+}: {
+  table: XYTable;
+  color: string;
+  /** a table of values: the row it's of (as math), and its y at each x */
+  linked?: { latex: string; key: string; compute: (xs: string[]) => Promise<{ text: string }[]> } | null;
+  onChange: (t: XYTable) => void;
+  onRemove: () => void;
+  onUseFit: (latex: string) => void;
+}) {
   const rows = table.rows.length ? table.rows : ([["", ""]] as [string, string][]);
+  // a table of values: each y worked out again when an x (or the row) changes
+  const xsKey = JSON.stringify(rows.map((r) => r[0]));
+  useEffect(() => {
+    if (!linked) return;
+    let live = true;
+    linked
+      .compute(rows.map((r) => r[0]))
+      .then((out) => {
+        if (!live) return;
+        const next = rows.map((r, k) => [r[0], r[0].trim() ? (out[k]?.text ?? "") : ""] as [string, string]);
+        if (JSON.stringify(next) !== JSON.stringify(latest.current.rows)) onChange({ ...latest.current, rows: next });
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [xsKey, linked?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const points = tablePoints(table);
   // the fit, worked out again whenever the data or the kind changes
   const key = JSON.stringify([points, table.model]);
@@ -264,14 +296,22 @@ export function DataTable({ table, color, onChange, onRemove, onUseFit }: { tabl
     <div className={`xy-table${table.hidden ? " is-hidden" : ""}`}>
       <div className="xy-table-head">
         <button className="xy-swatch" style={{ background: table.hidden ? "transparent" : color, borderColor: color }} title={table.hidden ? "Show it" : "Hide it"} onClick={() => onChange({ ...table, hidden: !table.hidden || undefined })} />
-        <span className="xy-table-title">Data · {points.length} point{points.length === 1 ? "" : "s"}</span>
-        <select className="xy-select" value={table.model ?? ""} title="Fit a curve to the points (regression)" onChange={(e) => onChange({ ...table, model: e.target.value || undefined })}>
-          {MODELS.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
+        {table.of ? (
+          <span className="xy-table-title">
+            Values of {linked ? <Tex math={linked.latex} /> : <span className="xy-dim">(its row is gone)</span>}
+          </span>
+        ) : (
+          <>
+            <span className="xy-table-title">Data · {points.length} point{points.length === 1 ? "" : "s"}</span>
+            <select className="xy-select" value={table.model ?? ""} title="Fit a curve to the points (regression)" onChange={(e) => onChange({ ...table, model: e.target.value || undefined })}>
+              {MODELS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
         <button className="xy-remove" title="Remove this table" onClick={onRemove}>
           ×
         </button>
@@ -284,6 +324,7 @@ export function DataTable({ table, color, onChange, onRemove, onUseFit }: { tabl
           <TableRow
             key={r}
             row={row}
+            computed={!!table.of}
             onCell={(c, v) => setCell(r, c, v)}
             onPaste={(text) => paste(r, text)}
             onEnter={() => onChange({ ...table, rows: [...rows.slice(0, r + 1), ["", ""], ...rows.slice(r + 1)] })}
@@ -292,10 +333,18 @@ export function DataTable({ table, color, onChange, onRemove, onUseFit }: { tabl
         ))}
       </div>
       <div className="xy-table-foot">
-        <button className="xy-add" onClick={() => onChange({ ...table, rows: [...rows, ["", ""]] })}>
+        <button
+          className="xy-add"
+          onClick={() => {
+            // a table of values goes on by the same step
+            const [a, b] = [readNumber(rows[rows.length - 2]?.[0] ?? ""), readNumber(rows[rows.length - 1]?.[0] ?? "")];
+            const next = table.of && b !== null ? String(Math.round((b + (a !== null ? b - a : 1)) * 1e6) / 1e6) : "";
+            onChange({ ...table, rows: [...rows, [next, ""]] });
+          }}
+        >
           + row
         </button>
-        <span className="xy-dim">paste columns from a spreadsheet</span>
+        <span className="xy-dim">{table.of ? "type any x — y is worked out" : "paste columns from a spreadsheet"}</span>
       </div>
       {table.model && (
         <div className="xy-fit">
@@ -318,10 +367,27 @@ export function DataTable({ table, color, onChange, onRemove, onUseFit }: { tabl
   );
 }
 
-function TableRow({ row, onCell, onPaste, onEnter, onRemove }: { row: [string, string]; onCell: (c: 0 | 1, v: string) => void; onPaste: (text: string) => boolean; onEnter: () => void; onRemove?: () => void }) {
+function TableRow({
+  row,
+  computed,
+  onCell,
+  onPaste,
+  onEnter,
+  onRemove,
+}: {
+  row: [string, string];
+  /** y is worked out, not typed */
+  computed?: boolean;
+  onCell: (c: 0 | 1, v: string) => void;
+  onPaste: (text: string) => boolean;
+  onEnter: () => void;
+  onRemove?: () => void;
+}) {
   const cell = (c: 0 | 1) => (
     <input
-      className={`xy-cell${row[c].trim() && readNumber(row[c]) === null ? " is-bad" : ""}`}
+      className={`xy-cell${computed && c === 1 ? " is-computed" : row[c].trim() && readNumber(row[c]) === null ? " is-bad" : ""}`}
+      readOnly={computed && c === 1}
+      tabIndex={computed && c === 1 ? -1 : undefined}
       value={row[c]}
       spellCheck={false}
       onChange={(e) => onCell(c, e.target.value)}
@@ -453,7 +519,13 @@ export const ADDS: { id: string; group: string; label: string; tex: string; temp
   { id: "circle", group: "Geometry", label: "Circle", tex: "\\odot A", template: "\\operatorname{circle}\\left(#?,#?\\right)", title: "Its center, then its radius or a point on it" },
   { id: "triangle", group: "Geometry", label: "Triangle", tex: "\\triangle\\,a,b,\\angle C", title: "From what you know: sides, angles, or some of each — the rest worked out" },
   { id: "polygon", group: "Geometry", label: "Polygon", tex: "\\triangle ABC", template: "\\operatorname{polygon}\\left(#?,#?,#?\\right)", title: "Its corners, in order" },
+  { id: "triangulate", group: "Geometry", label: "Triangulate", tex: "\\text{bearings}", template: "\\operatorname{triangulate}\\left(#?,#?,#?,#?\\right)", title: "Where two sightings meet: a point and its compass bearing, then another — triangulate(A, 40, B, 310)" },
+  { id: "list", group: "Statistics", label: "List", tex: "L=[3,7,2]", template: "NAME=\\left\\lbrack#?\\right\\rbrack", title: "A list of numbers — then mean(L), median(L), stdev(L)…" },
+  { id: "histogram", group: "Statistics", label: "Histogram", tex: "\\text{histogram}(L)", template: "\\operatorname{histogram}\\left(#?\\right)", title: "Bars of how many fall in each range — histogram(L) or histogram(L, 5)" },
+  { id: "boxplot", group: "Statistics", label: "Box plot", tex: "\\text{boxplot}(L)", template: "\\operatorname{boxplot}\\left(#?\\right)", title: "Min, Q1, median, Q3, max" },
+  { id: "normal", group: "Statistics", label: "Normal curve", tex: "y=\\text{normalpdf}(x)", template: "y=\\operatorname{normalpdf}\\left(x,#?,#?\\right)", title: "The bell curve — its mean, then its standard deviation; normalcdf(a, b, μ, σ) for the chance between a and b" },
   { id: "table", group: "Data and notes", label: "Table", tex: "x\\;\\big|\\;y", title: "Data points — and a curve fitted to them" },
+  { id: "image", group: "Data and notes", label: "Image", tex: "\\text{map, photo}", title: "A picture under the graph — a map to triangulate on, a photo to trace, a scan" },
   { id: "note", group: "Data and notes", label: "Note", tex: "\\text{Aa}", title: "Words in the list: what this shows, what to try next" },
 ];
 

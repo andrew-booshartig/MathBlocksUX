@@ -497,6 +497,67 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
 # ------------------------------------------------------------------ the op
 
 
+def _context(lines: list[str], consts: set) -> tuple[dict, dict]:
+    """functions defined on any line (f(x) = …), and points and shapes named
+    on one (A = (1, 2)), can be used on every line — in any order"""
+    functions: dict = {}
+    points: dict = {}
+    for _ in range(4):
+        for text in lines:
+            try:
+                if graphtex.definition(text):
+                    p = graphtex.read_line(text, functions, consts, points)
+                    name, params = p.define
+                    functions[name] = (params, p.sides[1])
+                elif graphtex.naming(text):
+                    p = graphtex.read_line(text, functions, consts, points)
+                    if p.name:
+                        points[p.name] = p.sides[0]
+            except Exception:  # noqa: BLE001 — reported with its line in the graph
+                pass
+    return functions, points
+
+
+def _said(v) -> str:
+    """a table's number, as it'd be written: 7, -3/4, 2.449"""
+    if v.is_Integer:
+        return str(v)
+    if v.is_Rational and v.q <= 1000:
+        return f"{v.p}/{v.q}"
+    return f"{float(v):.6g}"
+
+
+def op_values(req: dict) -> dict:
+    """a table of values for one row (y = …, or f(x) = …): its y at each x, exact where it can be"""
+    lines = [str(s) for s in req.get("exprs") or []]
+    index = int(req.get("index", 0))
+    values = _values(req.get("vars") or {})
+    consts = {str(s) for s in values}
+    functions, points = _context(lines, consts)
+    p = graphtex.read_line(lines[index], functions, consts, points)
+    if p.define:
+        params = p.define[1]
+        expr = p.sides[1].subs(params[0], X) if params else p.sides[1]
+    elif p.ops == ["="] and p.sides[0] == Y and not p.sides[1].has(Y):
+        expr = p.sides[1]
+    elif not p.ops and not p.sides[0].has(Y) and not isinstance(p.sides[0], sympy.Tuple):
+        expr = p.sides[0]
+    else:
+        raise MathInputError("a table of values needs y = … or f(x) = …")
+    expr = expr.subs(values)
+    if req.get("degrees"):
+        expr = _degrees(expr)
+    out = []
+    for x in req.get("xs") or []:
+        try:
+            v = sympy.simplify(expr.subs(X, sympy.nsimplify(str(x))))
+            f = float(sympy.N(v))
+            out.append({"y": f, "text": _said(v)} if math.isfinite(f) and v.is_real is not False else {"y": None, "text": "undefined"})
+        except Exception:  # noqa: BLE001 — undefined there (÷0, √ of a negative)
+            out.append({"y": None, "text": "undefined"})
+    return {"rows": out}
+
+
 def op_graph2d(req: dict) -> dict:
     lines = [str(s) for s in req.get("exprs") or []]
     xr = [float(v) for v in req.get("xrange") or [-30, 30]]
@@ -515,23 +576,7 @@ def op_graph2d(req: dict) -> dict:
     values = _values(req.get("vars") or {})
     consts = {str(s) for s in values}
 
-    # functions defined on any line (f(x) = …), and points and shapes named
-    # on one (A = (1, 2)), can be used on every line — in any order
-    functions: dict = {}
-    points: dict = {}
-    for _ in range(4):
-        for text in lines:
-            try:
-                if graphtex.definition(text):
-                    p = graphtex.read_line(text, functions, consts, points)
-                    name, params = p.define
-                    functions[name] = (params, p.sides[1])
-                elif graphtex.naming(text):
-                    p = graphtex.read_line(text, functions, consts, points)
-                    if p.name:
-                        points[p.name] = p.sides[0]
-            except Exception:  # noqa: BLE001 — reported with its line below
-                pass
+    functions, points = _context(lines, consts)
 
     series, marks, graphed = [], [], []
     for i, text in enumerate(lines):
