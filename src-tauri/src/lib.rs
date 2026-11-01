@@ -35,6 +35,7 @@ pub fn run() {
             kernel::kernel_run,
             kernel::kernel_vars,
             kernel::kernel_names,
+            kernel::kernel_complete,
             kernel::kernel_interrupt,
             kernel::kernel_restart,
             workspace::save_document,

@@ -96,9 +96,16 @@ async fn ask(kernels: &Kernels, notebook: String, request: Value) -> Result<Valu
     reply
 }
 
+/// Run a cell — the calculator's variables (numbers) come along, as `calc`.
 #[tauri::command]
-pub async fn kernel_run(kernels: State<'_, Kernels>, notebook: String, code: String) -> Result<Value, String> {
-    ask(&kernels, notebook, serde_json::json!({ "op": "run", "code": code })).await
+pub async fn kernel_run(kernels: State<'_, Kernels>, notebook: String, code: String, calc: Option<Value>) -> Result<Value, String> {
+    ask(&kernels, notebook, serde_json::json!({ "op": "run", "code": code, "calc": calc })).await
+}
+
+/// What could finish the word the code (up to the cursor) ends with.
+#[tauri::command]
+pub async fn kernel_complete(kernels: State<'_, Kernels>, notebook: String, code: String) -> Result<Value, String> {
+    ask(&kernels, notebook, serde_json::json!({ "op": "complete", "code": code })).await
 }
 
 #[tauri::command]

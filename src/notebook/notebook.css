@@ -1322,3 +1322,106 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* ---- Python, colored: in the page, and as it's typed (the colors drawn
+   under a see-through editor, so the caret and selection are the real ones) */
+.hl-k {
+  color: var(--t-pink, #c678dd);
+}
+
+.hl-s {
+  color: var(--t-green, #98c379);
+}
+
+.hl-c {
+  color: var(--t-muted);
+  font-style: italic;
+}
+
+.hl-n {
+  color: var(--t-orange, #d19a66);
+}
+
+.hl-b {
+  color: var(--t-cyan, #56b6c2);
+}
+
+.hl-f {
+  color: var(--t-blue, #61afef);
+}
+
+.hl-d {
+  color: var(--t-yellow, #e5c07b);
+}
+
+.nb-edit-wrap {
+  position: relative;
+}
+
+.nb-block.is-cell > .nb-edit-wrap {
+  margin: 6px 10px 10px;
+}
+
+.nb-edit-wrap > .nb-edit,
+.nb-edit-wrap > .nb-edit-under {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  tab-size: 4;
+}
+
+.nb-edit-under {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.nb-edit.is-over {
+  position: relative;
+  background: transparent;
+  border-color: transparent;
+  color: transparent;
+  caret-color: var(--t-text);
+}
+
+.nb-edit.is-over::selection {
+  background: color-mix(in srgb, var(--t-pink) 35%, transparent);
+  color: transparent;
+}
+
+/* Tab completion: what could finish the word */
+.nb-complete {
+  display: flex;
+  flex-direction: column;
+  max-height: 190px;
+  overflow-y: auto;
+  margin: -4px 10px 10px;
+  padding: 4px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: var(--t-bg3);
+}
+
+.nb-complete-item {
+  padding: 3px 8px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--t-text);
+  font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nb-complete-item.is-at,
+.nb-complete-item:hover {
+  background: color-mix(in srgb, var(--t-pink) 22%, transparent);
+}
+
+.nb-outline-item {
+  max-width: 320px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

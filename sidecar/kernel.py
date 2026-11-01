@@ -8,6 +8,10 @@ JSON line each way:
                                    the cells that depend on it — reactive)
   {"op": "vars"}                 → the variables there are now
   {"op": "names", "codes": [..]} → each cell's made and used names, unrun
+  {"op": "complete", "code": ".."} → names that finish the word the code ends with
+
+The calculator's variables come along with each run, as calc (calc.m,
+calc["w"]) — the calculator and the notebook sharing their numbers.
 
 An interrupt (SIGINT) stops the cell running; the kernel carries on."""
 
@@ -27,7 +31,20 @@ import traceback
 MAX_TEXT = 50_000  # characters of printout kept per run
 BUILTIN = set(dir(builtins))
 
-ns: dict = {"__name__": "__main__", "math": math}
+class Calc(dict):
+    """the calculator's variables: calc.m, or calc["m"]"""
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(f"the calculator has no variable {name}") from None
+
+    def __repr__(self):
+        return "calc(" + ", ".join(f"{k}={v:g}" for k, v in self.items()) + ")"
+
+
+ns: dict = {"__name__": "__main__", "math": math, "calc": Calc()}
 count = 0
 plt = None
 sp = None
@@ -116,9 +133,35 @@ def show(value, out: dict):
     out["value"] = repr(value)[:MAX_TEXT]
 
 
-def run(code: str) -> dict:
+def complete(code: str) -> dict:
+    """what could finish the word (or dotted name — np.lin…) the code ends with"""
+    import re
+    import rlcompleter
+
+    m = re.search(r"[A-Za-z_][\w.]*$", code)
+    word = m.group(0) if m else ""
+    if not word:
+        return {"word": "", "matches": []}
+    done = rlcompleter.Completer(ns)
+    found: list[str] = []
+    for i in range(200):
+        try:
+            hit = done.complete(word, i)
+        except Exception:  # noqa: BLE001 — a name whose attributes can't be listed
+            break
+        if hit is None:
+            break
+        hit = hit.rstrip("(")
+        if hit not in found and not hit.split(".")[-1].startswith("__"):
+            found.append(hit)
+    return {"word": word, "matches": found[:60]}
+
+
+def run(code: str, calc: dict | None = None) -> dict:
     global count
     count += 1
+    if calc is not None:
+        ns["calc"] = Calc({k: v for k, v in calc.items() if isinstance(v, (int, float))})
     out: dict = {"count": count, "stdout": "", "images": [], "value": None, "latex": None, "html": None, "error": None}
     printed = io.StringIO()
     start = time.perf_counter()
@@ -161,7 +204,7 @@ def _is_plot(value) -> bool:
 def variables() -> list[dict]:
     out = []
     for name, value in ns.items():
-        if name.startswith("_") or name in ("math", "np", "numpy", "plt", "sp", "sympy", "pd") or type(value).__name__ == "module":
+        if name.startswith("_") or name in ("math", "np", "numpy", "plt", "sp", "sympy", "pd", "calc") or type(value).__name__ == "module":
             continue
         kind = type(value).__name__
         shape = getattr(value, "shape", None)
@@ -188,7 +231,9 @@ def main():
             req = json.loads(line)
             op = req.get("op")
             if op == "run":
-                reply = run(str(req.get("code", "")))
+                reply = run(str(req.get("code", "")), req.get("calc"))
+            elif op == "complete":
+                reply = complete(str(req.get("code", "")))
             elif op == "vars":
                 reply = {"vars": variables()}
             elif op == "names":

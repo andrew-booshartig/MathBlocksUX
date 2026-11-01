@@ -24,6 +24,7 @@ const PATHS: Record<string, string> = {
   circle: "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 12l5.6-5.6M12 12h.01",
   polygon: "M5 18 7.5 6 18 8.5 19.5 17.5z",
   rectangle: "M4 6.5h16v11H4z",
+  list: "M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01",
   ruler: "M3 16.5 16.5 3 21 7.5 7.5 21zM7 12.5l2 2M10 9.5l2 2M13 6.5l2 2",
   angle: "M4 19h16M4 19 14.5 5M10.5 19a6.5 6.5 0 0 0-2.6-5.2",
   perpendicular: "M4 20h16M11 20V4M11 15.5h4.5V20",

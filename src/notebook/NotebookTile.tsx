@@ -23,6 +23,7 @@ import Preview from "./Preview";
 import { notebookHtml } from "./print";
 import { TEMPLATES, type Template, problemSection, userTemplate } from "./templates";
 import { fromIpynb, toIpynb, toScript } from "./jupyter";
+import { highlightPython } from "./highlight";
 import "./notebook.css";
 
 type Listing = { name: string; modified: number }[];
@@ -76,7 +77,24 @@ const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon: string
 const LANG_LABEL: Record<string, string> = { calc: "Calc", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 
 /** a textarea as tall as what's in it */
-function AutoText({ value, onChange, onKeyDown, onBlur, mono, placeholder }: { value: string; onChange: (v: string) => void; onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void; onBlur?: () => void; mono?: boolean; placeholder?: string }) {
+function AutoText({
+  value,
+  onChange,
+  onKeyDown,
+  onBlur,
+  mono,
+  placeholder,
+  highlight,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
+  onBlur?: () => void;
+  mono?: boolean;
+  placeholder?: string;
+  /** code colored as it's typed: the colors drawn under clear text */
+  highlight?: (text: string) => string;
+}) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     const el = ref.current;
@@ -90,10 +108,10 @@ function AutoText({ value, onChange, onKeyDown, onBlur, mono, placeholder }: { v
     el.focus();
     el.setSelectionRange(el.value.length, el.value.length);
   }, []);
-  return (
+  const area = (
     <textarea
       ref={ref}
-      className={`nb-edit${mono ? " is-mono" : ""}`}
+      className={`nb-edit${mono ? " is-mono" : ""}${highlight ? " is-over" : ""}`}
       value={value}
       spellCheck={!mono}
       placeholder={placeholder}
@@ -102,9 +120,27 @@ function AutoText({ value, onChange, onKeyDown, onBlur, mono, placeholder }: { v
       onBlur={onBlur}
     />
   );
+  if (!highlight) return area;
+  return (
+    <div className="nb-edit-wrap">
+      <pre className="nb-edit is-mono nb-edit-under" aria-hidden dangerouslySetInnerHTML={{ __html: `${highlight(value)}\n` }} />
+      {area}
+    </div>
+  );
 }
 
-export default function NotebookTile({ name, onOpen, work }: { name?: string; onOpen: (name: string | undefined) => void; work: NotebookWork }) {
+export default function NotebookTile({
+  name,
+  onOpen,
+  work,
+  calcVars,
+}: {
+  name?: string;
+  onOpen: (name: string | undefined) => void;
+  work: NotebookWork;
+  /** the calculator's variables — Python cells see them as calc.m, calc["w"] */
+  calcVars?: Record<string, number | null>;
+}) {
   const [doc, setDoc] = useState<NotebookDoc | null>(null);
   const [view, setView] = useState<"doc" | "source" | "new">(name ? "doc" : "new");
   const [listing, setListing] = useState<Listing>([]);
@@ -284,10 +320,32 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
 
   // ---- python cells: a kernel of the notebook's own, kept running (like
   // Jupyter's) — what one cell makes, the next can use. Runs wait their turn.
+  /** the headings, in order: the outline */
+  const outline = useMemo(
+    () =>
+      (doc?.blocks ?? []).flatMap((b) =>
+        b.kind === "text" ? [...b.text.matchAll(/^(#{1,4})\s+(.+)$/gm)].map((m) => ({ id: b.id, level: m[1].length, text: m[2].replace(/[*_`$]/g, "") })) : [],
+      ),
+    [doc],
+  );
   const codesOf = (d: NotebookDoc | null) => (d?.blocks ?? []).filter((b) => b.kind === "cell" && b.lang === "python").map((b) => (b as { code: string }).code);
   const pythonCodes = codesOf(doc);
   const pyRef = useRef(py);
   pyRef.current = py;
+  const calcVarsRef = useRef(calcVars);
+  calcVarsRef.current = calcVars;
+  // Tab completion: the names that could finish the word, one picked with ↑ ↓
+  const [complete, setComplete] = useState<{ word: string; items: string[]; at: number } | null>(null);
+  const completeEl = useRef<HTMLTextAreaElement | null>(null);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  /** the word before the cursor (np.lin) swapped for what's picked (np.linspace) */
+  const finishWord = (el: HTMLTextAreaElement, word: string, full: string) => {
+    const at = el.selectionStart;
+    const next = `${el.value.slice(0, at - word.length)}${full}${el.value.slice(at)}`;
+    setDraft(next);
+    const caret = at - word.length + full.length;
+    requestAnimationFrame(() => el.setSelectionRange(caret, caret));
+  };
   const turn = useRef<Promise<unknown>>(Promise.resolve());
   const keepOutputs = (next: Record<string, PyOutput>) => {
     // only what's in the notebook now is kept
@@ -316,7 +374,8 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
         setKernel("busy");
         let out: PyOutput;
         try {
-          out = await invoke<PyOutput>("kernel_run", { notebook: name, code });
+          const calc = Object.fromEntries(Object.entries(calcVarsRef.current ?? {}).filter(([, v]) => typeof v === "number"));
+          out = await invoke<PyOutput>("kernel_run", { notebook: name, code, calc });
         } catch (err) {
           out = { error: errorText(err) };
         }
@@ -451,6 +510,43 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     } else if (draft !== b.code) updateBlock(b.id, { code: draft });
   };
   const editKeys = (e: KeyboardEvent<HTMLTextAreaElement>, b: Block) => {
+    if (b.kind === "cell" && b.lang === "python") {
+      if (complete) {
+        const n = complete.items.length;
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          return setComplete({ ...complete, at: (complete.at + (e.key === "ArrowDown" ? 1 : -1) + n) % n });
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          finishWord(e.currentTarget, complete.word, complete.items[complete.at]);
+          return setComplete(null);
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          return setComplete(null);
+        }
+        setComplete(null);
+      }
+      const el = e.currentTarget;
+      const before = el.value.slice(0, el.selectionStart);
+      // Tab after a name: finish it (from what Python knows right now) — else it indents
+      if (e.key === "Tab" && !e.shiftKey && el.selectionStart === el.selectionEnd && /[A-Za-z_][\w.]*$/.test(before) && name) {
+        e.preventDefault();
+        completeEl.current = el;
+        invoke<{ word: string; matches: string[] }>("kernel_complete", { notebook: name, code: before })
+          .then(({ word, matches }) => {
+            if (!matches.length) return;
+            if (matches.length === 1) return finishWord(el, word, matches[0]);
+            let common = matches[0];
+            for (const m of matches) while (!m.startsWith(common)) common = common.slice(0, -1);
+            if (common.length > word.length) finishWord(el, word, common);
+            setComplete({ word: common.length > word.length ? common : word, items: matches, at: 0 });
+          })
+          .catch(() => {});
+        return;
+      }
+    }
     if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
       e.preventDefault();
       finishEditing();
@@ -708,6 +804,30 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
               </button>
             </span>
           )}
+          {outline.length > 1 && (
+            <div className="nb-switch">
+              <button className={`nb-tool${outlineOpen ? " is-on" : ""}`} title="Its headings — click one to go there" onClick={() => setOutlineOpen(!outlineOpen)}>
+                <Icon name="list" size={14} /> Outline
+              </button>
+              {outlineOpen && (
+                <div className="nb-pop" onMouseLeave={() => setOutlineOpen(false)}>
+                  {outline.map((h) => (
+                    <button
+                      key={h.id + h.text}
+                      className="nb-pop-item nb-outline-item"
+                      style={{ paddingLeft: 10 + (h.level - 1) * 14 }}
+                      onClick={() => {
+                        page.current?.querySelector(`[data-block="${h.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        setOutlineOpen(false);
+                      }}
+                    >
+                      {h.text}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <button className="nb-tool" title="Edit this notebook in Neovim, in your own terminal — every :w shows up here" onClick={neovim}>
             <Icon name="pen" size={14} /> Neovim
           </button>
@@ -901,7 +1021,7 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     );
     if (b.kind === "text") {
       return (
-        <div key={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}`}>
+        <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}`}>
           {isEditing ? (
             <AutoText value={draft} onChange={setDraft} onBlur={finishEditing} onKeyDown={(e) => editKeys(e, b)} placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
           ) : (
@@ -956,12 +1076,32 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
           (isEditing && b.lang === "work" ? (
             <WorkCellEditor code={draft} onChange={setDraft} onDone={finishEditing} />
           ) : isEditing ? (
-            <AutoText value={draft} onChange={setDraft} onBlur={finishEditing} onKeyDown={(e) => editKeys(e, b)} mono />
+            <AutoText value={draft} onChange={setDraft} onBlur={() => (setComplete(null), finishEditing())} onKeyDown={(e) => editKeys(e, b)} mono highlight={b.lang === "python" ? highlightPython : undefined} />
           ) : (
-            <pre className="nb-code" onClick={() => startEditing(b)}>
-              {b.code || " "}
-            </pre>
+            b.lang === "python" ? (
+              <pre className="nb-code" onClick={() => startEditing(b)} dangerouslySetInnerHTML={{ __html: highlightPython(b.code || " ") }} />
+            ) : (
+              <pre className="nb-code" onClick={() => startEditing(b)}>
+                {b.code || " "}
+              </pre>
+            )
           ))}
+        {isEditing && complete && (
+          <div className="nb-complete" onMouseDown={(e) => e.preventDefault()}>
+            {complete.items.map((item, k) => (
+              <button
+                key={item}
+                className={`nb-complete-item${k === complete.at ? " is-at" : ""}`}
+                onClick={() => {
+                  if (completeEl.current) finishWord(completeEl.current, complete.word, item);
+                  setComplete(null);
+                }}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        )}
         {result && (
           <div className="nb-cell-result" onClick={() => !isEditing && b.lang !== "python" && b.lang !== "graph" && startEditing(b)}>
             {result}
