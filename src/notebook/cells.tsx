@@ -456,7 +456,13 @@ export interface PyOutput {
 /** a table (or anything shown as a page), in a frame of its own — no scripts run in it */
 function HtmlOutput({ html }: { html: string }) {
   const [height, setHeight] = useState(60);
-  const doc = `<!doctype html><meta charset="utf-8"><style>body{margin:0;font:13px -apple-system,Inter,sans-serif;color:#ddd;background:transparent}table{border-collapse:collapse}th,td{padding:4px 10px;border-bottom:1px solid #3a3a48;text-align:right}th{color:#aaa;font-weight:600}tr:hover td{background:#ffffff0d}</style>${html}`;
+  // in the app's own colors (a frame can't see its theme)
+  const css = getComputedStyle(document.documentElement);
+  const color = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
+  const [ink, dim, rule] = [color("--t-text", "#ddd"), color("--t-muted", "#999"), color("--t-line", "#3a3a48")];
+  // (the same color scheme as the page, or the frame paints itself white behind)
+  const scheme = getComputedStyle(document.body).colorScheme || "normal";
+  const doc = `<!doctype html><meta charset="utf-8"><style>:root{color-scheme:${scheme}}html,body{background:transparent}body{margin:0;font:13px -apple-system,Inter,sans-serif;color:${ink}}table{border-collapse:collapse;border:none}th,td{padding:4px 10px;border:none;border-bottom:1px solid ${rule};text-align:right}th{color:${dim};font-weight:600}tbody tr:hover td{background:color-mix(in srgb,${ink} 7%,transparent)}</style>${html}`;
   return (
     <iframe
       className="nb-py-html"

@@ -323,7 +323,11 @@ def _values(vars_: dict) -> dict:
         if "(" in name:
             continue
         try:
-            out[Symbol(name)] = parse(str(text), scope)
+            value = parse(str(text), scope)
+            # a slider's 10.978 is a measurement, not the fraction 5489/500
+            if "." in str(text) and getattr(value, "is_Rational", False) and not value.is_Integer:
+                value = sympy.Float(value)
+            out[Symbol(name)] = value
         except Exception:  # noqa: BLE001
             continue
     return out
@@ -366,7 +370,7 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
             if p.computed:
                 out["facts"] = [geometry.point_tex(t) for t in items]
             if p.glide and len(p.tuples) == 1:
-                out.update(_glide_path(p.tuples[0], p.glide, values))
+                out.update(_glide_path(p.tuples[0], p.glide, values, window))
             return out, None
         if len(items) == 1 and T in free:
             need(*items[0], bound={"t"})
@@ -676,7 +680,7 @@ def _extras(i, expr, extra, xr, window):
     return out
 
 
-def _glide_path(raw, letter, values):
+def _glide_path(raw, letter, values, window=None):
     """a point slid along a shape by a letter: the path it can take, with that
     letter's value at each step — so a drag can find the letter that puts it there"""
     var = Symbol(letter)
@@ -686,7 +690,17 @@ def _glide_path(raw, letter, values):
         straight = all(sympy.Poly(c, var).degree() <= 1 for c in (px, py) if c.has(var))
     except Exception:  # noqa: BLE001 — not a polynomial: a circle, a polygon…
         straight = False
-    ts = np.linspace(-3, 4, 1401) if straight else np.linspace(0, 1, 721)
+    if straight:
+        # along a line: far enough each way to cross the view, from where it is now
+        try:
+            step = math.hypot(*(float(sympy.N(c.subs(var, 1) - c.subs(var, 0))) for c in (px, py))) or 1.0
+            now = float(sympy.N(values.get(var, 0)))
+        except Exception:  # noqa: BLE001
+            step, now = 1.0, 0.0
+        reach = 2 * math.hypot(window[0][1] - window[0][0], window[1][1] - window[1][0]) / step if window else 4
+        ts = np.linspace(now - reach, now + reach, 2001)
+    else:
+        ts = np.linspace(0, 1, 721)
     try:
         xs = np.broadcast_to(np.asarray(_numeric(px, var)(ts), dtype=float), ts.shape)
         ys = np.broadcast_to(np.asarray(_numeric(py, var)(ts), dtype=float), ts.shape)

@@ -132,6 +132,7 @@ export default function MathInput({
   onArrow,
   linear,
   words,
+  showStart,
   className,
   ref,
 }: {
@@ -150,14 +151,16 @@ export default function MathInput({
   linear?: boolean;
   /** names typed out become upright words, like sin: segment, circle… */
   words?: readonly string[];
+  /** a line too long for the field shows its start when it isn't being typed in (not where the cursor last was) */
+  showStart?: boolean;
   className?: string;
   ref?: Ref<MathInputHandle>;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const field = useRef<MathfieldElement | null>(null);
   // the latest callbacks, without re-creating the field on every render
-  const handlers = useRef({ onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow, linear });
-  handlers.current = { onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow, linear };
+  const handlers = useRef({ onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow, linear, showStart });
+  handlers.current = { onChange, onEnter, onBackspaceEmpty, onMoveOut, onFocus, onBlur, onArrow, linear, showStart };
 
   const latest = useRef(value);
   latest.current = value;
@@ -201,6 +204,7 @@ export default function MathInput({
     // MathLive drops spaces by default, which made it 21/3
     mf.mathModeSpace = "\\,";
     mf.value = latest.current;
+    if (handlers.current.showStart) mf.executeCommand("moveToMathfieldStart");
     mf.addEventListener("input", () => handlers.current.onChange(mf.value));
     mf.addEventListener("focus", () => handlers.current.onFocus?.());
     // a mouse drag (or ⇧⌥ / ⇧⌘ arrows) never ends halfway into a fraction
@@ -244,7 +248,10 @@ export default function MathInput({
       },
       { capture: true },
     );
-    mf.addEventListener("blur", () => handlers.current.onBlur?.());
+    mf.addEventListener("blur", () => {
+      if (handlers.current.showStart) mf.executeCommand("moveToMathfieldStart");
+      handlers.current.onBlur?.();
+    });
     // capture phase: runs before MathLive's own key handling inside the field
     mf.addEventListener(
       "keydown",
@@ -358,8 +365,11 @@ export default function MathInput({
 
   useEffect(() => {
     const mf = field.current;
-    if (mf && mf.value !== value) replace(mf, value);
-  }, [value]);
+    if (mf && mf.value !== value) {
+      replace(mf, value);
+      if (showStart && !mf.hasFocus()) mf.executeCommand("moveToMathfieldStart");
+    }
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useImperativeHandle(ref, () => ({
     // a field that was *just* created finishes mounting a frame later, and

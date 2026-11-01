@@ -4,6 +4,7 @@ mpmath==1.3.0
 # each at least two weeks old when added)
 numpy==2.5.4
 matplotlib==3.11.2
+pandas==3.0.6
 contourpy==1.4.0
 cycler==0.12.1
 fonttools==4.67.0

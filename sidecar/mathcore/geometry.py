@@ -127,7 +127,9 @@ def _approx(v) -> str:
 
 
 def number_tex(v) -> str:
-    """√13 ≈ 3.606 — exact, and about, unless it's a whole number"""
+    """√13 ≈ 3.606 — exact, and about, unless it's a whole number (or it came from a decimal: then just about)"""
+    if sympy.sympify(v).has(sympy.Float):
+        return _approx(v)
     v = _exact(v)
     if v.is_Integer:
         return _tex(v)

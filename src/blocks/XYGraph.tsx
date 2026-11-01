@@ -239,6 +239,16 @@ const faint = (hex: string, alpha: number) => {
   return hex.length === 7 ? `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})` : hex;
 };
 
+/** angle(A, B, C): its three points' names */
+function angleOf(latex: string): { a: string; b: string; c: string } | null {
+  let t = latex.replace(/\\left|\\right/g, "").replace(/\s+/g, "");
+  for (let k = 0; k < 3; k++) t = t.replace(/\\(?:operatorname|mathrm)\{(\w+)\}/g, "$1");
+  const name = "[A-Za-z](?:_\\{?[A-Za-z0-9]+\\}?)?";
+  const m = t.match(new RegExp(`^angle\\((${name}),(${name}),(${name})\\)$`));
+  const plain = (n: string) => n.replace(/[{}]/g, "");
+  return m ? { a: plain(m[1]), b: plain(m[2]), c: plain(m[3]) } : null;
+}
+
 /** a length across dx, dy, as math: 5, or √13 when it's a whole number's root */
 function lengthTex(dx: number, dy: number): string {
   const sq = dx * dx + dy * dy;
@@ -526,9 +536,52 @@ export default function XYGraph({
           },
         });
     }
+    if (st?.kind === "segment") {
+      // CAD constraints: level, upright — B slides along the line through A, the angle fixed
+      const [ia, ib] = [nameRow(st.a), nameRow(st.b)];
+      const [pa, pb] = [targets.find((t) => t.key === lines[ia]?.id), targets.find((t) => t.key === lines[ib]?.id)];
+      if (pa && pb && literalPoint(lines[ib].latex))
+        for (const [label, level] of [["Keep it level", true], ["Keep it upright", false]] as const)
+          out.push({
+            label,
+            title: level ? `${st.b} slides left and right, level with ${st.a}` : `${st.b} slides up and down, straight above ${st.a}`,
+            run: () => {
+              const a = texName(st.a);
+              const toward = level ? `\\left(${a}.x+1,${a}.y\\right)` : `\\left(${a}.x,${a}.y+1\\right)`;
+              slide(ib, st.b, `\\operatorname{line}\\left(${a},${toward}\\right)`, level ? pb.x - pa.x : pb.y - pa.y, [-1000, 1000]);
+            },
+          });
+    }
+    const corner = angleOf(lines[i].latex);
+    if (corner) {
+      // keep this angle: C slides along the ray from B at that angle to BA
+      const [ia, ib, ic] = [nameRow(corner.a), nameRow(corner.b), nameRow(corner.c)];
+      const [pa, pb, pc] = [ia, ib, ic].map((k) => targets.find((t) => t.key === lines[k]?.id));
+      if (pa && pb && pc && literalPoint(lines[ic].latex))
+        out.push({
+          label: "Keep this angle",
+          title: `${corner.c} slides along its side, the angle at ${corner.b} fixed — move ${corner.a} or ${corner.b} and it turns with them`,
+          run: () => {
+            const [ux, uy, vx, vy] = [pa.x - pb.x, pa.y - pb.y, pc.x - pb.x, pc.y - pb.y];
+            const deg = (Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy) * 180) / Math.PI;
+            const [a, b] = [texName(corner.a), texName(corner.b)];
+            const turn = Math.abs(deg - Math.round(deg)) < 1e-6 ? String(Math.round(deg)) : String(Math.round(deg * 1e4) / 1e4);
+            slide(ic, corner.c, `\\operatorname{ray}\\left(${b},\\operatorname{rotate}\\left(${a},${turn},${b}\\right)\\right)`, Math.hypot(vx, vy) / (Math.hypot(ux, uy) || 1), [0, 10]);
+          },
+        });
+    }
     const equation = seriesOf(i).find((s) => s.equation)?.equation;
     if (equation) out.push({ label: "Its equation", title: `${plainMath(equation)} — as a line of its own`, run: () => addLine(equation) });
     return out;
+  };
+  /** a point's row turned into one sliding along `path`, by a letter of its own at `t` */
+  const slide = (row: number, name: string, path: string, t: number, range: [number, number]) => {
+    const letter = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => `t_${k}`).find((n) => !used.includes(n) && !(n in (plot.letters ?? {}))) ?? "t_9";
+    update({
+      lines: lines.map((l, j) => (j === row ? { ...l, latex: `${texName(name)}=\\operatorname{point}\\left(${path},${letter.replace(/_(\d+)/, "_{$1}")}\\right)` } : l)),
+      letters: { ...(plot.letters ?? {}), [letter]: Math.round(t * 1e6) / 1e6 },
+      ranges: { ...(plot.ranges ?? {}), [letter]: range },
+    });
   };
   /** the row that names a point */
   const nameRow = (name: string) => lines.findIndex((l) => nameOf(l.latex) === name);
@@ -1019,6 +1072,7 @@ export default function XYGraph({
                       }}
                       className="xy-line-field"
                       words={GEO_WORDS}
+                      showStart
                       value={line.latex}
                       placeholder={i === 0 ? "Type an equation to graph it — y = 2x + 1" : "Type another — or a point, (2, 5)"}
                       onChange={(latex) => setLine(i, { latex })}
