@@ -232,6 +232,8 @@ export default function NotebookTile({
     }
   });
   const [varsOpen, setVarsOpen] = useState(false);
+  /** the other languages' variables (MATLAB's workspace…), by language */
+  const [langVars, setLangVars] = useState<Record<string, { name: string; type: string; shape: string; value: string }[]>>({});
   const [vars, setVars] = useState<{ name: string; type: string; shape: number[] | null; value: string }[]>([]);
   const importer = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
@@ -524,6 +526,24 @@ export default function NotebookTile({
           out = { error: errorText(err) };
         }
       now.current = null;
+      // a session language that can list its variables: the Variables panel's, after each run
+      if (way?.session && lang.variables && !out.error) {
+        const listed = await invoke<{ stdout: string }>("lang_run", {
+          notebook: name,
+          lang: lang.id,
+          spec: { session: way.session, init: way.init, done: way.done, extension: lang.extension },
+          code: lang.variables,
+        }).catch(() => null);
+        if (listed)
+          setLangVars((all) => ({
+            ...all,
+            [lang.label]: listed.stdout
+              .split("\n")
+              .map((l) => l.split("\t"))
+              .filter((p) => p.length >= 4 && p[0])
+              .map(([vname, type, shape, ...value]) => ({ name: vname, type, shape: shape.replace(/^\[|\]$/g, "").replace(/\s+/g, "×"), value: value.join("\t") })),
+          }));
+      }
       keepOutputs({ ...pyRef.current, [key]: out });
       setRunning((r) => {
         const next = new Set(r);
@@ -596,6 +616,7 @@ export default function NotebookTile({
     for (const l of others) await invoke("lang_restart", { notebook: name, lang: l.id }).catch(() => {});
     setKernel("off");
     setVars([]);
+    setLangVars({});
     const names = ["Python", ...others.map((l) => l.label)];
     setNotice(`${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]} restarted — every variable is gone`);
     if (andRun) runAll();
@@ -1053,7 +1074,7 @@ export default function NotebookTile({
               >
                 ⚡ Reactive
               </button>
-              <button className={`nb-tool${varsOpen ? " is-on" : ""}`} title="Every variable Python has right now" onClick={() => (setVarsOpen(!varsOpen), refreshVars())}>
+              <button className={`nb-tool${varsOpen ? " is-on" : ""}`} title="Every variable there is right now — Python's, MATLAB's workspace…" onClick={() => (setVarsOpen(!varsOpen), refreshVars())}>
                 x= Variables
               </button>
             </span>
@@ -1495,6 +1516,7 @@ export default function NotebookTile({
             </button>
           </div>
           <div className="nb-vars-list">
+            {Object.keys(langVars).length > 0 && vars.length > 0 && <div className="nb-vars-lang">Python</div>}
             {vars.map((v) => (
               <div key={v.name} className="nb-var" title={v.value}>
                 <span className="nb-var-name">{v.name}</span>
@@ -1504,6 +1526,20 @@ export default function NotebookTile({
                 </span>
                 <span className="nb-var-value">{v.value}</span>
               </div>
+            ))}
+            {Object.entries(langVars).map(([label, list]) => (
+              <Fragment key={label}>
+                <div className="nb-vars-lang">{label}</div>
+                {list.map((v) => (
+                  <div key={`${label}:${v.name}`} className="nb-var" title={v.value}>
+                    <span className="nb-var-name">{v.name}</span>
+                    <span className="nb-var-type">
+                      {v.type} {v.shape}
+                    </span>
+                    <span className="nb-var-value">{v.value}</span>
+                  </div>
+                ))}
+              </Fragment>
             ))}
           </div>
         </div>

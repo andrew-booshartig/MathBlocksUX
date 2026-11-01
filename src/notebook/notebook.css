@@ -1823,3 +1823,12 @@
 .nb-solo.is-sizing > .nb-solo-handle::after {
   background: color-mix(in srgb, var(--t-pink, #c99bbf) 55%, transparent);
 }
+
+.nb-vars-lang {
+  padding: 8px 4px 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-muted);
+}

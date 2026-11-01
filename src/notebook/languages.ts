@@ -59,6 +59,8 @@ export interface Language {
   starter?: string;
   /** a variables block's value set in this language, put before each cell: "{name} = {value};" */
   assign?: string;
+  /** a session language: the line that lists its variables, one a line — name, kind, size, value, tab between (the Variables panel) */
+  variables?: string;
   /** which plugin added it */
   plugin?: string;
 }
@@ -75,6 +77,7 @@ export const BUILT_IN_LANGUAGES: Language[] = [
     extension: "m",
     output: "matlab",
     assign: "{name} = {value};",
+    variables: "__mlx_vars__()",
     install: "Octave runs MATLAB code, free: brew install octave (or install MATLAB)",
     starter: "A = [1 2; 3 4];\nb = [5; 6];\nx = A \\ b",
     highlight: {
@@ -98,6 +101,8 @@ export const BUILT_IN_LANGUAGES: Language[] = [
           // figures drawn off screen (Qt), each saved as a picture after the cell
           "more off; page_screen_output(false); try; graphics_toolkit('qt'); catch; end; set(0, 'defaultfigurevisible', 'off');",
           // after each cell: its figures saved as pictures, said by a line the app reads
+          // its workspace, for the Variables panel: name, class, size, value
+          "function __mlx_vars__(); w = evalin('base', 'whos'); for k = 1:numel(w); v = evalin('base', w(k).name); if isnumeric(v) || islogical(v); s = mat2str(v, 5); elseif ischar(v); s = ['\"' v '\"']; else; s = class(v); end; if numel(s) > 70; s = [s(1:67) '...']; end; printf('%s\\t%s\\t%s\\t%s\\n', w(k).name, w(k).class, mat2str(w(k).size), s); end; end",
           "function __mlx_figs__(); h = get(0, 'children'); for k = 1:numel(h); f = [tempdir() sprintf('mlx_%d_%d_%d.png', getpid(), round(rem(now, 1) * 1e8), k)]; print(h(k), f, '-dpng', '-r110'); printf('__matrixlab_image__:%s\\n', f); end; close all; end",
         ],
         done: "__mlx_figs__(); disp('{marker}')",
