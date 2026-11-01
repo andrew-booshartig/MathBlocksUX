@@ -1,8 +1,11 @@
 /** ⌘Z for the whole calculator: every change to what you've done (answers,
  * variables, work, graph lines, drawings) is a step back. A burst of changes
  * a moment apart is one step; moving tiles, switching tabs and panning the
- * graph aren't steps at all, so going back never shuffles the screen. Text
- * and math fields keep their own ⌘Z while you're typing in them. */
+ * graph aren't steps at all, so going back never shuffles the screen.
+ *
+ * ⌘Z takes back whatever you did last, wherever the cursor is: typing in a
+ * field (its own undo takes that back), or anything else — a point dropped,
+ * an answer, a drawing. */
 import { type CalculatorBlockData, useStore } from "../store";
 
 /** what's how it looks, not what you did */
@@ -44,6 +47,7 @@ export function makeUndo(id: string, onChange: (canUndo: boolean, canRedo: boole
   };
   const stop = useStore.subscribe(() => {
     if (restoring) return;
+    lastChange = Date.now();
     clearTimeout(timer);
     timer = setTimeout(settle, 500);
   });
@@ -91,8 +95,23 @@ export function makeUndo(id: string, onChange: (canUndo: boolean, canRedo: boole
   };
 }
 
-/** typing somewhere with its own ⌘Z (a field, a math field, the notebook's text) */
+/** when the calculator itself last changed, and when a field was last typed in */
+let lastChange = 0;
+let lastTyped: { el: Element | null; at: number } = { el: null, at: 0 };
+const fieldOf = (el: Element | null) => (el?.closest("math-field, input, textarea, [contenteditable='true']") ?? null) as HTMLElement | null;
+document.addEventListener(
+  "input",
+  (e) => {
+    lastTyped = { el: fieldOf(e.target as Element), at: Date.now() };
+  },
+  true,
+);
+
+/** ⌘Z goes to the field you're in only when typing there is the last thing
+ * you did (a text box, a math field, the notebook's text) — otherwise to the
+ * calculator's own history */
 export const typingInField = () => {
-  const el = document.activeElement as HTMLElement | null;
-  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "MATH-FIELD" || el.isContentEditable || !!el.closest("math-field"));
+  const here = fieldOf(document.activeElement);
+  if (!here || (here instanceof HTMLInputElement && ["checkbox", "range", "radio"].includes(here.type))) return false;
+  return lastTyped.el === here && lastTyped.at > lastChange;
 };

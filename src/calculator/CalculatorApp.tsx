@@ -73,14 +73,16 @@ export default function CalculatorApp() {
     history.current = h;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "z" || typingInField()) return;
+      // ours: the field the cursor's in doesn't undo too
       e.preventDefault();
+      e.stopPropagation();
       if (e.shiftKey) h.redo();
       else h.undo();
     };
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       h.stop();
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [blockReady]);
   /** ⌘K: commands; ⌘?: the shortcut sheet */
