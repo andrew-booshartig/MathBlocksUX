@@ -86,6 +86,9 @@ export function activate(matrixlab) {
   - A printed line `__matrixlab_image__:/path/to/picture.png` shows that picture under the cell. This is how MATLAB's figures come back.
 - `install`: what to tell someone who doesn't have the program.
 - `output: "matlab"` shows `x = 5` and matrices as math.
+- `variables` (a session language): the line that lists its variables for the notebook's Variables panel, one a line, as name, kind, size and value with tabs between. MATLAB's is `__mlx_vars__()`, defined in its `init`.
+- `assign`: how a variables block's value is set in this language, put before each cell (`"{name} = {value};"`).
+- `quiet` (in a `run` way): patterns for lines it prints that aren't the cell's own, left out.
 
 Programs are looked for on the PATH, and in `/opt/homebrew/bin`, `/usr/local/bin` and `~/.cargo/bin`.
 
