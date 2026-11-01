@@ -282,6 +282,7 @@ export default function CalculatorApp() {
     ...workspaces.map((w) => ({ id: `ws:${w}`, label: `Open ${w}`, group: "Workspace", icon: "folder", run: () => openWorkspace(w) })),
     ...themes.map((t) => ({ id: `theme:${t.name}`, label: `${t.name} theme`, group: "Theme", icon: "eye", run: () => setThemeName(t.name) })),
     { id: "sheet", label: "Keyboard shortcuts", group: "Help", icon: "text", keys: "⌘?", run: () => setSheet(true) },
+    ...plugins.tiles.map((t) => ({ id: `tile:${t.id}`, label: `Go to ${t.title}`, group: `Tile · ${t.plugin}`, icon: "source", run: () => dock.current?.show(t.id as `plugin-${string}`, true) })),
     ...plugins.commands.map((c) => ({ id: `plugin:${c.id}`, label: c.title, group: `Plugin · ${c.plugin}`, icon: "source", run: () => void c.run() })),
     { id: "plugins:reload", label: "Reload plugins", group: "Plugins", icon: "reset", run: reloadPlugins },
     { id: "vim", label: vimKeys ? "Vim keys off (code and notebook text)" : "Vim keys on (code and notebook text)", group: "Editing", icon: "source", run: () => (setVimKeys(!vimKeys), say(vimKeys ? "Vim keys off" : "Vim keys on — Space r runs a cell, :w is done")) },

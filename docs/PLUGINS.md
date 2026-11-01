@@ -22,6 +22,7 @@ in `src/notebook/languages.ts`, and copying one is the quickest start.
 | a language for code cells | the notebook's **Code ▾** menu, and any ```` ```fence ```` with its id | `plugin.json` alone, or `matrixlab.languages.register` |
 | a kind of cell | the **Code ▾** menu, and ```` ```fence ```` with its id | `matrixlab.cells.register` in `main.js` |
 | a command | ⌘K | `matrixlab.commands.register` in `main.js` |
+| a tile | the dock, beside Calculate and Work (⌘K → Go to …, or an empty zone's menu) | `matrixlab.tiles.register` in `main.js` |
 
 ## plugin.json
 
@@ -90,6 +91,17 @@ export function activate(matrixlab) {
   // a command in ⌘K
   matrixlab.commands.register({ id: "me.hello", title: "Say hello", run: () => matrixlab.notify("hello") });
 
+  // a tile of its own: fill the element (give back a function to clean up, if it needs one)
+  matrixlab.tiles.register({
+    id: "scratchpad",
+    title: "Scratchpad",
+    blurb: "A place to jot things down",
+    mount(el) {
+      el.innerHTML = "<textarea></textarea>";
+      return () => {};
+    },
+  });
+
   // the math engine, for anything the app can work out
   // matrixlab.math({ op: "smart", latex: "x^2 = 9" }).then(...)
 }
@@ -102,6 +114,7 @@ export function activate(matrixlab) {
 | `languages.register(language)` | a language, as in plugin.json |
 | `cells.register({ id, label, starter, render })` | a kind of cell |
 | `commands.register({ id, title, run })` | a command in ⌘K |
+| `tiles.register({ id, title, blurb, mount })` | a tile in the dock (`mount(element)` fills it) |
 | `math(request)` | the math engine (the same requests the app makes) |
 | `notify(text)` | a few words at the top of the window |
 | `version` | 1 |
@@ -113,6 +126,7 @@ extensions and Neovim plugins do. Only install plugins you trust.
 
 The calculator's tiles (Calculate, Work, Graph, Notebook…) and the
 notebook's own cells are the app's built-in parts. Plugins add to them
-through the registries above. Each registry is the same list the app's own
-parts are in. Next on the way: tiles a plugin adds, and the Work and Calc
-cells moved onto the same registry as plugin cells.
+through the registries above: a plugin's tile docks, drags and saves in a
+layout like the app's own, and a plugin's language or cell sits in the
+same menus. Next on the way: the app's own tiles registered the same way
+as a plugin's, so any of them can be turned off or swapped for your own.

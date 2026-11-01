@@ -5,6 +5,7 @@
  * - languages for code cells (C++, Julia, Fortran…) — in plugin.json alone
  * - kinds of cell: a fence (```csv) its script turns into what the page shows
  * - commands, in ⌘K
+ * - tiles: a panel of its own in the dock, beside Calculate, Work, Graph…
  *
  * and its script gets the math engine (matrixlab.math) to work with. The
  * app's own languages come in the same way (notebook/languages.ts). See
@@ -30,6 +31,16 @@ export interface PluginCommand {
   plugin: string;
 }
 
+/** a tile a plugin adds: mount fills the element it's given (and may give back a clean-up) */
+export interface TileDef {
+  id: string;
+  title: string;
+  /** a few words for the + menu */
+  blurb?: string;
+  mount: (el: HTMLElement) => void | (() => void);
+  plugin: string;
+}
+
 export interface LoadedPlugin {
   folder: string;
   name: string;
@@ -40,8 +51,8 @@ export interface LoadedPlugin {
   error?: string;
 }
 
-type State = { cells: CellKind[]; commands: PluginCommand[]; loaded: LoadedPlugin[] };
-let state: State = { cells: [], commands: [], loaded: [] };
+type State = { cells: CellKind[]; commands: PluginCommand[]; tiles: TileDef[]; loaded: LoadedPlugin[] };
+let state: State = { cells: [], commands: [], tiles: [], loaded: [] };
 const listeners = new Set<() => void>();
 const changed = (next: Partial<State>) => {
   state = { ...state, ...next };
@@ -53,6 +64,10 @@ export function usePlugins(): State {
     (f) => (listeners.add(f), () => listeners.delete(f)),
     () => state,
   );
+}
+
+export function pluginTile(id: string): TileDef | undefined {
+  return state.tiles.find((t) => t.id === id);
 }
 
 export function cellKindOf(id: string): CellKind | undefined {
@@ -76,6 +91,14 @@ function apiFor(plugin: LoadedPlugin) {
         plugin.adds.push(`cell ${kind.id}`);
       },
     },
+    tiles: {
+      register(tile: Omit<TileDef, "plugin">) {
+        if (!tile?.id || !tile.title || typeof tile.mount !== "function") throw new Error("a tile needs an id, a title and a mount(element) function");
+        const id = tile.id.startsWith("plugin-") ? tile.id : `plugin-${tile.id}`;
+        changed({ tiles: [...state.tiles.filter((t) => t.id !== id), { ...tile, id, plugin: plugin.folder }] });
+        plugin.adds.push(`tile ${tile.title}`);
+      },
+    },
     commands: {
       register(command: Omit<PluginCommand, "plugin">) {
         changed({ commands: [...state.commands.filter((c) => c.id !== command.id), { ...command, plugin: plugin.folder }] });
@@ -92,7 +115,7 @@ function apiFor(plugin: LoadedPlugin) {
 /** (re)load every plugin in the folder: what each adds, and what went wrong */
 export async function loadPlugins(): Promise<LoadedPlugin[]> {
   forgetPluginLanguages();
-  changed({ cells: [], commands: [], loaded: [] });
+  changed({ cells: [], commands: [], tiles: [], loaded: [] });
   let found: { folder: string; manifest: string; main: string | null }[] = [];
   try {
     found = await invoke("plugins_list");
@@ -173,6 +196,20 @@ export function activate(matrixlab) {
       return \`<table class="nb-plugin-table"><tr>\${head.map((h) => \`<th>\${esc(h)}</th>\`).join("")}</tr>\${body
         .map((r) => \`<tr>\${r.map((c) => \`<td>\${esc(c)}</td>\`).join("")}</tr>\`)
         .join("")}</table>\`;
+    },
+  });
+  // a tile of its own, beside Calculate and Work (⌘K → Go to Scratchpad)
+  matrixlab.tiles.register({
+    id: "scratchpad",
+    title: "Scratchpad",
+    blurb: "A place to jot things down — kept on this computer",
+    mount(el) {
+      const box = document.createElement("textarea");
+      box.style.cssText = "width:100%;height:100%;box-sizing:border-box;padding:14px;border:none;resize:none;background:transparent;color:inherit;font:15px/1.5 -apple-system,sans-serif;outline:none";
+      box.placeholder = "Jot something down…";
+      box.value = localStorage.getItem("my-plugin.scratchpad") ?? "";
+      box.oninput = () => localStorage.setItem("my-plugin.scratchpad", box.value);
+      el.append(box);
     },
   });
   // a command in ⌘K

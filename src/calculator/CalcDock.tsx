@@ -21,6 +21,7 @@ import {
 } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
 import Icon from "../Icon";
+import { pluginTile, usePlugins } from "../plugins";
 
 export const TILES = [
   { id: "calc", title: "Calculate", hue: "teal", blurb: "Type math, get answers — steps, units and decimals" },
@@ -33,7 +34,41 @@ export const TILES = [
 ] as const;
 export type TileId = (typeof TILES)[number]["id"];
 
-const tileOf = (id: string) => TILES.find((t) => t.id === id) ?? TILES[0];
+type TileMeta = { id: string; title: string; hue: string; blurb: string };
+/** a tile's name and color: one of the app's, or a plugin's */
+const tileOf = (id: string): TileMeta => {
+  const own = TILES.find((t) => t.id === id);
+  if (own) return own;
+  const plugin = pluginTile(id);
+  return { id, title: plugin?.title ?? "Plugin", hue: "blue", blurb: plugin?.blurb ?? `From the plugin ${plugin?.plugin ?? "(not loaded)"}` };
+};
+const isOwnTile = (id: string) => TILES.some((t) => t.id === id);
+/** a plugin's tile: what its mount puts in the element */
+function PluginTile({ id }: { id: string }) {
+  const { tiles } = usePlugins();
+  const def = tiles.find((t) => t.id === id);
+  const host = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = host.current;
+    if (!def || !el) return;
+    el.replaceChildren();
+    let done: void | (() => void);
+    try {
+      done = def.mount(el);
+    } catch (err) {
+      el.textContent = `${def.plugin}: ${err instanceof Error ? err.message : err}`;
+    }
+    return () => {
+      try {
+        if (typeof done === "function") done();
+      } catch {
+        /* its clean-up failing doesn't stop the tile closing */
+      }
+    };
+  }, [def]);
+  if (!def) return <div className="dock-plugin-missing">This tile's plugin isn't loaded — ⌘K → Reload plugins</div>;
+  return <div className="dock-plugin" ref={host} />;
+}
 /** a tile's color, for whatever's inside the element it's set on */
 export const hueStyle = (id: string) => ({ "--tile-hue": `var(--t-${tileOf(id).hue})` }) as CSSProperties;
 /** ⌘1 … ⌘7 */
@@ -49,7 +84,7 @@ function Tile({ api }: IDockviewPanelProps) {
   const { tiles } = useContext(Dock);
   return (
     <div className={`dock-tile is-${api.id}`} style={hueStyle(api.id)}>
-      {tiles[api.id as TileId]}
+      {isOwnTile(api.id) ? tiles[api.id as TileId] : <PluginTile id={api.id} />}
     </div>
   );
 }
@@ -60,7 +95,7 @@ const toggleMaximize = (api: { isMaximized(): boolean; maximize(): void; exitMax
 function Tab({ api, containerApi }: IDockviewPanelHeaderProps) {
   const { badges } = useContext(Dock);
   const tile = tileOf(api.id);
-  const badge = badges[tile.id];
+  const badge = badges[tile.id as TileId];
   return (
     <div
       className="dock-tab"
@@ -74,7 +109,7 @@ function Tab({ api, containerApi }: IDockviewPanelHeaderProps) {
       }}
     >
       <span className="dock-tab-icon">
-        <Icon name={tile.id} size={14} />
+        <Icon name={isOwnTile(tile.id) ? tile.id : "source"} size={14} />
       </span>
       <span className="dock-tab-title">{tile.title}</span>
       {!!badge && <span className="dock-tab-badge">{badge}</span>}
@@ -94,7 +129,7 @@ function Tab({ api, containerApi }: IDockviewPanelHeaderProps) {
 }
 
 /** a tile into a zone: moved there if it's open somewhere, else opened there */
-function putIn(api: DockviewApi, id: TileId, group: DockviewGroupPanel) {
+function putIn(api: DockviewApi, id: TileId | `plugin-${string}`, group: DockviewGroupPanel) {
   const panel = api.getPanel(id);
   if (panel) {
     if (panel.group !== group) panel.api.moveTo({ group });
@@ -199,7 +234,7 @@ const COMPACT: Zone[] = [
 /** a saved layout from before a tile was retired (Assignment): its tab goes,
  * and a zone it leaves empty goes with it */
 function dropRetired(api: DockviewApi) {
-  for (const panel of [...api.panels]) if (!TILES.some((t) => t.id === panel.id)) panel.api.close();
+  for (const panel of [...api.panels]) if (!isOwnTile(panel.id) && !panel.id.startsWith("plugin-")) panel.api.close();
   for (const group of [...api.groups]) if (!group.panels.length && api.groups.length > 1) api.removeGroup(group);
 }
 
@@ -364,6 +399,7 @@ function ZoneActions({ containerApi, group, api }: IDockviewHeaderActionsProps) 
 
 /** an empty zone: every tile, to pick what goes in it */
 function EmptyZone({ containerApi, group }: IWatermarkPanelProps) {
+  const pluginTiles = usePlugins().tiles;
   const [, redraw] = useState(0);
   useEffect(() => {
     const sub = containerApi.onDidLayoutChange(() => redraw((n) => n + 1));
@@ -383,12 +419,12 @@ function EmptyZone({ containerApi, group }: IWatermarkPanelProps) {
       <div className="dock-empty-title">What goes here?</div>
       <div className="dock-empty-sub">Pick a tile, or drag a tab in from any zone</div>
       <div className="dock-empty-grid">
-        {TILES.map((t) => {
+        {[...TILES, ...pluginTiles.map((t) => tileOf(t.id))].map((t) => {
           const elsewhere = !!containerApi.getPanel(t.id);
           return (
-            <button key={t.id} className="dock-card" style={hueStyle(t.id)} onClick={() => putIn(containerApi, t.id, group as DockviewGroupPanel)}>
+            <button key={t.id} className="dock-card" style={hueStyle(t.id)} onClick={() => putIn(containerApi, t.id as TileId, group as DockviewGroupPanel)}>
               <span className="dock-card-icon">
-                <Icon name={t.id} size={18} />
+                <Icon name={isOwnTile(t.id) ? t.id : "source"} size={18} />
               </span>
               <span className="dock-card-text">
                 <span className="dock-card-name">{t.title}</span>
@@ -410,7 +446,8 @@ function EmptyZone({ containerApi, group }: IWatermarkPanelProps) {
 export interface CalcDockHandle {
   /** bring a tile to the front — opened in the zone in use if it's closed;
    * `glow`: something was just sent there, so the zone glows a moment */
-  show: (id: TileId, glow?: boolean) => void;
+  /** a tile of the app's, or a plugin's (plugin-…) */
+  show: (id: TileId | `plugin-${string}`, glow?: boolean) => void;
   close: (id: TileId) => void;
   /** one of the ready-made layouts */
   preset: (id: string) => void;
