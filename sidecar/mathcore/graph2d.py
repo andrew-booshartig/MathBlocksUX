@@ -336,6 +336,65 @@ def _function_markers(i, expr, window, features):
     return marks
 
 
+def _piece_ends(i, f, window) -> list:
+    """where a piecewise function's pieces meet, or a restricted one stops:
+    a filled dot for the value it takes there, an open one for a value it
+    comes up to but doesn't take (x < 2) — none where the pieces join smoothly"""
+    lo, hi = window[0]
+    bounds = set()
+    for _, c in f.args:
+        for rel in (c.atoms(sympy.core.relational.Relational) if hasattr(c, "atoms") else []):
+            for side, other in ((rel.lhs, rel.rhs), (rel.rhs, rel.lhs)):
+                if side == X and other.is_number:
+                    bounds.add(other)
+
+    def piece_at(v):
+        for e, c in f.args:
+            try:
+                if bool(c.subs(X, v)):
+                    return e
+            except TypeError:
+                return None
+        return None
+
+    def worth(e, b):
+        try:
+            v = float(sympy.N(e.subs(X, b))) if e is not None else math.nan
+        except (TypeError, ValueError):
+            return math.nan
+        return v if math.isfinite(v) else math.nan
+
+    marks = []
+    for b in sorted(bounds, key=float):
+        bf = float(b)
+        if not lo <= bf <= hi:
+            continue
+        h = 1e-7 * max(1.0, abs(bf))
+        at, left, right = worth(piece_at(b), b), worth(piece_at(bf - h), b), worth(piece_at(bf + h), b)
+        same = lambda u, v: u == u and v == v and abs(u - v) < 1e-9  # noqa: E731
+        if same(at, left) and same(at, right):
+            continue  # joined smoothly
+        if at == at:
+            marks.append({"x": bf, "y": at, "kind": "endpoint", "series": i, "label": _label(bf, at)})
+        for v in {left, right}:
+            if v == v and not same(v, at):
+                marks.append({"x": bf, "y": v, "kind": "hole", "series": i, "label": _label(bf, v)})
+    return marks
+
+
+def _restricted(p, values):
+    """y = f(x) {0 ≤ x < 2}: f where the braces hold, nothing elsewhere — as a Piecewise"""
+    if not p.conditions or any(c.has(Y) for c in p.conditions):
+        return None
+    if p.define:
+        body = p.sides[1].subs(p.define[1][0], X) if p.define[1] else p.sides[1]
+    elif p.ops == ["="] and p.sides[0] == Y and not p.sides[1].has(Y):
+        body = p.sides[1]
+    else:
+        return None
+    return sympy.Piecewise((body.subs(values), sympy.And(*[c.subs(values) for c in p.conditions])), (sympy.nan, True))
+
+
 def _corners_and_ends(i, expr, lo, hi, value):
     """where the graph turns at a point, not smoothly — |x − 2| + 1's vertex
     (2, 1) — and where it starts or stops, √(x − 1) + 2 from (1, 2)"""
@@ -703,6 +762,13 @@ def op_graph2d(req: dict) -> dict:
                     if asym:
                         s["asymptotes"] = asym
                     marks += _function_markers(i, expr, window, features)
+            if s["kind"] == "function" and "vertices" in features:
+                pieces = expr if isinstance(expr, sympy.Piecewise) else _restricted(p, values) if expr is None else None
+                ends = _piece_ends(i, pieces, window) if pieces is not None else []
+                if ends:
+                    # a high or low "found" where it jumps isn't one
+                    at = {round(m["x"], 9) for m in ends}
+                    marks = [m for m in marks if not (m.get("series") == i and m["kind"] in ("max", "min", "vertex") and round(m["x"], 9) in at)] + ends
             s["index"] = i
             series.append(s)
             # per line, on request: the derivative, a tangent line, the area under it

@@ -363,3 +363,14 @@ def test_an_absolute_value_vertex_and_a_square_roots_start_are_marked():
     assert ("vertex", "(2, 1)") in kinds(r"y=\left|x-2\right|+1")
     assert ("vertex", "(-1, 3)") in kinds(r"y=-2\left|x+1\right|+3")
     assert ("endpoint", "(1, 2)") in kinds(r"y=\sqrt{x-1}+2")
+
+
+@pytest.mark.parametrize("line,ends", [
+    (r"y=x^{2}\left\{0\le x<2\right\}", [("endpoint", "(0, 0)"), ("hole", "(2, 4)")]),
+    (r"y=\begin{cases}x^{2}&x<0\\x+1&x\ge0\end{cases}", [("endpoint", "(0, 1)"), ("hole", "(0, 0)")]),
+    (r"y=\begin{cases}x^{2}&x<1\\x&x\ge1\end{cases}", []),
+])
+def test_where_pieces_stop_a_dot_filled_or_open(line, ends):
+    marks = [(m["kind"], m["label"]) for m in graph(line)["markers"] if m["kind"] in ("endpoint", "hole", "min", "max")]
+    assert sorted(m for m in marks if m[0] != "min") == sorted(ends)
+    assert ("min", "(0, 0)") not in marks or not ends  # no "low" at a jump
