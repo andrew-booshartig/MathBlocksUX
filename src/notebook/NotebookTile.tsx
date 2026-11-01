@@ -23,7 +23,7 @@ import { renderMarkdown } from "./markdown";
 import Preview from "./Preview";
 import { notebookHtml } from "./print";
 import { TEMPLATES, type Template, problemSection, userTemplate } from "./templates";
-import { fromIpynb, toIpynb, toScript } from "./jupyter";
+import { fromIpynb, mainLanguage, toIpynb, toScript } from "./jupyter";
 import { highlightCode, highlightWithError } from "./highlight";
 import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
@@ -679,10 +679,10 @@ export default function NotebookTile({
     }
   };
   /** the notebook as a Jupyter notebook, or as a Python script (# %% cells) */
-  const exportAs = async (kind: "ipynb" | "py") => {
+  const exportAs = async (kind: "ipynb" | "script") => {
     if (!doc || !name) return;
-    const text = kind === "ipynb" ? toIpynb(doc, name, py) : toScript(doc, name);
-    const path = await invoke<string>("save_text", { name, extension: kind, text }).catch((err) => (setError(errorText(err)), null));
+    const { extension, text } = kind === "ipynb" ? { extension: "ipynb", text: toIpynb(doc, name, py) } : toScript(doc, name);
+    const path = await invoke<string>("save_text", { name, extension, text }).catch((err) => (setError(errorText(err)), null));
     if (path) setNotice(`Saved to ${path.split("/").slice(-2).join("/")}`);
     setMenu(false);
   };
@@ -1219,10 +1219,10 @@ export default function NotebookTile({
                 </button>
                 <div className="nb-pop-line" />
                 <button className="nb-pop-item" onClick={() => exportAs("ipynb")}>
-                  <Icon name="download" size={14} /> Save as a Jupyter notebook (.ipynb)
+                  <Icon name="download" size={14} /> Save as a Jupyter notebook (.ipynb{mainLanguage(doc) === "python" ? "" : `, ${mainLanguage(doc) === "matlab" ? "Octave" : mainLanguage(doc)} kernel`})
                 </button>
-                <button className="nb-pop-item" onClick={() => exportAs("py")}>
-                  <Icon name="download" size={14} /> Save as a Python script (.py)
+                <button className="nb-pop-item" onClick={() => exportAs("script")}>
+                  <Icon name="download" size={14} /> Save as a {mainLanguage(doc) === "matlab" ? "MATLAB script (.m, %% sections)" : mainLanguage(doc) === "python" ? "Python script (.py)" : `script (${toScript(doc, name ?? "").extension})`}
                 </button>
                 <button className="nb-pop-item" onClick={() => importer.current?.click()}>
                   <Icon name="folder" size={14} /> Open a Jupyter notebook…

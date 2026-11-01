@@ -124,7 +124,7 @@ pub fn save_svg(app: AppHandle, name: String, svg: String) -> Result<String, Str
 #[tauri::command]
 pub fn save_text(app: AppHandle, name: String, extension: String, text: String) -> Result<String, String> {
     let name = safe_filename(&name)?;
-    if !["ipynb", "py", "md", "csv", "txt"].contains(&extension.as_str()) {
+    if !["ipynb", "py", "m", "js", "jl", "r", "md", "csv", "txt"].contains(&extension.as_str()) {
         return Err(format!("can't save a .{extension} file"));
     }
     let dir = app.path().download_dir().map_err(|e| e.to_string())?;
