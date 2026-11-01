@@ -63,6 +63,8 @@ export interface GraphSeries {
   rows?: { label: string; tex: string }[];
   /** drafting labels: each side's length (turned along it), each corner's angle */
   dims?: { x: number; y: number; text: string; deg?: number; side?: boolean }[];
+  /** a point slid by a slider's own letter ((a, a²)), not point(shape, t)'s 0 to 1 */
+  free?: boolean;
   /** a sequence's dots (a_n = 3n + 2): its name */
   sequence?: string;
   /** words written on the graph beside it: an angle's size */

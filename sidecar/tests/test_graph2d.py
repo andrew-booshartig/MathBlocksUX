@@ -342,3 +342,11 @@ def test_a_quadratic_says_its_other_forms(line, facts):
 
 def test_an_exponential_says_how_it_grows():
     assert graph(r"y=100\left(0.8\right)^{x}")["series"][0]["facts"] == [r"\text{shrinks }\times\frac{4}{5}\text{ each step (−20\%)}", r"\text{starts at }100\text{ (x = 0)}"]
+
+
+def test_a_point_moved_by_one_letter_slides_along_its_path():
+    s = graph(r"\left(a,a^{2}\right)", vars={"a": 1})["series"][0]
+    assert s["glide"] == "a" and s["free"] is True
+    k = min(range(len(s["path"]["t"])), key=lambda j: abs(s["path"]["x"][j] - 2))
+    assert abs(s["path"]["y"][k] - 4) < 0.05 and abs(s["path"]["t"][k] - 2) < 0.05
+    assert "glide" not in graph(r"\left(a,b\right)", vars={"a": 1, "b": 2})["series"][0]

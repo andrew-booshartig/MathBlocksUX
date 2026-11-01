@@ -410,6 +410,11 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
                 out["facts"] = [geometry.point_tex(t) for t in items]
             if p.glide and len(p.tuples) == 1:
                 out.update(_glide_path(p.tuples[0], p.glide, values, window))
+            elif len(p.tuples) == 1 and not p.computed:
+                # (a, a²): one letter (a slider) moves it — dragged, it slides along its path and the letter follows
+                own = sorted(str(s) for s in sympy.Tuple(*p.tuples[0]).free_symbols if str(s) not in ("x", "y", "t"))
+                if len(own) == 1 and Symbol(own[0]) in values:
+                    out.update(_glide_path(p.tuples[0], own[0], values, window, free=True))
             return out, None
         if len(items) == 1 and T in free:
             need(*items[0], bound={"t"})
@@ -853,9 +858,10 @@ def _extras(i, expr, extra, xr, window):
     return out
 
 
-def _glide_path(raw, letter, values, window=None):
+def _glide_path(raw, letter, values, window=None, free=False):
     """a point slid along a shape by a letter: the path it can take, with that
-    letter's value at each step — so a drag can find the letter that puts it there"""
+    letter's value at each step — so a drag can find the letter that puts it there
+    (free: a slider's own letter, (a, a²), not point(shape, t)'s 0 to 1)"""
     var = Symbol(letter)
     rest = {k: v for k, v in values.items() if k != var}
     px, py = (sympy.sympify(c).subs(rest) for c in raw)
@@ -872,6 +878,10 @@ def _glide_path(raw, letter, values, window=None):
             step, now = 1.0, 0.0
         reach = 2 * math.hypot(window[0][1] - window[0][0], window[1][1] - window[1][0]) / step if window else 4
         ts = np.linspace(now - reach, now + reach, 2001)
+    elif free:
+        now = float(sympy.N(values.get(var, 0)))
+        reach = max(10.0, 2 * (window[0][1] - window[0][0])) if window else 10.0
+        ts = np.linspace(now - reach, now + reach, 2401)
     else:
         ts = np.linspace(0, 1, 721)
     try:
@@ -880,7 +890,7 @@ def _glide_path(raw, letter, values, window=None):
     except Exception:  # noqa: BLE001
         return {"glide": letter}
     ok = np.isfinite(xs) & np.isfinite(ys)
-    return {"glide": letter, "path": {"x": xs[ok].round(6).tolist(), "y": ys[ok].round(6).tolist(), "t": ts[ok].round(6).tolist()}}
+    return {"glide": letter, "path": {"x": xs[ok].round(6).tolist(), "y": ys[ok].round(6).tolist(), "t": ts[ok].round(6).tolist()}, **({"free": True} if free else {})}
 
 
 def _through(expr):

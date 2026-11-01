@@ -867,8 +867,10 @@ export default function XYGraph({
       const d = (px - x) ** 2 + (path!.y[k] - y) ** 2;
       if (d < near) [near, best] = [d, k];
     });
-    const [lo, hi] = plot.ranges?.[glide!] ?? [0, 1];
-    return Math.round(Math.min(hi, Math.max(lo, path!.t[best])) * 1e4) / 1e4;
+    // a slider's own letter keeps to its slider (−10 to 10 unless set); point(shape, t)'s t to 0 … 1
+    const t = path!.t[best];
+    const [lo, hi] = plot.ranges?.[glide!] ?? (s.free ? [Math.min(-10, Math.floor(t)), Math.max(10, Math.ceil(t))] : [0, 1]);
+    return Math.round(Math.min(hi, Math.max(lo, t)) * 1e4) / 1e4;
   };
   // a point with trace on leaves a trail as it moves (kept until cleared — not saved)
   const trails = useRef<Record<string, [number, number][]>>({});
