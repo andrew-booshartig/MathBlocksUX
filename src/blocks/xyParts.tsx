@@ -7,6 +7,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { mathRequest } from "../mathSidecar";
 import type { GraphLineStyle, XYExtra, XYSettings, XYTable } from "../store";
 import { Tex } from "../ui";
+import { type TriKey, solveTriangle } from "../triangle";
 
 /** "-1/2", "0.5", "3", "pi", "2pi" → a number */
 export function readNumber(text: string): number | null {
@@ -363,7 +364,17 @@ export function GraphSettings({ settings, onChange, onClose }: { settings: XYSet
         ))}
       </div>
       <div className="xy-row">
-        <span>Or across</span>
+        <span>Custom</span>
+        <NumberBox
+          value={settings.xStep !== undefined && settings.xStep === settings.yStep ? settings.xStep : undefined}
+          placeholder="any"
+          title="What each line is worth, both ways — 0.25, 3/4, 12, π…"
+          onChange={(n) => set(n !== undefined && n > 0 ? { xStep: n, yStep: n } : { xStep: undefined, yStep: undefined })}
+        />
+        <span className="xy-dim">or different ways:</span>
+      </div>
+      <div className="xy-row">
+        <span>Across</span>
         <NumberBox value={settings.xStep} placeholder="auto" title="What each line across is worth — 0.25, 2/3, π…" onChange={(n) => set({ xStep: n !== undefined && n > 0 ? n : undefined })} />
         <span>up</span>
         <NumberBox value={settings.yStep} placeholder="auto" title="What each line up is worth" onChange={(n) => set({ yStep: n !== undefined && n > 0 ? n : undefined })} />
@@ -385,10 +396,18 @@ export function GraphSettings({ settings, onChange, onClose }: { settings: XYSet
         <input type="checkbox" checked={!!settings.logY} onChange={(e) => set({ logY: e.target.checked || undefined })} />
         Logarithmic y axis <span className="xy-dim">(for data across powers of ten)</span>
       </label>
-      <label className="xy-check">
-        <input type="checkbox" checked={settings.marks !== false} onChange={(e) => set({ marks: e.target.checked ? undefined : false })} />
-        Mark intercepts, highs and lows, crossings <span className="xy-dim">(holes always show)</span>
-      </label>
+      <div className="xy-pop-head">Mark on the graph</div>
+      {([
+        ["intercepts", "x and y intercepts"],
+        ["extremes", "Highs and lows (vertex, max, min)"],
+        ["crossings", "Where lines cross"],
+      ] as const).map(([key, label]) => (
+        <label key={key} className="xy-check">
+          <input type="checkbox" checked={settings.marks !== false && settings[key] !== false} onChange={(e) => set({ marks: undefined, [key]: e.target.checked ? undefined : false })} />
+          {label}
+        </label>
+      ))}
+      <span className="xy-dim">Holes always show — they're part of the curve.</span>
       <div className="xy-pop-head">Axis labels</div>
       <div className="xy-row">
         <input className="xy-text" value={settings.xLabel ?? ""} placeholder="x axis — time (s)" onChange={(e) => set({ xLabel: e.target.value || undefined })} />
@@ -412,6 +431,7 @@ export const ADDS: { id: string; group: string; label: string; tex: string; temp
   { id: "segment", group: "Geometry", label: "Segment", tex: "\\overline{AB}", template: "\\operatorname{segment}\\left(#?,#?\\right)", title: "Between two points: A, B — or (1, 2), (3, 4)" },
   { id: "line", group: "Geometry", label: "Line", tex: "\\overleftrightarrow{AB}", template: "\\operatorname{line}\\left(#?,#?\\right)", title: "Through two points, on forever both ways" },
   { id: "circle", group: "Geometry", label: "Circle", tex: "\\odot A", template: "\\operatorname{circle}\\left(#?,#?\\right)", title: "Its center, then its radius or a point on it" },
+  { id: "triangle", group: "Geometry", label: "Triangle", tex: "\\triangle\\,a,b,\\angle C", title: "From what you know: sides, angles, or some of each — the rest worked out" },
   { id: "polygon", group: "Geometry", label: "Polygon", tex: "\\triangle ABC", template: "\\operatorname{polygon}\\left(#?,#?,#?\\right)", title: "Its corners, in order" },
   { id: "table", group: "Data and notes", label: "Table", tex: "x\\;\\big|\\;y", title: "Data points — and a curve fitted to them" },
   { id: "note", group: "Data and notes", label: "Note", tex: "\\text{Aa}", title: "Words in the list: what this shows, what to try next" },
@@ -437,6 +457,91 @@ export function AddMenu({ onPick, onClose }: { onPick: (id: string) => void; onC
         </div>
       ))}
     </Pop>
+  );
+}
+
+// ---- a triangle from what's known
+
+type Tri = { given: Partial<Record<TriKey, number>>; pick?: 1 | 2; at?: [number, number]; turn?: number };
+
+export function TriangleRow({ tri, color, hidden, onChange, onHide, onRemove }: { tri: Tri; color: string; hidden?: boolean; onChange: (t: Tri) => void; onHide: () => void; onRemove: () => void }) {
+  const [how, setHow] = useState(false);
+  const solved = solveTriangle(tri.given, tri.pick ?? 1);
+  const round = (n: number) => String(Math.round(n * 100) / 100);
+  const box = (k: TriKey) => {
+    const angle = k === k.toUpperCase();
+    const worked = solved.values[k];
+    return (
+      <label key={k} className={`xy-tri-cell${tri.given[k] !== undefined ? " is-given" : ""}`} title={angle ? `Angle ${k}, in degrees — at corner ${k}` : `Side ${k} — across from angle ${k.toUpperCase()}`}>
+        <span className="xy-tri-name">{angle ? `∠${k}` : k}</span>
+        <NumberBox value={tri.given[k]} placeholder={worked !== undefined ? round(worked) : "?"} onChange={(n) => onChange({ ...tri, given: { ...tri.given, [k]: n } })} />
+        {angle && <span className="xy-dim">°</span>}
+      </label>
+    );
+  };
+  return (
+    <div className={`xy-tri${hidden ? " is-hidden" : ""}`}>
+      <div className="xy-table-head">
+        <button className="xy-swatch" style={{ background: hidden ? "transparent" : color, borderColor: color }} title={hidden ? "Show it" : "Hide it"} onClick={onHide} />
+        <span className="xy-table-title">Triangle — type what you know</span>
+        <button className="xy-remove" title="Remove this triangle" onClick={onRemove}>
+          ×
+        </button>
+      </div>
+      <div className="xy-tri-body">
+        {/* which letter is which: each side across from the angle of its letter */}
+        <svg className="xy-tri-key" viewBox="0 0 84 64" aria-hidden>
+          <path d="M8 56 76 56 30 8z" fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+          <text x="1" y="62">A</text>
+          <text x="77" y="62">B</text>
+          <text x="27" y="7">C</text>
+          <text x="40" y="63" className="is-side">c</text>
+          <text x="56" y="30" className="is-side">a</text>
+          <text x="10" y="30" className="is-side">b</text>
+        </svg>
+        <div className="xy-tri-grid">
+          {(["a", "b", "c"] as const).map(box)}
+          {(["A", "B", "C"] as const).map(box)}
+        </div>
+      </div>
+      {solved.problem && <div className="xy-line-error">{solved.problem}</div>}
+      {solved.twoFit && (
+        <div className="xy-row">
+          <span className="xy-dim">Two triangles fit these —</span>
+          <div className="xy-seg is-text">
+            {([1, 2] as const).map((n) => (
+              <button key={n} className={(tri.pick ?? 1) === n ? "is-on" : ""} onClick={() => onChange({ ...tri, pick: n === 1 ? undefined : n })}>
+                {n === 1 ? "the first" : "the other"}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="xy-row xy-tri-place">
+        <span className="xy-dim">A at (</span>
+        <NumberBox value={tri.at?.[0] ?? 0} placeholder="0" onChange={(n) => onChange({ ...tri, at: [n ?? 0, tri.at?.[1] ?? 0] })} />
+        <span className="xy-dim">,</span>
+        <NumberBox value={tri.at?.[1] ?? 0} placeholder="0" onChange={(n) => onChange({ ...tri, at: [tri.at?.[0] ?? 0, n ?? 0] })} />
+        <span className="xy-dim">)</span>
+        <span className="xy-nowrap">
+          <span className="xy-dim">turned </span>
+          <NumberBox value={tri.turn ?? 0} placeholder="0" title="Which way side c (A to B) points, in degrees: 0 is to the right, 90 up — a bearing on a map" onChange={(n) => onChange({ ...tri, turn: n || undefined })} />
+          <span className="xy-dim">°</span>
+        </span>
+        {solved.steps.length > 0 && (
+          <button className="xy-zoom-btn is-text" onClick={() => setHow(!how)}>
+            {how ? "Hide how" : "Show how"}
+          </button>
+        )}
+      </div>
+      {how && (
+        <ol className="xy-tri-steps">
+          {solved.steps.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
 

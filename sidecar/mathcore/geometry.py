@@ -109,7 +109,9 @@ def number_tex(v) -> str:
     if v.is_Integer:
         return _tex(v)
     exact = _tex(v)
-    if len(exact) > 36 or v.has(sympy.Float):
+    # a fraction like 4330127/200000 came from decimals — it says nothing the decimal doesn't
+    clumsy = any(r.q > 1000 for r in v.atoms(sympy.Rational))
+    if len(exact) > 36 or v.has(sympy.Float) or clumsy:
         return _approx(v)
     return f"{exact}\\approx{_approx(v)}"
 

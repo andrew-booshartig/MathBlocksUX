@@ -20,7 +20,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { Plotly } from "../PlotlyChart";
 import type { PlotDiv } from "../GraphView";
 import type { XYExtra, XYTable } from "../store";
-import { ADDS, AddMenu, DataTable, Examples, GraphSettings, LineOptions, SaveMenu, readNumber, tablePoints } from "./xyParts";
+import { solveTriangle, triangleCorners } from "../triangle";
+import { ADDS, AddMenu, TriangleRow, DataTable, Examples, GraphSettings, LineOptions, SaveMenu, readNumber, tablePoints } from "./xyParts";
 import { plainMath } from "../plainMath";
 
 /** the hand tools, in three groups: getting around; building — each puts
@@ -126,9 +127,16 @@ function fracTex(n: number): string {
 }
 type Row = NonNullable<XYPlot["lines"]>[number];
 /** a row with nothing in it yet (a note, even empty, is something) */
-const isBlank = (l: Row) => !l.latex.trim() && l.note === undefined;
+const isBlank = (l: Row) => !l.latex.trim() && l.note === undefined && !l.triangle;
+/** a triangle row, drawn: the polygon through its corners (nothing until it's worked out) */
+function triangleLatex(t: NonNullable<Row["triangle"]>): string {
+  const solved = solveTriangle(t.given, t.pick ?? 1);
+  const corners = solved.problem ? null : triangleCorners(solved.values, t.at, t.turn ?? 0);
+  const n = (v: number) => String(Math.round(v * 1e6) / 1e6);
+  return corners ? `\\operatorname{polygon}\\left(${corners.map(([x, y]) => `\\left(${n(x)},${n(y)}\\right)`).join(",")}\\right)` : "";
+}
 /** what a row graphs: its math — not a note, nor a starter with boxes still empty */
-const exprOf = (l: Row) => (l.note !== undefined || l.latex.includes("\\placeholder") ? "" : l.latex);
+const exprOf = (l: Row) => (l.triangle ? triangleLatex(l.triangle) : l.note !== undefined || l.latex.includes("\\placeholder") ? "" : l.latex);
 /** a note grows to fit its words */
 const fit = (el: HTMLTextAreaElement) => {
   el.style.height = "auto";
@@ -526,6 +534,7 @@ export default function XYGraph({
     setAddOpen(false);
     setExamplesOpen(false);
     if (id === "table") return setTables([...tables, { id: newId("table"), rows: [["", ""], ["", ""], ["", ""]] }]);
+    if (id === "triangle") return setLines([...lines.filter((l) => !isBlank(l)), { id: newId("xy"), latex: "", triangle: { given: {} } }]);
     const row = { id: newId("xy"), latex: "", ...(id === "note" ? { note: "" } : {}) };
     setLines([...lines.filter((l) => !isBlank(l)), row]);
     const taken = takenNames();
@@ -607,6 +616,28 @@ export default function XYGraph({
               const error = errorOf(i);
               const caption = error ? [] : captionOf(i);
               const last = i === lines.length - 1 && isBlank(line);
+              if (line.triangle)
+                return (
+                  <div key={line.id} className="xy-line is-triangle">
+                    <TriangleRow
+                      tri={line.triangle}
+                      color={colorOf(i)}
+                      hidden={line.hidden}
+                      onChange={(triangle) => setLine(i, { triangle })}
+                      onHide={() => setLine(i, { hidden: !line.hidden || undefined })}
+                      onRemove={() => remove(i)}
+                    />
+                    {caption.length > 0 && (
+                      <div className="xy-line-caption">
+                        {caption.map((part, k) => (
+                          <span key={k} className="xy-fact">
+                            {part}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
               if (line.note !== undefined)
                 return (
                   <div key={line.id} className="xy-line is-note">
@@ -777,7 +808,11 @@ export default function XYGraph({
               extras={lines.map((l) => (l.hidden ? null : (l.extra ?? null)))}
               degrees={!!settings.degrees}
               equalAspect={settings.equal !== false}
-              hide={settings.marks === false ? ["intercepts", "vertices", "intersections"] : []}
+              hide={[
+                ...(settings.marks === false || settings.intercepts === false ? ["intercepts" as const] : []),
+                ...(settings.marks === false || settings.extremes === false ? ["vertices" as const] : []),
+                ...(settings.marks === false || settings.crossings === false ? ["intersections" as const] : []),
+              ]}
               appearance={{ grid: settings.grid, numbers: settings.numbers, xLabel: settings.xLabel, yLabel: settings.yLabel, piX: settings.piX, logX: settings.logX, logY: settings.logY, xStep: settings.xStep, yStep: settings.yStep, unit: settings.unit }}
               onPlot={setPlotDiv}
               focus={focusIndex >= 0 ? focusIndex : null}

@@ -7517,3 +7517,124 @@ math-field {
     margin-left: auto;
   }
 }
+
+/* ---- a triangle from what's known */
+.xy-tri {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px 8px 10px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 10px;
+  background: var(--t-bg1, #0e0e12);
+  font-size: 12.5px;
+}
+
+.xy-tri.is-hidden .xy-tri-body {
+  opacity: 0.45;
+}
+
+.xy-tri-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.xy-tri-key {
+  flex: 0 0 auto;
+  width: 70px;
+  font: italic 11px "Times New Roman", serif;
+  fill: var(--t-muted, #7a7a90);
+}
+
+.xy-tri-key .is-side {
+  fill: var(--t-subtle, #a9a9bd);
+}
+
+.xy-tri-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 6px;
+}
+
+.xy-tri-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.xy-tri-cell .xy-num {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.xy-tri-name {
+  min-width: 18px;
+  font: italic 14px "Times New Roman", serif;
+  color: var(--t-muted, #7a7a90);
+}
+
+.xy-tri-cell.is-given .xy-tri-name {
+  color: var(--t-text, #e8e8f0);
+}
+
+/* worked out, not typed: shown dim in the box */
+.xy-tri-cell .xy-num::placeholder {
+  color: var(--t-subtle, #a9a9bd);
+  opacity: 0.75;
+}
+
+.xy-tri-place .xy-num {
+  width: 46px;
+}
+
+.xy-tri-place .xy-zoom-btn {
+  margin-left: auto;
+}
+
+.xy-tri-steps {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--t-subtle, #a9a9bd);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.xy-tri-key {
+  width: 56px;
+}
+
+.xy-tri-grid {
+  gap: 4px;
+}
+
+.xy-tri-cell .xy-num {
+  padding: 0 3px;
+  font-size: 12.5px;
+}
+
+/* typed: bright and outlined; worked out: dim, in the box */
+.xy-tri-cell.is-given .xy-num {
+  border-color: color-mix(in srgb, var(--t-pink, #c99bbf) 55%, var(--t-line, #2e2e3a));
+  font-weight: 600;
+}
+
+.xy-nowrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* the tool row: tight enough that the full set sits on one line */
+.xy-tools .xy-tool {
+  min-width: 28px;
+  padding: 0 4px;
+}
+
+.xy-tools .xy-tools-sep {
+  margin: 0 3px;
+}

@@ -299,6 +299,8 @@ export interface XYPlot {
     extra?: XYExtra;
     /** a note: words in the list, not math */
     note?: string;
+    /** a triangle from what's known of it: sides a, b, c, angles A, B, C (degrees) */
+    triangle?: { given: Partial<Record<"a" | "b" | "c" | "A" | "B" | "C", number>>; pick?: 1 | 2; at?: [number, number]; turn?: number };
   }[];
   /** data: points in a table, and the curve that fits them */
   tables?: XYTable[];
@@ -348,6 +350,10 @@ export interface XYSettings {
   unit?: string;
   /** points land where you click, not on the grid — on unless turned off */
   snap?: boolean;
+  /** each kind of marked point, on unless turned off */
+  intercepts?: boolean;
+  extremes?: boolean;
+  crossings?: boolean;
 }
 
 /** An inequality drawn on a number line (the calculator's Graph tab) —
