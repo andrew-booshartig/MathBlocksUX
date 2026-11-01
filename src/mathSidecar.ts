@@ -41,7 +41,33 @@ export interface SolveResult {
 
 export interface GraphSeries {
   index: number;
-  kind: "function" | "points" | "vline" | "inequality" | "error";
+  kind: "function" | "points" | "vline" | "inequality" | "curve" | "region" | "field" | "area" | "polygon" | "value" | "error";
+  /** a point's name (A = (1, 2)), written beside it */
+  name?: string;
+  /** geometry: segment, line, ray, vector, circle, polygon, perpendicular, parallel */
+  shape?: string;
+  /** a vector: an arrowhead at its end */
+  arrow?: boolean;
+  /** what's true about it, as math: a segment's length, a line's equation, ∫ … = … */
+  facts?: string[];
+  /** a straight shape's equation alone (y = mx + b) */
+  equation?: string;
+  /** a function drawn for another line: its derivative, or a tangent line */
+  role?: "derivative" | "tangent";
+  /** vertical asymptotes (x values), drawn dashed */
+  asymptotes?: number[];
+  /** a region: its grid and where it's true (rows of 0/1) */
+  gx?: number[];
+  gy?: number[];
+  z?: number[][];
+  /** an area under a curve: its value and limits; a tangent: its slope */
+  value?: number;
+  from?: number;
+  to?: number;
+  slope?: number;
+  /** a polar or parametric curve: θ's or t's range */
+  polar?: [number, number];
+  parametric?: [number, number];
   latex?: string;
   error?: string;
   x?: number[];
@@ -61,7 +87,7 @@ export interface GraphSeries {
 export interface GraphMarker {
   x: number;
   y: number;
-  kind: "x-intercept" | "y-intercept" | "vertex" | "intersection";
+  kind: "x-intercept" | "y-intercept" | "vertex" | "intersection" | "max" | "min" | "hole" | "tangent";
   label: string;
   series: number | number[];
 }

@@ -6818,3 +6818,464 @@ math-field {
 .xy-typed-num.is-bad {
   border-color: var(--t-red, #f19a9a);
 }
+
+/* ---- the xy graph's panels: a line's options, settings, data tables */
+@keyframes xy-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.xy-line {
+  position: relative;
+}
+
+.xy-line-caption {
+  font-size: 11.5px;
+  color: var(--t-muted, #8a8aa0);
+  padding: 2px 12px 0 32px;
+}
+
+.xy-remove.is-on,
+.xy-add.is-on {
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-adds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.xy-tools {
+  position: relative;
+}
+
+.xy-tools-end {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+.xy-tool.is-text + .xy-tools-end {
+  margin-left: 0;
+}
+
+.xy-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  width: 300px;
+  max-width: 100%;
+  max-height: 70vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 12px;
+  background: var(--t-bg3, #1c1c24);
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--t-bg0, #000) 60%, transparent);
+  color: var(--t-text, #e8e8f0);
+  font-size: 12.5px;
+  animation: xy-pop-in 0.12s ease-out;
+}
+
+.xy-pop-head {
+  margin-top: 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--t-muted, #7a7a90);
+}
+
+.xy-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.xy-color {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.xy-color.is-on {
+  box-shadow: 0 0 0 2px var(--t-bg3, #1c1c24), 0 0 0 4px var(--t-text, #e8e8f0);
+}
+
+.xy-seg {
+  display: flex;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--t-bg1, #0e0e12);
+}
+
+.xy-seg button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  color: var(--t-muted, #7a7a90);
+  cursor: pointer;
+}
+
+.xy-seg button + button {
+  border-left: 1px solid var(--t-line, #2e2e3a);
+}
+
+.xy-seg button:hover {
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-seg button.is-on {
+  background: color-mix(in srgb, var(--t-pink, #c99bbf) 18%, transparent);
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-seg.is-text button {
+  font-size: 12px;
+}
+
+.xy-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.xy-check input {
+  margin: 0;
+  accent-color: var(--t-pink, #c99bbf);
+}
+
+.xy-dim {
+  font-size: 11.5px;
+  color: var(--t-muted, #7a7a90);
+}
+
+.xy-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.xy-num,
+.xy-text,
+.xy-cell {
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 6px;
+  background: var(--t-bg1, #0e0e12);
+  color: var(--t-text, #e8e8f0);
+  font: 13px -apple-system, "Inter", sans-serif;
+  outline: none;
+}
+
+.xy-num {
+  width: 60px;
+  text-align: center;
+}
+
+.xy-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.xy-num:focus,
+.xy-text:focus,
+.xy-cell:focus {
+  border-color: var(--t-faint, #55606e);
+}
+
+.xy-num.is-bad,
+.xy-cell.is-bad {
+  border-color: var(--t-red, #f19a9a);
+}
+
+/* a table of data points, and the curve fitted to them */
+.xy-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px 8px 10px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 10px;
+  background: var(--t-bg1, #0e0e12);
+}
+
+.xy-table.is-hidden .xy-table-grid,
+.xy-table.is-hidden .xy-fit {
+  opacity: 0.45;
+}
+
+.xy-table-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.xy-table-title {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--t-subtle, #a9a9bd);
+}
+
+.xy-select {
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 6px;
+  background: var(--t-bg2, #17171f);
+  color: var(--t-text, #e8e8f0);
+  font-size: 12px;
+}
+
+.xy-table-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 20px;
+  gap: 3px 4px;
+}
+
+.xy-table-col {
+  font: italic 13px "Times New Roman", serif;
+  color: var(--t-muted, #7a7a90);
+  text-align: center;
+}
+
+.xy-cell {
+  min-width: 0;
+  text-align: center;
+}
+
+.xy-row-x {
+  border: none;
+  background: none;
+  color: var(--t-muted, #7a7a90);
+  cursor: pointer;
+  padding: 0;
+}
+
+.xy-row-x:hover:not(:disabled) {
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-row-x:disabled {
+  visibility: hidden;
+}
+
+.xy-table-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.xy-table-foot .xy-add {
+  padding: 2px 4px;
+}
+
+.xy-fit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--t-bg2, #17171f);
+  font-size: 15px;
+}
+
+.xy-fit .xy-zoom-btn {
+  margin-left: auto;
+}
+
+/* what it graphs, to start from */
+.xy-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0 4px;
+}
+
+.xy-example {
+  padding: 3px 10px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 999px;
+  background: var(--t-bg2, #17171f);
+  color: var(--t-text, #e8e8f0);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.xy-example:hover {
+  border-color: var(--t-faint, #55606e);
+}
+
+/* ---- geometry on the xy graph */
+.xy-tools-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 5px;
+  background: var(--t-line, #2e2e3a);
+}
+
+/* what's true about a line, as math: a segment's length, a line's equation */
+.xy-line-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: 2px;
+  font-size: 12px;
+}
+
+.xy-line-caption .katex {
+  font-size: 1.12em;
+  color: var(--t-subtle, #a9a9bd);
+}
+
+/* the dot between facts ends a line when they wrap, never starts one */
+.xy-fact:not(:last-child)::after {
+  content: "·";
+  margin: 0 8px;
+  color: var(--t-faint, #55606e);
+}
+
+/* the hint under the graph wraps; its buttons never do */
+.xy-plot-foot {
+  gap: 10px;
+}
+
+.xy-plot-foot > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.xy-plot-foot .xy-zoom {
+  flex: 0 0 auto;
+}
+
+.xy-zoom-btn {
+  white-space: nowrap;
+}
+
+.xy-seg.is-math button {
+  height: 32px;
+  font-size: 14px;
+}
+
+.xy-builds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.xy-build {
+  padding: 4px 10px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 7px;
+  background: var(--t-bg2, #17171f);
+  color: var(--t-text, #e8e8f0);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.xy-build:hover {
+  border-color: var(--t-faint, #55606e);
+}
+
+/* building: the point under the cursor it'll connect to */
+@keyframes graph-aim-ring {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.graph-aim-ring {
+  animation: graph-aim-ring 1.2s ease-in-out infinite;
+}
+
+/* ---- the xy graph's layout: the list beside the graph when there's room
+   (Desmos-style) — it scrolls on its own, so adding lines never squeezes or
+   moves the graph — and above it, its height capped, when there isn't */
+.xy-split,
+.xy-side,
+.xy-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.xy-graph.is-fill {
+  container-type: inline-size;
+}
+
+.xy-graph.is-fill .xy-split,
+.xy-graph.is-fill .xy-main {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.xy-graph.is-fill .xy-side {
+  flex: 0 1 auto;
+  max-height: 45%;
+  overflow-y: auto;
+}
+
+@container (min-width: 760px) {
+  .xy-graph.is-fill .xy-split {
+    flex-direction: row;
+    gap: 14px;
+  }
+
+  .xy-graph.is-fill .xy-side {
+    flex: 0 0 clamp(300px, 34%, 440px);
+    max-height: none;
+    padding-right: 4px;
+  }
+}
+
+/* a line's options open under it, in the list (a popover would be cut off
+   by the list's scrolling) */
+.xy-pop.xy-line-pop {
+  position: static;
+  width: auto;
+  max-width: none;
+  max-height: none;
+  margin: 6px 0 4px 26px;
+  box-shadow: none;
+  background: var(--t-bg2, #17171f);
+}
+
+/* points typed in: over the graph's corner, so the graph keeps its size */
+.xy-plot {
+  position: relative;
+}
+
+.xy-plot > .xy-typed {
+  position: absolute;
+  z-index: 6;
+  top: 8px;
+  left: 44px;
+  max-width: calc(100% - 60px);
+  padding: 4px 8px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--t-bg3, #1c1c24) 92%, transparent);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--t-bg0, #000) 35%, transparent);
+}

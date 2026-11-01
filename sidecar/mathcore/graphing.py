@@ -291,6 +291,11 @@ def _from_latex(latex: str) -> str:
 
 
 def op_graph(req: dict) -> dict:
+    # typed in a math field (the xy graph): the full 2D grapher
+    if req.get("latex"):
+        from .graph2d import op_graph2d
+
+        return op_graph2d(req)
     lines = req.get("exprs")
     if lines is None:
         lines = [req.get("expr", "")]

@@ -129,6 +129,7 @@ export default function MathInput({
   onBlur,
   onArrow,
   linear,
+  words,
   className,
   ref,
 }: {
@@ -145,6 +146,8 @@ export default function MathInput({
   onArrow?: (direction: "up" | "down") => boolean;
   /** / types a slash (3/4 on one line), not a stacked fraction */
   linear?: boolean;
+  /** names typed out become upright words, like sin: segment, circle… */
+  words?: readonly string[];
   className?: string;
   ref?: Ref<MathInputHandle>;
 }) {
@@ -179,7 +182,10 @@ export default function MathInput({
     // (lb too: MathLive's binary log — 5 lb is five pounds here)
     const units = new Set(["mm", "cm", "km", "kg", "ft", "inch", "mi", "lb"]);
     const { or: _or, and: _and, not: _not, ...shortcuts } = mf.inlineShortcuts;
-    mf.inlineShortcuts = Object.fromEntries(Object.entries(shortcuts).filter(([key]) => !units.has(key)));
+    mf.inlineShortcuts = {
+      ...Object.fromEntries(Object.entries(shortcuts).filter(([key]) => !units.has(key))),
+      ...Object.fromEntries((words ?? []).map((w) => [w, `\\operatorname{${w}}`])),
+    };
     // copied into another app, math reads as math: (3x)/4+5, not $$\frac{3x}{4}+5$$
     // (pasting back in here uses MathLive's own copy, so nothing is lost)
     mf.onExport = (_from, latex, range) => {

@@ -2,15 +2,27 @@
  * arrows, freehand pen and text — all stored in graph coordinates, so they
  * stay put as the graph is panned, zoomed or resized. Sits over the Plotly
  * plot only while a drawing tool is picked; with the hand tool the plot
- * itself pans and zooms. */
+ * itself pans and zooms.
+ *
+ * Given onConstruct, the segment, line, ray, circle and polygon tools build
+ * geometry instead: click a point (or anywhere, for a new one), then
+ * another — or drag from one to the other — and the points picked are
+ * handed over, each one already there by its key. */
 import { useEffect, useRef, useState } from "react";
 import type { PlotDiv } from "./GraphView";
 import { type GraphDrawing, type GraphWindow, newId } from "./store";
 
-export type GraphTool = "pan" | "move" | "point" | "line" | "segment" | "arrow" | "pen" | "text" | "eraser";
+export type GraphTool = "pan" | "move" | "point" | "line" | "segment" | "ray" | "circle" | "polygon" | "arrow" | "pen" | "text" | "eraser";
 
-/** a point plotted as math (its line's key), to snap to and drag */
-export type GraphTarget = { key: string; x: number; y: number };
+/** a point plotted as math (its line's key), to snap to and drag — unless
+ * it's built from others (a midpoint), which can't be dragged */
+export type GraphTarget = { key: string; x: number; y: number; name?: string; movable?: boolean };
+
+/** a spot picked to build from: a point already there (its key), or a new one */
+export type GraphPick = { x: number; y: number; key?: string };
+
+/** the tools that build from points, given onConstruct */
+export const CONSTRUCT: readonly GraphTool[] = ["segment", "line", "ray", "circle", "polygon"];
 
 type Px = { px: number; py: number };
 
@@ -44,6 +56,7 @@ function geometry(plot: PlotDiv) {
     toGraph: ({ px, py }: Px): [number, number] => [xa.p2l(px - xa._offset), ya.p2l(py - ya._offset)],
     toPx: ([x, y]: [number, number]): Px => ({ px: xa._offset + xa.l2p(x), py: ya._offset + ya.l2p(y) }),
     inside: ({ px, py }: Px) => px >= xa._offset && px <= xa._offset + xa._length && py >= ya._offset && py <= ya._offset + ya._length,
+    box: { x: Number(xa._offset), y: Number(ya._offset), w: Number(xa._length), h: Number(ya._length) },
   };
 }
 
@@ -71,6 +84,7 @@ export default function GraphDrawLayer({
   onLine,
   targets = [],
   onMovePoint,
+  onConstruct,
 }: {
   plot: PlotDiv;
   size: { width: number; height: number };
@@ -92,6 +106,8 @@ export default function GraphDrawLayer({
   /** points plotted as math: ends snap onto them (2/3 and all), the move tool drags them */
   targets?: GraphTarget[];
   onMovePoint?: (key: string, x: number, y: number) => void;
+  /** segment, line, ray, circle, polygon: build from the points picked */
+  onConstruct?: (tool: GraphTool, picks: GraphPick[]) => void;
 }) {
   const layer = useRef<HTMLDivElement>(null);
   const [stroke, setStroke] = useState<Px[] | null>(null);
@@ -103,6 +119,24 @@ export default function GraphDrawLayer({
   const [held, setHeld] = useState<
     { kind: "point"; key: string } | { kind: "end"; id: string; at: number } | { kind: "whole"; id: string; from: [number, number]; points: [number, number][] } | null
   >(null);
+  /** the points picked so far for what's being built, and where a press began */
+  const [picks, setPicks] = useState<GraphPick[]>([]);
+  const [down, setDown] = useState<Px | null>(null);
+  const constructing = !!onConstruct && CONSTRUCT.includes(tool);
+  useEffect(() => setPicks([]), [tool]);
+  // Esc lets go of what's picked; Enter closes a polygon
+  useEffect(() => {
+    if (!picks.length) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPicks([]);
+      else if (e.key === "Enter" && tool === "polygon" && picks.length >= 3) {
+        setPicks([]);
+        onConstruct?.(tool, picks);
+      }
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [picks, tool, onConstruct]);
   // focus once the click that placed it has finished (the canvas takes
   // focus on click, which would otherwise close the box straight away)
   useEffect(() => {
@@ -149,7 +183,7 @@ export default function GraphDrawLayer({
       const s = geo.toPx(q);
       return Math.hypot(s.px - p.px, s.py - p.py) < r;
     };
-    const point = targets.find((t) => close([t.x, t.y]));
+    const point = targets.find((t) => t.movable !== false && close([t.x, t.y]));
     if (point) return { kind: "point" as const, key: point.key };
     for (const d of [...drawings].reverse()) {
       const at = d.kind === "pen" ? -1 : d.points.findIndex((q) => close(q));
@@ -159,6 +193,26 @@ export default function GraphDrawLayer({
       if (onIt) return { kind: "whole" as const, id: d.id, from: onGrid(p), points: d.points };
     }
     return null;
+  };
+
+  /** a spot to build from: a point near it (already there, or just picked), else the grid */
+  const pick = (p: Px): GraphPick => {
+    let best: GraphPick | null = null;
+    let near = 14;
+    for (const t of [...targets.map((t) => ({ x: t.x, y: t.y, key: t.key })), ...picks]) {
+      const q = geo.toPx([t.x, t.y]);
+      const d = Math.hypot(q.px - p.px, q.py - p.py);
+      if (d < near) [best, near] = [t, d];
+    }
+    if (best) return best;
+    const [x, y] = onGrid(p);
+    return { x, y };
+  };
+  const same = (a: GraphPick, b: GraphPick) => (a.key || b.key ? a.key === b.key : a.x === b.x && a.y === b.y);
+  const finish = (all: GraphPick[]) => {
+    setPicks([]);
+    setDown(null);
+    onConstruct?.(tool, all);
   };
 
   /** pointer → the layer's own pixels (the canvas around may be zoomed) */
@@ -190,6 +244,25 @@ export default function GraphDrawLayer({
     e.preventDefault(); // keep focus where it is (the text box, if one is open)
     const p = local(e);
     if (typing) return commitText();
+    if (constructing) {
+      if (!geo.inside(p)) return;
+      const at = pick(p);
+      if (!picks.length) {
+        // the first point: click again somewhere — or drag there now
+        setPicks([at]);
+        setDown(p);
+        layer.current?.setPointerCapture(e.pointerId);
+        return;
+      }
+      if (tool === "polygon") {
+        // each click a corner; the first one again (or the last one twice) closes it
+        if (picks.length >= 3 && (same(at, picks[0]) || same(at, picks[picks.length - 1]))) return finish(picks);
+        if (!picks.some((q) => same(q, at))) setPicks([...picks, at]);
+        return;
+      }
+      if (!same(at, picks[0])) finish([picks[0], at]);
+      return;
+    }
     if (tool === "move") {
       const got = grab(p);
       if (got) {
@@ -242,7 +315,19 @@ export default function GraphDrawLayer({
     }
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (constructing) {
+      // pressed on one point and let go on another: that's both picked
+      if (down && picks.length === 1 && tool !== "polygon") {
+        const p = local(e);
+        if (Math.hypot(p.px - down.px, p.py - down.py) > 6) {
+          const at = pick(p);
+          if (!same(at, picks[0])) finish([picks[0], at]);
+        }
+      }
+      setDown(null);
+      return;
+    }
     if (held) return setHeld(null);
     if (!stroke) return;
     const pts = stroke;
@@ -263,9 +348,19 @@ export default function GraphDrawLayer({
     setTyping(null);
   };
 
-  // the exact point under the cursor (snapped), with its coordinates
+  /** building: the spot under the cursor that a click would pick */
+  const next = constructing && hover ? pick(hover) : null;
+  // the exact point under the cursor (snapped), with its coordinates — and,
+  // building, the name of the point it'll connect to
   const aim = (() => {
     if (typing || tool === "pen" || tool === "eraser" || tool === "move") return null;
+    if (constructing) {
+      if (!next) return null;
+      const at = next;
+      const name = at.key ? targets.find((t) => t.key === at.key)?.name : undefined;
+      const on = !!at.key || picks.some((q) => same(q, at));
+      return { ...geo.toPx([at.x, at.y]), text: `${name ? `${name.replace(/_(\w+)/, "$1")} ` : ""}(${label(at.x)}, ${label(at.y)})`, on };
+    }
     const at = stroke && stroke.length > 1 ? stroke[stroke.length - 1] : hover;
     if (!at) return null;
     const [x, y] = stroke && stroke.length > 1 ? geo.toGraph(at) : snapped(at);
@@ -273,10 +368,54 @@ export default function GraphDrawLayer({
     return { ...p, text: `(${label(x)}, ${label(y)})` };
   })();
 
-  const preview = ((stroke && stroke.length > 1) || aim) && (
+  /** what's being built, drawn as it would be with the cursor's spot as its next point */
+  const building = (() => {
+    if (!constructing || !picks.length) return null;
+    const pts = picks.map((q) => geo.toPx([q.x, q.y]));
+    const cur = next ? geo.toPx([next.x, next.y]) : null;
+    const { box } = geo;
+    const far = (a: Px, b: Px, both: boolean) => {
+      const d = Math.hypot(b.px - a.px, b.py - a.py) || 1;
+      const [ux, uy] = [(b.px - a.px) / d, (b.py - a.py) / d];
+      const reach = 4 * (box.w + box.h);
+      return { x1: both ? a.px - ux * reach : a.px, y1: both ? a.py - uy * reach : a.py, x2: a.px + ux * reach, y2: a.py + uy * reach };
+    };
+    let shape = null;
+    if (cur && tool === "segment") shape = <line x1={pts[0].px} y1={pts[0].py} x2={cur.px} y2={cur.py} />;
+    else if (cur && (tool === "line" || tool === "ray") && (cur.px !== pts[0].px || cur.py !== pts[0].py)) shape = <line {...far(pts[0], cur, tool === "line")} />;
+    else if (cur && next && tool === "circle") {
+      const [c, at] = [picks[0], next];
+      const r = Math.hypot(at.x - c.x, at.y - c.y);
+      const [rx, ry] = [Math.abs(geo.toPx([c.x + r, c.y]).px - pts[0].px), Math.abs(geo.toPx([c.x, c.y + r]).py - pts[0].py)];
+      shape = <ellipse cx={pts[0].px} cy={pts[0].py} rx={rx} ry={ry} />;
+    } else if (tool === "polygon") {
+      const all = cur ? [...pts, cur] : pts;
+      shape = (
+        <>
+          <polyline points={all.map((q) => `${q.px},${q.py}`).join(" ")} />
+          {all.length >= 3 && <line x1={all[all.length - 1].px} y1={all[all.length - 1].py} x2={pts[0].px} y2={pts[0].py} strokeDasharray="5 5" opacity={0.6} />}
+        </>
+      );
+    }
+    return (
+      <g className="graph-building" stroke={color} strokeWidth={width} fill="none" strokeLinecap="round" opacity={0.75}>
+        <clipPath id="graph-build-clip">
+          <rect x={box.x} y={box.y} width={box.w} height={box.h} />
+        </clipPath>
+        <g clipPath="url(#graph-build-clip)">{shape}</g>
+        {pts.map((q, k) => (
+          <circle key={k} cx={q.px} cy={q.py} r={5} fill={color} stroke="none" />
+        ))}
+      </g>
+    );
+  })();
+
+  const preview = ((stroke && stroke.length > 1) || aim || building) && (
     <svg className="graph-draw-preview" width={size.width} height={size.height}>
+      {building}
       {aim && (
-        <g className="graph-aim">
+        <g className={`graph-aim${"on" in aim && aim.on ? " is-on" : ""}`}>
+          {"on" in aim && aim.on && <circle className="graph-aim-ring" cx={aim.px} cy={aim.py} r={11} fill="none" stroke={color} strokeWidth={2} />}
           <circle cx={aim.px} cy={aim.py} r={tool === "point" ? 6 : 4} fill={tool === "point" ? color : "none"} stroke={color} strokeWidth={2} opacity={0.9} />
           <text x={aim.px + 10} y={aim.py - 10} fill={color}>
             {aim.text}
@@ -302,7 +441,7 @@ export default function GraphDrawLayer({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={() => setStroke(null)}
+      onPointerCancel={() => (setStroke(null), setDown(null))}
       onPointerLeave={() => setHover(null)}
     >
       {preview}

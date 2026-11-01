@@ -5,6 +5,7 @@
  * (intercepts, vertices, intersections) marked. The Graph block adds per-line
  * styles, a theme, grid/axis options and drawings on top. */
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { plainMath } from "./plainMath";
 import Plot from "./PlotlyChart";
 import { type GraphMarker, type GraphResult, type GraphSeries, useLiveMath } from "./mathSidecar";
 import type { GraphAppearance, GraphDrawing, GraphLineStyle, GraphTheme, GraphWindow } from "./store";
@@ -56,7 +57,11 @@ const MARKER_STYLE: Record<GraphMarker["kind"], { color: string; symbol: string 
   "x-intercept": { color: "#f0e14a", symbol: "circle" },
   "y-intercept": { color: "#f0e14a", symbol: "circle" },
   vertex: { color: "#ff8fb1", symbol: "diamond" },
+  max: { color: "#ff8fb1", symbol: "triangle-up" },
+  min: { color: "#ff8fb1", symbol: "triangle-down" },
   intersection: { color: "#ffffff", symbol: "star" },
+  hole: { color: "#ffffff", symbol: "circle-open" },
+  tangent: { color: "#f0a35c", symbol: "circle" },
 };
 
 function toRgba(color: string, alpha: number) {
@@ -73,8 +78,39 @@ export type PlotDiv = any;
 function seriesTraces(s: GraphSeries, color: string, style: GraphLineStyle, outline: string): Trace[] {
   const line = { color, width: style.width ?? 2.5, dash: style.dash ?? "solid" };
   switch (s.kind) {
-    case "function":
+    case "function": {
+      // the derivative dashed and thinner, a tangent dotted; asymptotes dashed and faint
+      const own = s.role === "derivative" ? { ...line, dash: "dash", width: Math.max(1.5, line.width - 0.5) } : s.role === "tangent" ? { ...line, dash: "dot", width: 1.8 } : line;
+      const asymptotes = (s.asymptotes ?? []).map((a) => ({ x: [a, a], y: [-FAR, FAR], type: "scatter", mode: "lines", line: { color: toRgba(color, 0.55), width: 1.2, dash: "dash" }, hoverinfo: "x", name: "" }));
+      return [...asymptotes, { x: s.x, y: s.y, type: "scatter", mode: "lines", line: own, connectgaps: false, hoverinfo: "x+y", name: "" }];
+    }
+    case "curve":
       return [{ x: s.x, y: s.y, type: "scatter", mode: "lines", line, connectgaps: false, hoverinfo: "x+y", name: "" }];
+    case "field":
+      return [{ x: s.x, y: s.y, type: "scatter", mode: "lines", line: { color: toRgba(color, 0.75), width: 1.3 }, connectgaps: false, hoverinfo: "skip", name: "" }];
+    case "region":
+      return [
+        {
+          x: s.gx,
+          y: s.gy,
+          z: s.z,
+          type: "heatmap",
+          zmin: 0,
+          zmax: 1,
+          colorscale: [
+            [0, "rgba(0,0,0,0)"],
+            [1, toRgba(color, style.fill ?? 0.22)],
+          ],
+          showscale: false,
+          hoverinfo: "skip",
+        },
+        { x: s.x, y: s.y, type: "scatter", mode: "lines", line: { ...line, dash: s.strict ? "dash" : line.dash }, connectgaps: false, hoverinfo: "skip", name: "" },
+      ];
+    case "area":
+      return [
+        { x: s.x, y: (s.x ?? []).map(() => 0), type: "scatter", mode: "lines", line: { width: 0 }, hoverinfo: "skip", name: "" },
+        { x: s.x, y: s.y, type: "scatter", mode: "lines", line: { width: 0 }, fill: "tonexty", fillcolor: toRgba(color, 0.3), connectgaps: false, hoverinfo: "skip", name: "" },
+      ];
     case "points":
       return [
         {
@@ -83,12 +119,18 @@ function seriesTraces(s: GraphSeries, color: string, style: GraphLineStyle, outl
           type: "scatter",
           mode: "markers+text",
           marker: { color, size: 6 + 1.6 * (style.width ?? 2.5), line: { color: outline, width: 1.5 } },
-          text: (s.x ?? []).map((x, i) => `(${fmt(x)}, ${fmt(s.y?.[i] ?? 0)})`),
-          textposition: "top center",
-          textfont: { color, size: 10 },
+          // a named point is labelled by its name, its numbers when hovered
+          // (they're in the list too); names are only letters, digits and
+          // primes — the engine reads no others
+          text: (s.x ?? []).map((x, i) => (s.name ? `<b>${s.name.replace(/_(\w+)/, "<sub>$1</sub>")}</b>` : `(${fmt(x)}, ${fmt(s.y?.[i] ?? 0)})`)),
+          hovertext: (s.x ?? []).map((x, i) => `${s.name ? `${s.name} ` : ""}(${fmt(x)}, ${fmt(s.y?.[i] ?? 0)})`),
+          textposition: s.name ? "top right" : "top center",
+          textfont: { color, size: s.name ? 13 : 10 },
           hoverinfo: "text",
         },
       ];
+    case "polygon":
+      return [{ x: s.x, y: s.y, type: "scatter", mode: "lines", line, fill: "toself", fillcolor: toRgba(color, style.fill ?? 0.16), hoverinfo: "skip", name: "" }];
     case "vline":
       return [{ x: [s.x0, s.x0], y: [-FAR, FAR], type: "scatter", mode: "lines", line, hoverinfo: "x" }];
     case "inequality": {
@@ -126,7 +168,7 @@ function markerTrace(markers: GraphMarker[], outline: string, ink: string): Trac
         // a crossing's star in the ink's color: white on dark paper, dark on light
         color: markers.map((m) => (m.kind === "intersection" ? ink : MARKER_STYLE[m.kind].color)),
         symbol: markers.map((m) => MARKER_STYLE[m.kind].symbol),
-        size: markers.map((m) => (m.kind === "intersection" ? 13 : 10)),
+        size: markers.map((m) => (m.kind === "intersection" ? 13 : m.kind === "hole" ? 11 : 10)),
         line: { color: outline, width: 1.5 },
       },
       text: markers.map((m) => `${m.kind.replace("-", " ")} ${m.label}`),
@@ -136,7 +178,7 @@ function markerTrace(markers: GraphMarker[], outline: string, ink: string): Trac
 }
 
 type LabelSide = "top right" | "bottom right" | "top left" | "bottom left";
-const RANK: Record<GraphMarker["kind"], number> = { intersection: 0, vertex: 1, "x-intercept": 2, "y-intercept": 2 };
+const RANK: Record<GraphMarker["kind"], number> = { tangent: 0, intersection: 0, hole: 1, vertex: 1, max: 1, min: 1, "x-intercept": 2, "y-intercept": 2 };
 
 /** Where each point's label goes: beside it, on whichever side keeps it off
  * every other label and point — crossings placed first. A label with no
@@ -213,6 +255,34 @@ const mix = (a: string, b: string, t: number) => {
   if (!x || !y) return a;
   return `rgb(${x.map((c, i) => Math.round(c + (y[i] - c) * t)).join(", ")})`;
 };
+
+/** the x axis numbered in π: π/2 steps (or π, 2π… when that's too tight) */
+function piTicks(range: [number, number], pixelsPerUnit: number) {
+  const step = [Math.PI / 4, Math.PI / 2, Math.PI, 2 * Math.PI, 4 * Math.PI, 8 * Math.PI].find((s) => s * pixelsPerUnit >= 46) ?? 16 * Math.PI;
+  const vals: number[] = [];
+  const text: string[] = [];
+  const pad = range[1] - range[0];
+  for (let v = Math.ceil((range[0] - pad) / step) * step; v <= range[1] + pad; v += step) {
+    const quarters = Math.round((v / Math.PI) * 4);
+    vals.push(v);
+    text.push(piLabel(quarters));
+  }
+  return { tickmode: "array", tickvals: vals, ticktext: text, dtick: undefined };
+}
+
+/** n quarters of π, as written: π/4, π/2, 3π/4, π, −2π, 0 */
+function piLabel(quarters: number): string {
+  if (quarters === 0) return "0";
+  const sign = quarters < 0 ? "−" : "";
+  let n = Math.abs(quarters);
+  let d = 4;
+  while (d > 1 && n % 2 === 0) {
+    n /= 2;
+    d /= 2;
+  }
+  const top = n === 1 ? "π" : `${n}π`;
+  return `${sign}${top}${d > 1 ? `/${d}` : ""}`;
+}
 
 /** Pen strokes and segments as lines; arrows and text as annotations. */
 function drawingLayers(drawings: GraphDrawing[]): { traces: Trace[]; annotations: Trace[] } {
@@ -297,6 +367,8 @@ export default function GraphView({
   drawings = [],
   live = false,
   latex = false,
+  extras,
+  degrees = false,
   colors,
   onResult,
   onPlot,
@@ -324,6 +396,10 @@ export default function GraphView({
   live?: boolean;
   /** the lines are LaTeX, as typed in a math field */
   latex?: boolean;
+  /** per line: its derivative, a tangent line at x, the area from a to b */
+  extras?: ({ derivative?: boolean; tangent?: number; area?: [number, number] } | null)[];
+  /** trig in degrees */
+  degrees?: boolean;
   /** colors of its own, over the graph theme's (the app's theme — useAppGraphColors) */
   colors?: Partial<GraphColors>;
   onResult?: (result: GraphResult | null, error: string | null) => void;
@@ -372,7 +448,7 @@ export default function GraphView({
         op: "graph",
         exprs,
         vars,
-        ...(latex ? { latex: true } : {}),
+        ...(latex ? { latex: true, window, ...(extras?.some(Boolean) ? { extras } : {}), ...(degrees ? { degrees: true } : {}) } : {}),
         xrange: [window.xmin - span, window.xmax + span],
         yrange: [window.ymin, window.ymax],
         features: (["intercepts", "vertices", "intersections"] as MarkerFeature[]).filter((f) => !hide.includes(f)),
@@ -385,6 +461,29 @@ export default function GraphView({
   const hidden = (index: number) => !!styles[index]?.hidden;
 
   const drawn = useMemo(() => drawingLayers(drawings), [drawings]);
+  // a vector's arrowhead, at its end
+  const arrows = useMemo(
+    () =>
+      (result?.series ?? [])
+        .filter((s) => s.arrow && !hidden(s.index) && s.x?.length === 2 && s.y?.length === 2)
+        .map((s) => ({
+          x: s.x![1],
+          y: s.y![1],
+          ax: s.x![0],
+          ay: s.y![0],
+          xref: "x",
+          yref: "y",
+          axref: "x",
+          ayref: "y",
+          text: "",
+          showarrow: true,
+          arrowhead: 2,
+          arrowsize: 1.1,
+          arrowwidth: styles[s.index]?.width ?? 2.5,
+          arrowcolor: colorOf(s.index),
+        })),
+    [result, styles, theme], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const data = useMemo(() => {
     const traces: Trace[] = [];
@@ -432,7 +531,8 @@ export default function GraphView({
         y: spot[1],
         xref: "x",
         yref: "y",
-        text: escapeHtml((exprs[s.index] ?? "").trim()),
+        // a shape says its equation; any other line, itself
+        text: escapeHtml(plainMath((s.equation ?? exprs[s.index] ?? "").trim())),
         showarrow: false,
         xanchor: "right",
         yanchor: "bottom",
@@ -460,7 +560,7 @@ export default function GraphView({
     const perX = plotWidth / (window.xmax - window.xmin);
     const perY = plotHeight / (window.ymax - window.ymin);
     const per = (own: number) => (equalAspect ? Math.min(perX, perY) : own);
-    const axis = (range: [number, number], step: number | undefined, pixelsPerUnit: number, label: string | undefined) => {
+    const axis = (range: [number, number], step: number | undefined, pixelsPerUnit: number, label: string | undefined, pi = false) => {
       // a number every k grid lines, k the smallest of 1, 2, 5, 10 … that gives each ~34px
       const every = step ? ([1, 2, 5, 10, 20, 50, 100, 200, 500].find((k) => step * k * pixelsPerUnit >= 34) ?? 1000) : 1;
       const lines = grid === "none" ? {} : step && grid === "minor" ? { minor: { showgrid: true, gridcolor: theme.minor, dtick: minorStep(step) } }
@@ -479,6 +579,7 @@ export default function GraphView({
         tickfont: { color: theme.ink, size: 10 },
         ...(step ? { dtick: step * every } : {}),
         ...lines,
+        ...(pi ? piTicks(range, pixelsPerUnit) : {}),
         ...(label ? { title: { text: escapeHtml(label), font: { color: theme.ink, size: 12 } } } : {}),
       };
     };
@@ -497,14 +598,14 @@ export default function GraphView({
       dragmode: "pan" as const,
       width: plotWidth,
       height: plotHeight,
-      annotations: [...drawn.annotations, ...curveLabels],
-      xaxis: axis([window.xmin, window.xmax], gridSteps.x, per(perX), appearance.xLabel),
+      annotations: [...drawn.annotations, ...curveLabels, ...arrows],
+      xaxis: axis([window.xmin, window.xmax], gridSteps.x, per(perX), appearance.xLabel, !!appearance.piX),
       yaxis: {
         ...axis([window.ymin, window.ymax], gridSteps.y, per(perY), appearance.yLabel),
         ...(equalAspect ? { scaleanchor: "x" as const, scaleratio: 1 } : {}),
       },
     };
-  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels, gridSteps]);
+  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels, arrows, gridSteps]);
 
   const [plot, setPlot] = useState<PlotDiv>(null);
   const ready = (_figure: unknown, div: PlotDiv) => {

@@ -1,0 +1,391 @@
+/** The xy graph's parts besides its lines: each line's options (its look;
+ * calculus on it — the derivative, a tangent, the area under it; geometry —
+ * how far a segment reaches, its midpoint, its perpendicular bisector), data
+ * tables with a fitted curve, the graph's settings, and the kinds of thing
+ * it graphs, as examples to start from. */
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { mathRequest } from "../mathSidecar";
+import type { GraphLineStyle, XYExtra, XYSettings, XYTable } from "../store";
+import { Tex } from "../ui";
+
+/** "-1/2", "0.5", "3", "pi", "2pi" → a number */
+export function readNumber(text: string): number | null {
+  const t = text.trim().replace(/−/g, "-").replace(/π/g, "pi");
+  const pi = t.match(/^(-?\d*\.?\d*)\s*\*?\s*pi$/);
+  if (pi) return (pi[1] === "" ? 1 : pi[1] === "-" ? -1 : Number(pi[1])) * Math.PI;
+  const frac = t.match(/^(-?\d*\.?\d+)\s*\/\s*(-?\d*\.?\d+)$/);
+  const n = frac ? Number(frac[1]) / Number(frac[2]) : t ? Number(t) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+/** a small panel that opens under its button and closes on a click away */
+function Pop({ onClose, children, className = "" }: { onClose: () => void; children: ReactNode; className?: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const away = (e: PointerEvent) => !box.current?.contains(e.target as Node) && !(e.target as HTMLElement).closest(".xy-pop-anchor") && onClose();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [onClose]);
+  return (
+    <div ref={box} className={`xy-pop ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+/** a number box that keeps what's typed until it's a number (2/3, π…) */
+function NumberBox({ value, placeholder, onChange, title }: { value?: number; placeholder: string; onChange: (n: number | undefined) => void; title?: string }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? (value === undefined ? "" : String(Math.round(value * 1e6) / 1e6));
+  const bad = draft !== null && draft.trim() !== "" && readNumber(draft) === null;
+  return (
+    <input
+      className={`xy-num${bad ? " is-bad" : ""}`}
+      value={shown}
+      placeholder={placeholder}
+      title={title ?? "A number — 2/3, -1.5 and π work too"}
+      spellCheck={false}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        if (!e.target.value.trim()) onChange(undefined);
+        else {
+          const n = readNumber(e.target.value);
+          if (n !== null) onChange(n);
+        }
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+}
+
+// ---- a line's options
+
+export function LineOptions({
+  style,
+  extra,
+  palette,
+  auto,
+  isFunction,
+  straight,
+  onStraight,
+  builds = [],
+  onStyle,
+  onExtra,
+  onClose,
+}: {
+  style: Pick<GraphLineStyle, "color" | "dash" | "width" | "label">;
+  extra: XYExtra;
+  palette: string[];
+  /** its color when none is picked */
+  auto: string;
+  /** y = f(x): calculus works on it */
+  isFunction: boolean;
+  /** a segment, ray or line between two named points: how far it reaches */
+  straight?: { kind: "segment" | "ray" | "line"; a: string; b: string } | null;
+  onStraight?: (kind: "segment" | "ray" | "line", a: string, b: string) => void;
+  /** more to build from it: its midpoint, a perpendicular… */
+  builds?: { label: string; title: string; run: () => void }[];
+  onStyle: (s: Pick<GraphLineStyle, "color" | "dash" | "width" | "label">) => void;
+  onExtra: (e: XYExtra) => void;
+  onClose: () => void;
+}) {
+  const set = (patch: Partial<typeof style>) => onStyle({ ...style, ...patch });
+  const ex = (patch: Partial<XYExtra>) => onExtra(Object.fromEntries(Object.entries({ ...extra, ...patch }).filter(([, v]) => v !== undefined && v !== false)) as XYExtra);
+  const area = extra.area;
+  return (
+    <Pop onClose={onClose} className="xy-line-pop">
+      <div className="xy-pop-head">Look</div>
+      <div className="xy-colors">
+        {[...new Set(palette)].map((c) => (
+          <button key={c} className={`xy-color${(style.color ?? auto) === c ? " is-on" : ""}`} style={{ background: c }} title="This color" onClick={() => set({ color: c === auto ? undefined : c })} />
+        ))}
+      </div>
+      <div className="xy-seg">
+        {(["solid", "dash", "dot"] as const).map((d) => (
+          <button key={d} className={(style.dash ?? "solid") === d ? "is-on" : ""} onClick={() => set({ dash: d === "solid" ? undefined : d })}>
+            <svg width="30" height="8">
+              <line x1="2" y1="4" x2="28" y2="4" stroke="currentColor" strokeWidth="2.5" strokeDasharray={d === "dash" ? "6 4" : d === "dot" ? "1.5 4" : undefined} strokeLinecap="round" />
+            </svg>
+          </button>
+        ))}
+      </div>
+      <div className="xy-seg">
+        {[1.5, 2.5, 4].map((w) => (
+          <button key={w} className={(style.width ?? 2.5) === w ? "is-on" : ""} title={`${w}px`} onClick={() => set({ width: w === 2.5 ? undefined : w })}>
+            <svg width="30" height="10">
+              <line x1="2" y1="5" x2="28" y2="5" stroke="currentColor" strokeWidth={w} strokeLinecap="round" />
+            </svg>
+          </button>
+        ))}
+      </div>
+      <label className="xy-check">
+        <input type="checkbox" checked={!!style.label} onChange={(e) => set({ label: e.target.checked || undefined })} />
+        Write its equation on the graph
+      </label>
+      {straight && onStraight && (
+        <>
+          <div className="xy-pop-head">Reaches</div>
+          <div className="xy-seg is-math">
+            {REACH.map(([kind, swap, mark, title], k) => {
+              const [p, q] = swap ? [straight.b, straight.a] : [straight.a, straight.b];
+              const on = kind === straight.kind && !swap;
+              const tex = (n: string) => n.replace(/_(\w+)/, "_{$1}");
+              return (
+                <button key={k} className={on ? "is-on" : ""} title={title.replace(/\{[pq]\}/g, (m) => (m === "{p}" ? p : q))} onClick={() => onStraight(kind, p, q)}>
+                  <Tex math={`\\${mark}{${tex(p)}${tex(q)}}`} />
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {builds.length > 0 && (
+        <>
+          <div className="xy-pop-head">Build from it</div>
+          <div className="xy-builds">
+            {builds.map((b) => (
+              <button key={b.label} className="xy-build" title={b.title} onClick={b.run}>
+                {b.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {isFunction && (
+        <>
+          <div className="xy-pop-head">Calculus</div>
+          <label className="xy-check">
+            <input type="checkbox" checked={!!extra.derivative} onChange={(e) => ex({ derivative: e.target.checked || undefined })} />
+            Graph its derivative <span className="xy-dim">(dashed)</span>
+          </label>
+          <div className="xy-row">
+            <span>Tangent line at x =</span>
+            <NumberBox value={extra.tangent} placeholder="—" onChange={(n) => ex({ tangent: n })} />
+          </div>
+          <div className="xy-row">
+            <span>Area from</span>
+            <NumberBox value={area?.[0]} placeholder="a" onChange={(n) => ex({ area: n === undefined ? undefined : [n, area?.[1] ?? n + 2] })} />
+            <span>to</span>
+            <NumberBox value={area?.[1]} placeholder="b" onChange={(n) => ex({ area: n === undefined ? undefined : [area?.[0] ?? n - 2, n] })} />
+          </div>
+        </>
+      )}
+    </Pop>
+  );
+}
+
+/** how far a straight shape reaches, said the way geometry writes it: a
+ * segment AB, a ray from A past B (or from B past A), a line both ways */
+const REACH: ["segment" | "ray" | "line", boolean, string, string][] = [
+  ["segment", false, "overline", "Segment — from {p} to {q}"],
+  ["ray", false, "overrightarrow", "Ray — from {p}, on past {q} forever"],
+  ["ray", true, "overrightarrow", "Ray — from {p}, on past {q} forever"],
+  ["line", false, "overleftrightarrow", "Line — through {p} and {q}, on forever both ways"],
+];
+
+// ---- data tables
+
+export const MODELS: { value: string; label: string; tex: string }[] = [
+  { value: "", label: "No fit", tex: "" },
+  { value: "linear", label: "Linear", tex: "y=mx+b" },
+  { value: "quadratic", label: "Quadratic", tex: "y=ax^2+bx+c" },
+  { value: "cubic", label: "Cubic", tex: "y=ax^3+\\dots" },
+  { value: "exponential", label: "Exponential", tex: "y=ab^x" },
+  { value: "logarithmic", label: "Logarithmic", tex: "y=a+b\\ln x" },
+  { value: "power", label: "Power", tex: "y=ax^b" },
+];
+
+/** its numbers (rows where both are numbers) */
+export const tablePoints = (t: XYTable): [number, number][] =>
+  t.rows.flatMap(([a, b]) => {
+    const x = readNumber(a);
+    const y = readNumber(b);
+    return x !== null && y !== null ? [[x, y] as [number, number]] : [];
+  });
+
+export function DataTable({ table, color, onChange, onRemove, onUseFit }: { table: XYTable; color: string; onChange: (t: XYTable) => void; onRemove: () => void; onUseFit: (latex: string) => void }) {
+  const rows = table.rows.length ? table.rows : ([["", ""]] as [string, string][]);
+  const points = tablePoints(table);
+  // the fit, worked out again whenever the data or the kind changes
+  const key = JSON.stringify([points, table.model]);
+  const latest = useRef(table);
+  latest.current = table;
+  useEffect(() => {
+    if (!table.model) {
+      if (table.fit) onChange({ ...latest.current, fit: undefined });
+      return;
+    }
+    let live = true;
+    mathRequest<{ latex: string; r2: number }>({ op: "regress", points, model: table.model }).then(
+      (fit) => live && JSON.stringify(fit) !== JSON.stringify(latest.current.fit) && onChange({ ...latest.current, fit }),
+      () => live && latest.current.fit !== null && onChange({ ...latest.current, fit: null }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const setCell = (r: number, c: 0 | 1, v: string) => onChange({ ...table, rows: rows.map((row, i) => (i === r ? ((c === 0 ? [v, row[1]] : [row[0], v]) as [string, string]) : row)) });
+  /** a column (or two) pasted from a spreadsheet: tabs or commas between x and y */
+  const paste = (r: number, text: string) => {
+    const lines = text.trim().split(/\r?\n/).map((l) => l.split(/\t|,\s*|\s{2,}/).map((c) => c.trim()));
+    if (lines.length < 2 && (lines[0]?.length ?? 0) < 2) return false;
+    const pasted = lines.map((l) => [l[0] ?? "", l[1] ?? ""] as [string, string]);
+    onChange({ ...table, rows: [...rows.slice(0, r), ...pasted, ...rows.slice(r + 1)].filter((row, i, all) => i < all.length - 1 || row[0] || row[1]) });
+    return true;
+  };
+  const model = MODELS.find((m) => m.value === (table.model ?? ""));
+  return (
+    <div className={`xy-table${table.hidden ? " is-hidden" : ""}`}>
+      <div className="xy-table-head">
+        <button className="xy-swatch" style={{ background: table.hidden ? "transparent" : color, borderColor: color }} title={table.hidden ? "Show it" : "Hide it"} onClick={() => onChange({ ...table, hidden: !table.hidden || undefined })} />
+        <span className="xy-table-title">Data · {points.length} point{points.length === 1 ? "" : "s"}</span>
+        <select className="xy-select" value={table.model ?? ""} title="Fit a curve to the points (regression)" onChange={(e) => onChange({ ...table, model: e.target.value || undefined })}>
+          {MODELS.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+        <button className="xy-remove" title="Remove this table" onClick={onRemove}>
+          ×
+        </button>
+      </div>
+      <div className="xy-table-grid">
+        <span className="xy-table-col">x</span>
+        <span className="xy-table-col">y</span>
+        <span />
+        {rows.map((row, r) => (
+          <TableRow
+            key={r}
+            row={row}
+            onCell={(c, v) => setCell(r, c, v)}
+            onPaste={(text) => paste(r, text)}
+            onEnter={() => onChange({ ...table, rows: [...rows.slice(0, r + 1), ["", ""], ...rows.slice(r + 1)] })}
+            onRemove={rows.length > 1 ? () => onChange({ ...table, rows: rows.filter((_, i) => i !== r) }) : undefined}
+          />
+        ))}
+      </div>
+      <div className="xy-table-foot">
+        <button className="xy-add" onClick={() => onChange({ ...table, rows: [...rows, ["", ""]] })}>
+          + row
+        </button>
+        <span className="xy-dim">paste columns from a spreadsheet</span>
+      </div>
+      {table.model && (
+        <div className="xy-fit">
+          {table.fit ? (
+            <>
+              <Tex math={table.fit.latex} />
+              <span className="xy-dim">
+                r² = {table.fit.r2} · {model?.label.toLowerCase()} fit
+              </span>
+              <button className="xy-zoom-btn is-text" title="Put this equation in the list as a line of its own" onClick={() => onUseFit(table.fit!.latex)}>
+                Use as a line
+              </button>
+            </>
+          ) : (
+            <span className="xy-dim">{table.fit === null ? `can't fit a ${model?.label.toLowerCase()} curve to these points` : "fitting…"}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TableRow({ row, onCell, onPaste, onEnter, onRemove }: { row: [string, string]; onCell: (c: 0 | 1, v: string) => void; onPaste: (text: string) => boolean; onEnter: () => void; onRemove?: () => void }) {
+  const cell = (c: 0 | 1) => (
+    <input
+      className={`xy-cell${row[c].trim() && readNumber(row[c]) === null ? " is-bad" : ""}`}
+      value={row[c]}
+      spellCheck={false}
+      onChange={(e) => onCell(c, e.target.value)}
+      onPaste={(e) => onPaste(e.clipboardData.getData("text")) && e.preventDefault()}
+      onKeyDown={(e) => e.key === "Enter" && onEnter()}
+    />
+  );
+  return (
+    <>
+      {cell(0)}
+      {cell(1)}
+      <button className="xy-row-x" title="Remove this row" disabled={!onRemove} onClick={onRemove}>
+        ×
+      </button>
+    </>
+  );
+}
+
+// ---- the graph's settings
+
+export function GraphSettings({ settings, onChange, onClose }: { settings: XYSettings; onChange: (s: XYSettings) => void; onClose: () => void }) {
+  const set = (patch: Partial<XYSettings>) => onChange({ ...settings, ...patch });
+  const seg = <T extends string>(value: T, options: [T, string][], pick: (v: T) => void) => (
+    <div className="xy-seg is-text">
+      {options.map(([v, label]) => (
+        <button key={v} className={value === v ? "is-on" : ""} onClick={() => pick(v)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  return (
+    <Pop onClose={onClose} className="xy-settings-pop">
+      <div className="xy-pop-head">Angles</div>
+      {seg(settings.degrees ? "deg" : "rad", [["rad", "Radians"], ["deg", "Degrees"]], (v) => set({ degrees: v === "deg" || undefined }))}
+      <label className="xy-check">
+        <input type="checkbox" checked={!!settings.piX} onChange={(e) => set({ piX: e.target.checked || undefined })} />
+        Number the x axis in π <span className="xy-dim">(π/2, π, 3π/2…)</span>
+      </label>
+      <div className="xy-pop-head">Grid</div>
+      {seg(settings.grid ?? "major", [["none", "None"], ["major", "Lines"], ["minor", "Fine"]], (v) => set({ grid: v === "major" ? undefined : v }))}
+      <label className="xy-check">
+        <input type="checkbox" checked={settings.numbers !== false} onChange={(e) => set({ numbers: e.target.checked ? undefined : false })} />
+        Numbers on the axes
+      </label>
+      <label className="xy-check">
+        <input type="checkbox" checked={settings.equal !== false} onChange={(e) => set({ equal: e.target.checked ? undefined : false })} />
+        Same scale on both axes <span className="xy-dim">(circles look round)</span>
+      </label>
+      <label className="xy-check">
+        <input type="checkbox" checked={settings.marks !== false} onChange={(e) => set({ marks: e.target.checked ? undefined : false })} />
+        Mark intercepts, highs and lows, crossings <span className="xy-dim">(holes always show)</span>
+      </label>
+      <div className="xy-pop-head">Axis labels</div>
+      <div className="xy-row">
+        <input className="xy-text" value={settings.xLabel ?? ""} placeholder="x axis — time (s)" onChange={(e) => set({ xLabel: e.target.value || undefined })} />
+        <input className="xy-text" value={settings.yLabel ?? ""} placeholder="y axis — height (m)" onChange={(e) => set({ yLabel: e.target.value || undefined })} />
+      </div>
+    </Pop>
+  );
+}
+
+// ---- what it graphs, to start from
+
+export const EXAMPLES: { label: string; latex: string; title: string }[] = [
+  { label: "y=x^2-4", latex: "y=x^{2}-4", title: "A function — its intercepts and vertex marked" },
+  { label: "f(x)=\\sin x", latex: "f(x)=\\sin x", title: "A named function — then f(2), f'(x) on other lines" },
+  { label: "x^2+y^2=25", latex: "x^{2}+y^{2}=25", title: "Any equation in x and y: circles, conics, curves" },
+  { label: "y<2x+1", latex: "y<2x+1", title: "An inequality, shaded" },
+  { label: "x^2+y^2\\le 9", latex: "x^{2}+y^{2}\\le9", title: "A region, shaded" },
+  { label: "r=1+\\cos\\theta", latex: "r=1+\\cos\\theta", title: "Polar (θ from 0 to 2π — restrict it with {0≤θ≤4π})" },
+  { label: "(\\cos t,\\sin t)", latex: "\\left(\\cos t,\\sin t\\right)", title: "Parametric (t from 0 to 2π — restrict it with {0≤t≤5})" },
+  { label: "y=x^2\\{0\\le x\\le 2\\}", latex: "y=x^{2}\\left\\{0\\le x\\le2\\right\\}", title: "Only part of it — a restriction in braces" },
+  { label: "\\frac{dy}{dx}=x-y", latex: "\\frac{dy}{dx}=x-y", title: "A slope field (differential equations)" },
+  { label: "(1,2),(3,5)", latex: "\\left(1,2\\right),\\left(3,5\\right)", title: "Points" },
+];
+
+export function Examples({ onPick }: { onPick: (latex: string) => void }) {
+  return (
+    <div className="xy-examples">
+      {EXAMPLES.map((e) => (
+        <button key={e.label} className="xy-example" title={e.title} onClick={() => onPick(e.latex)}>
+          <Tex math={e.label} />
+        </button>
+      ))}
+    </div>
+  );
+}

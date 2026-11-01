@@ -132,6 +132,8 @@ export interface GraphAppearance {
   xLabel?: string;
   yLabel?: string;
   title?: string;
+  /** the x axis numbered in π (π/2, π, 3π/2…), for trig */
+  piX?: boolean;
 }
 
 export type SolveMethod = "auto" | "factor" | "formula" | "complete" | "sqrt" | "substitution" | "elimination";
@@ -282,11 +284,52 @@ export interface AssignmentInfo {
 /** The calculator's xy graph: its lines (LaTeX, as typed), a value for each
  * letter nothing else defines (m, b…), lines tucked away, and the window */
 export interface XYPlot {
-  lines?: { id: string; latex: string; hidden?: boolean }[];
+  lines?: {
+    id: string;
+    latex: string;
+    hidden?: boolean;
+    /** how it's drawn: its own color, dashes, thickness, a label on it */
+    style?: Pick<GraphLineStyle, "color" | "dash" | "width" | "label">;
+    /** calculus on it: its derivative graphed, a tangent at x, the area from a to b */
+    extra?: XYExtra;
+  }[];
+  /** data: points in a table, and the curve that fits them */
+  tables?: XYTable[];
+  /** how the graph is set up */
+  settings?: XYSettings;
   letters?: Record<string, number>;
   window?: GraphWindow;
   /** drawn by hand: segments, arrows, pen, text */
   drawings?: GraphDrawing[];
+}
+
+export interface XYExtra {
+  derivative?: boolean;
+  tangent?: number;
+  area?: [number, number];
+}
+
+export interface XYTable {
+  id: string;
+  /** x and y, as typed */
+  rows: [string, string][];
+  /** the curve fit to them (linear, quadratic…), and what came out */
+  model?: string;
+  fit?: { latex: string; r2: number } | null;
+  hidden?: boolean;
+}
+
+export interface XYSettings {
+  degrees?: boolean;
+  piX?: boolean;
+  grid?: "none" | "major" | "minor";
+  numbers?: boolean;
+  /** the same scale on both axes (circles look round) — on unless turned off */
+  equal?: boolean;
+  /** intercepts, maximums, crossings… marked — on unless turned off */
+  marks?: boolean;
+  xLabel?: string;
+  yLabel?: string;
 }
 
 /** An inequality drawn on a number line (the calculator's Graph tab) —
