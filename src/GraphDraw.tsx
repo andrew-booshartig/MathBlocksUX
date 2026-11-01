@@ -142,15 +142,18 @@ export default function GraphDrawLayer({
   // Esc lets go of what's picked; Enter closes a polygon
   useEffect(() => {
     if (!picks.length) return;
+    // (heard first, and marked used: the graph's own Esc — back to the hand — waits for the next one)
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPicks([]);
-      else if (e.key === "Enter" && tool === "polygon" && picks.length >= 3) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setPicks([]);
+      } else if (e.key === "Enter" && tool === "polygon" && picks.length >= 3) {
         setPicks([]);
         onConstruct?.(tool, picks);
       }
     };
-    document.addEventListener("keydown", key);
-    return () => document.removeEventListener("keydown", key);
+    document.addEventListener("keydown", key, true);
+    return () => document.removeEventListener("keydown", key, true);
   }, [picks, tool, onConstruct]);
   // focus once the click that placed it has finished (the canvas takes
   // focus on click, which would otherwise close the box straight away)

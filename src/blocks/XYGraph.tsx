@@ -310,6 +310,16 @@ export default function XYGraph({
   const [saveOpen, setSaveOpen] = useState(false);
   /** letters playing: each sweeps its slider back and forth */
   const [playing, setPlaying] = useState<string[]>([]);
+  // Esc (when you're not typing): put the tool down, back to the hand
+  useEffect(() => {
+    if (tool === "pan") return;
+    const key = (e: KeyboardEvent) => {
+      const typing = (e.target as HTMLElement)?.closest?.("input, textarea, math-field, [contenteditable]");
+      if (e.key === "Escape" && !e.defaultPrevented && !typing) setTool("pan");
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [tool]);
   const [optionsFor, setOptionsFor] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
