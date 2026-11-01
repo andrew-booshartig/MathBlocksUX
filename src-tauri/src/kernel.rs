@@ -4,7 +4,9 @@
 //! that takes a minute never holds up the calculator, and a run is waited
 //! on off the main thread, so the window stays live while it runs.
 //!
-//! One JSON line each way, the round trip under one lock. Stop sends the
+//! One JSON line each way, the round trip under one lock — except that a
+//! cell running sends what it prints as it goes ({"stream": …} lines before
+//! its answer), kept for `kernel_output` to show while it runs. Stop sends the
 //! kernel an interrupt (what Ctrl-C does); Restart ends it, and the next
 //! run starts a fresh one.
 
@@ -23,6 +25,8 @@ struct KernelIo {
 pub struct Kernel {
     pid: u32,
     io: Mutex<KernelIo>,
+    /// what the cell running has printed so far
+    live: Mutex<String>,
     child: Mutex<Child>,
 }
 
@@ -42,19 +46,32 @@ impl Kernel {
             .map_err(|e| format!("couldn't start Python for the notebook: {e}"))?;
         let stdin = child.stdin.take().ok_or("no kernel stdin")?;
         let stdout = BufReader::new(child.stdout.take().ok_or("no kernel stdout")?);
-        Ok(Self { pid: child.id(), io: Mutex::new(KernelIo { stdin, stdout }), child: Mutex::new(child) })
+        Ok(Self { pid: child.id(), io: Mutex::new(KernelIo { stdin, stdout }), live: Mutex::new(String::new()), child: Mutex::new(child) })
     }
 
     fn ask(&self, request: &Value) -> Result<Value, String> {
         let mut io = self.io.lock().map_err(|_| "the kernel is stuck")?;
         writeln!(io.stdin, "{request}").map_err(|e| e.to_string())?;
         io.stdin.flush().map_err(|e| e.to_string())?;
-        let mut line = String::new();
-        let read = io.stdout.read_line(&mut line).map_err(|e| e.to_string())?;
-        if read == 0 {
-            return Err("the kernel stopped (it starts again on the next run)".into());
+        if let Ok(mut live) = self.live.lock() {
+            live.clear();
         }
-        serde_json::from_str(&line).map_err(|e| e.to_string())
+        loop {
+            let mut line = String::new();
+            let read = io.stdout.read_line(&mut line).map_err(|e| e.to_string())?;
+            if read == 0 {
+                return Err("the kernel stopped (it starts again on the next run)".into());
+            }
+            let reply: Value = serde_json::from_str(&line).map_err(|e| e.to_string())?;
+            // printed so far, while the cell runs: kept to show, and on to the next line
+            if let Some(text) = reply.get("stream").and_then(Value::as_str) {
+                if let Ok(mut live) = self.live.lock() {
+                    live.push_str(text);
+                }
+                continue;
+            }
+            return Ok(reply);
+        }
     }
 }
 
@@ -106,6 +123,13 @@ pub async fn kernel_run(kernels: State<'_, Kernels>, notebook: String, code: Str
 #[tauri::command]
 pub async fn kernel_complete(kernels: State<'_, Kernels>, notebook: String, code: String) -> Result<Value, String> {
     ask(&kernels, notebook, serde_json::json!({ "op": "complete", "code": code })).await
+}
+
+/// What the cell running has printed so far (empty when none is running).
+#[tauri::command]
+pub fn kernel_output(kernels: State<'_, Kernels>, notebook: String) -> Result<String, String> {
+    let kernel = kernels.0.lock().map_err(|_| "the kernels are stuck")?.get(&notebook).cloned();
+    Ok(kernel.and_then(|k| k.live.lock().ok().map(|s| s.clone())).unwrap_or_default())
 }
 
 #[tauri::command]

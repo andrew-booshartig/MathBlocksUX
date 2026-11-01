@@ -13,6 +13,10 @@ JSON line each way:
 The calculator's variables come along with each run, as calc (calc.m,
 calc["w"]) — the calculator and the notebook sharing their numbers.
 
+While a cell runs, what it prints so far goes out too, a few times a
+second, as {"stream": "..."} lines before its answer — so a long cell
+shows its progress the way Jupyter's do.
+
 An interrupt (SIGINT) stops the cell running; the kernel carries on."""
 
 from __future__ import annotations
@@ -42,6 +46,31 @@ class Calc(dict):
 
     def __repr__(self):
         return "calc(" + ", ".join(f"{k}={v:g}" for k, v in self.items()) + ")"
+
+
+class _Live(io.StringIO):
+    """what a cell prints: kept whole for its answer, and sent on as it comes,
+    whole lines (at most ten times a second, the first at once)"""
+
+    def __init__(self):
+        super().__init__()
+        self.sent = 0
+        self.last = 0.0
+
+    def write(self, s):
+        n = super().write(s)
+        if "\n" in s and time.perf_counter() - self.last > 0.1:
+            self.send()
+        return n
+
+    def send(self):
+        text = self.getvalue()[:MAX_TEXT]
+        text = text[: text.rfind("\n") + 1]
+        if len(text) > self.sent:
+            sys.__stdout__.write(json.dumps({"stream": text[self.sent :]}) + "\n")
+            sys.__stdout__.flush()
+            self.sent = len(text)
+        self.last = time.perf_counter()
 
 
 def _no_input(prompt=""):
@@ -169,7 +198,7 @@ def run(code: str, calc: dict | None = None) -> dict:
     if calc is not None:
         ns["calc"] = Calc({k: v for k, v in calc.items() if isinstance(v, (int, float))})
     out: dict = {"count": count, "stdout": "", "images": [], "value": None, "latex": None, "html": None, "error": None}
-    printed = io.StringIO()
+    printed = _Live()
     start = time.perf_counter()
     commands, sys.stdin = sys.stdin, io.StringIO("")  # a cell reading stdin gets nothing, not the next request
     try:

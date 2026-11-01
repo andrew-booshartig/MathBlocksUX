@@ -33,6 +33,7 @@ pub fn run() {
             workspace::save_svg,
             workspace::save_text,
             kernel::kernel_run,
+            kernel::kernel_output,
             kernel::kernel_vars,
             kernel::kernel_names,
             kernel::kernel_complete,

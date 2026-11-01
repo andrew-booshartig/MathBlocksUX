@@ -335,11 +335,21 @@ export default function NotebookTile({
   // a cell running: how long so far, counted up as it goes
   const started = useRef<Record<string, number>>({});
   const [, tick] = useState(0);
+  /** the cell running now, and what it's printed so far (asked for as it runs) */
+  const now = useRef<string | null>(null);
+  const [live, setLive] = useState<{ code: string; text: string } | null>(null);
   useEffect(() => {
-    if (!running.size) return;
-    const t = setInterval(() => tick((n) => n + 1), 200);
+    if (!running.size) return setLive(null);
+    const t = setInterval(() => {
+      tick((n) => n + 1);
+      const code = now.current;
+      if (name && code)
+        invoke<string>("kernel_output", { notebook: name })
+          .then((text) => now.current === code && setLive((l) => (l?.code === code && l.text === text ? l : { code, text })))
+          .catch(() => {});
+    }, 250);
     return () => clearInterval(t);
-  }, [running.size]);
+  }, [running.size]); // eslint-disable-line react-hooks/exhaustive-deps
   const calcVarsRef = useRef(calcVars);
   calcVarsRef.current = calcVars;
   // Tab completion: the names that could finish the word, one picked with ↑ ↓
@@ -381,6 +391,7 @@ export default function NotebookTile({
         }
         setKernel("busy");
         started.current[code] = performance.now();
+        now.current = code;
         let out: PyOutput;
         try {
           const calc = Object.fromEntries(Object.entries(calcVarsRef.current ?? {}).filter(([, v]) => typeof v === "number"));
@@ -389,6 +400,7 @@ export default function NotebookTile({
           out = { error: errorText(err) };
         }
         ok = !out.error;
+        now.current = null;
         keepOutputs({ ...pyRef.current, [code]: out });
         setRunning((r) => {
           const next = new Set(r);
@@ -1061,7 +1073,7 @@ export default function NotebookTile({
       ) : b.lang === "work" ? (
         <WorkCell code={isEditing ? draft : b.code} />
       ) : b.lang === "python" ? (
-        <PythonOutput output={py[b.code]} running={running.has(b.code)} />
+        <PythonOutput output={py[b.code]} running={running.has(b.code)} live={live?.code === b.code ? live.text : undefined} />
       ) : null;
     const showCode = isEditing || b.lang === "python" || !result;
     // a work cell being edited: its fields, with the checked work under them

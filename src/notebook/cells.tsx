@@ -477,8 +477,17 @@ function HtmlOutput({ html }: { html: string }) {
   );
 }
 
-export function PythonOutput({ output, running }: { output?: PyOutput; running?: boolean }) {
-  if (running) return <div className="nb-cell-wait">running…</div>;
+export function PythonOutput({ output, running, live }: { output?: PyOutput; running?: boolean; live?: string }) {
+  // running: what it's printed so far, as it goes
+  if (running)
+    return live ? (
+      <div className="nb-py-out is-live">
+        <pre className="nb-py-text">{live}</pre>
+        <div className="nb-cell-wait">running…</div>
+      </div>
+    ) : (
+      <div className="nb-cell-wait">running…</div>
+    );
   if (!output) return null;
   if (output.skipped) return <div className="nb-cell-wait">not run — a cell above it stopped with an error</div>;
   return (
