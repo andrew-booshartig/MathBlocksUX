@@ -21,7 +21,7 @@ import { Plotly } from "../PlotlyChart";
 import type { PlotDiv } from "../GraphView";
 import type { XYExtra, XYImage, XYTable } from "../store";
 import { solveTriangle, triangleCorners } from "../triangle";
-import { ADDS, AddMenu, MoreTools, TriangleRow, DataTable, Examples, GraphSettings, LineOptions, SaveMenu, readNumber, tablePoints } from "./xyParts";
+import { ADDS, AddMenu, Catalog, MoreTools, TriangleRow, DataTable, Examples, GraphSettings, LineOptions, SaveMenu, readNumber, tablePoints } from "./xyParts";
 import { plainMath } from "../plainMath";
 
 /** the hand tools, in three groups: getting around; building — each puts
@@ -498,6 +498,7 @@ export default function XYGraph({
   /** hidden on the graph: by its own swatch, or its folder's */
   const hiddenAt = (i: number) => !!lines[i]?.hidden || !!folderOf[i]?.hidden;
   const [addOpen, setAddOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const notes = useRef<Record<string, HTMLTextAreaElement | null>>({});
   // the lines, then each table's points and its fitted curve (two lines each)
   const tableExprs = tables.flatMap((t) => {
@@ -989,6 +990,18 @@ export default function XYGraph({
     const to = next[Math.max(0, i - 1)];
     if (to) focusLine(to.id);
   };
+  /** a new row at the end with a template typed in (its boxes to fill, Tab between them) */
+  const addTemplate = (template: string) => {
+    const row = { id: newId("xy"), latex: "" };
+    setLines([...lines.filter((l) => !isBlank(l)), row]);
+    const start = (tries: number) => {
+      const field = fields.current[row.id];
+      if (!field?.ready()) return tries > 0 && setTimeout(() => start(tries - 1), 40);
+      field.focus();
+      field.insert(template);
+    };
+    setTimeout(() => start(15), 30);
+  };
   /** the + : a table, a note, or a row with a starter typed into it (boxes to fill, Tab between them) */
   const addFrom = (id: string) => {
     setAddOpen(false);
@@ -1059,6 +1072,19 @@ export default function XYGraph({
             <button className={`xy-head-btn${examplesOpen || empty ? " is-on" : ""}`} title="What it graphs — click one to try it" onClick={() => setExamplesOpen(!examplesOpen)}>
               Examples
             </button>
+            <button className={`xy-head-btn xy-pop-anchor${catalogOpen ? " is-on" : ""}`} title="Every word the graph knows — segment, circle, mean, rotate… — to look up and drop in" onClick={() => setCatalogOpen(!catalogOpen)}>
+              ƒ Functions
+            </button>
+            {/* (opens from the list's left edge, as wide as the list allows) */}
+            {catalogOpen && (
+              <Catalog
+                onPick={(template) => {
+                  setCatalogOpen(false);
+                  addTemplate(template);
+                }}
+                onClose={() => setCatalogOpen(false)}
+              />
+            )}
             {(!empty || drawings.length > 0) && (
               <button className="xy-head-btn xy-clear" title="Remove every line, table and drawing — ⌘Z brings them back" onClick={clearAll}>
                 Clear all

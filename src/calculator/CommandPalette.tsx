@@ -107,10 +107,26 @@ const SHEET: { where: string; keys: [string, string][] }[] = [
     where: "Notebook",
     keys: [
       ["Esc  ⌘⏎", "Done editing a block"],
-      ["⌘⏎", "In a Python cell: run it (and the cells above it)"],
-      ["Tab", "In code: indent"],
+      ["⌘⏎", "In a Python cell: run it (reactive: and the cells that use it)"],
+      ["⇧⏎", "Run it, and on to the next cell"],
+      ["Tab", "In code: finish the name (np.lin → linspace), else indent"],
+      ["↑ ↓  Enter", "In the list of names: pick one"],
       ["Enter", "In a work cell's step: the next step"],
       ["⌫", "In an empty step: take it out"],
+    ],
+  },
+  {
+    where: "Graph (pointer over it)",
+    keys: [
+      ["V  H", "Move · hand"],
+      ["P  S  L  Y", "Point · segment · line · ray"],
+      ["O  R  G  A", "Circle · rectangle · polygon · angle"],
+      ["I  M", "Intersect · midpoint"],
+      ["D  T  E", "Pen · text · eraser"],
+      ["5<30  4,3", "Drawing: a length at an angle · a rectangle's size"],
+      ["⇧ drag", "Drawing: angles in 15° steps"],
+      ["Esc", "Let go of what's half built · put the tool down"],
+      ["↑ ↓", "In the list: the row above or below"],
     ],
   },
   {

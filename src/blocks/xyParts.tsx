@@ -768,6 +768,93 @@ export function MoreTools<T extends string>({ tools, on, onPick, onClose }: { to
   );
 }
 
+// ---- every word the graph knows, to look up and drop in
+
+const op = (w: string, args: string) => `\\operatorname{${w}}\\left(${args}\\right)`;
+/** [group, how it's written, what it does, its template (#? boxes to fill)] */
+export const CATALOG: [string, string, string, string][] = [
+  ["Points and lines", "segment(A, B)", "the segment from A to B", op("segment", "#?,#?")],
+  ["Points and lines", "line(A, B)", "the line through A and B", op("line", "#?,#?")],
+  ["Points and lines", "ray(A, B)", "from A, through B, on forever", op("ray", "#?,#?")],
+  ["Points and lines", "vector(A, B)", "an arrow from A to B", op("vector", "#?,#?")],
+  ["Points and lines", "midpoint(A, B)", "the point halfway", op("midpoint", "#?,#?")],
+  ["Points and lines", "intersection(a, b)", "where two things cross (… , 2 for the second)", op("intersection", "#?,#?")],
+  ["Points and lines", "perpendicular(l, P)", "through P at right angles to l", op("perpendicular", "#?,#?")],
+  ["Points and lines", "parallel(l, P)", "through P alongside l", op("parallel", "#?,#?")],
+  ["Points and lines", "bisector(A, B)", "the perpendicular bisector of AB", op("bisector", "#?,#?")],
+  ["Points and lines", "bisector(A, B, C)", "the line halving the angle at B", op("bisector", "#?,#?,#?")],
+  ["Points and lines", "tangent(P, c)", "the lines from P that just touch circle c", op("tangent", "#?,#?")],
+  ["Points and lines", "point(s, t)", "a point sliding along a shape as t goes 0 → 1", op("point", "#?,#?")],
+  ["Points and lines", "locus(P, t)", "the path P takes as t runs", op("locus", "#?,#?")],
+  ["Points and lines", "triangulate(A, 40, B, 310)", "where two compass sightings meet", op("triangulate", "#?,#?,#?,#?")],
+  ["Shapes", "circle(A, r)", "center A, radius r", op("circle", "#?,#?")],
+  ["Shapes", "circle(A, B)", "center A, through B", op("circle", "#?,#?")],
+  ["Shapes", "circle(A, B, C)", "through three points", op("circle", "#?,#?,#?")],
+  ["Shapes", "polygon(A, B, C)", "corners in order", op("polygon", "#?,#?,#?")],
+  ["Shapes", "polygon(A, B, 6)", "a regular polygon on side AB", op("polygon", "#?,#?,6")],
+  ["Shapes", "angle(A, B, C)", "the angle at B — its size marked", op("angle", "#?,#?,#?")],
+  ["Shapes", "arc(O, A, B)", "center O, from A round to B", op("arc", "#?,#?,#?")],
+  ["Shapes", "sector(O, A, B)", "the slice, filled", op("sector", "#?,#?,#?")],
+  ["Shapes", "semicircle(A, B)", "half a circle on AB", op("semicircle", "#?,#?")],
+  ["Move a copy", "reflect(s, l)", "mirrored in a line (or a point)", op("reflect", "#?,#?")],
+  ["Move a copy", "rotate(s, 90, C)", "turned 90° about C", op("rotate", "#?,90,#?")],
+  ["Move a copy", "translate(s, v)", "slid along a vector (or by (2, 3))", op("translate", "#?,#?")],
+  ["Move a copy", "dilate(s, 2, C)", "scaled ×2 from C", op("dilate", "#?,2,#?")],
+  ["Measure", "distance(A, B)", "how far apart", op("distance", "#?,#?")],
+  ["Measure", "length(s)", "a segment's length", op("length", "#?")],
+  ["Measure", "area(s)", "a polygon's or circle's area", op("area", "#?")],
+  ["Measure", "perimeter(s)", "all the way round", op("perimeter", "#?")],
+  ["Measure", "slope(l)", "rise over run", op("slope", "#?")],
+  ["Statistics", "[3, 7, 2]", "a list of numbers", "\\left\\lbrack#?\\right\\rbrack"],
+  ["Statistics", "mean(L)", "the average", op("mean", "#?")],
+  ["Statistics", "median(L)", "the middle", op("median", "#?")],
+  ["Statistics", "stdev(L)", "standard deviation (a sample's)", op("stdev", "#?")],
+  ["Statistics", "stdevp(L)", "standard deviation (the whole population's)", op("stdevp", "#?")],
+  ["Statistics", "quantile(L, 0.25)", "a quarter of the way up", op("quantile", "#?,0.25")],
+  ["Statistics", "total(L)  count(L)", "the sum · how many", op("total", "#?")],
+  ["Statistics", "histogram(L)", "bars of how many in each range", op("histogram", "#?")],
+  ["Statistics", "boxplot(L)", "min, Q1, median, Q3, max", op("boxplot", "#?")],
+  ["Statistics", "dotplot(L)", "a dot for each", op("dotplot", "#?")],
+  ["Statistics", "scatter(X, Y)", "a point for each pair", op("scatter", "#?,#?")],
+  ["Probability", "normalpdf(x, μ, σ)", "the bell curve", `y=${op("normalpdf", "x,#?,#?")}`],
+  ["Probability", "normalcdf(a, b, μ, σ)", "the chance between a and b", op("normalcdf", "#?,#?,#?,#?")],
+  ["Probability", "binompdf(n, p, k)", "exactly k successes in n tries", op("binompdf", "#?,#?,#?")],
+  ["Probability", "binomcdf(n, p, k)", "k or fewer", op("binomcdf", "#?,#?,#?")],
+  ["Functions", "f(x) = …", "a function, named — then f(3), f'(x)", "f\\left(x\\right)=#?"],
+  ["Functions", "y = {x < 0: …, …}", "piecewise", "y=\\begin{cases}#?&x<0\\\\#?&x\\ge0\\end{cases}"],
+  ["Functions", "y = x² {0 ≤ x ≤ 2}", "only part of it: a restriction", "y=#?\\left\\lbrace0\\le x\\le2\\right\\rbrace"],
+  ["Functions", "d/dx", "a derivative", "y=\\frac{d}{dx}\\left(#?\\right)"],
+  ["Functions", "∫ from a to b", "an integral", "\\int_{#?}^{#?}#?\\,dx"],
+  ["Functions", "Σ", "a sum", "\\sum_{n=1}^{#?}#?"],
+  ["Functions", "dy/dx = …", "a slope field", "\\frac{dy}{dx}=#?"],
+];
+
+export function Catalog({ onPick, onClose }: { onPick: (template: string) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = CATALOG.filter(([g, how, what]) => words.every((w) => `${g} ${how} ${what}`.toLowerCase().includes(w)));
+  const groups = [...new Set(shown.map(([g]) => g))];
+  return (
+    <Pop onClose={onClose} className="xy-catalog-pop">
+      <input autoFocus className="xy-text" value={q} placeholder="Find — circle, mean, rotate, area…" onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && shown[0] && onPick(shown[0][3])} />
+      {groups.map((g) => (
+        <div key={g}>
+          <div className="xy-pop-head">{g}</div>
+          {shown
+            .filter(([gg]) => gg === g)
+            .map(([, how, what, template]) => (
+              <button key={how} className="xy-catalog-item" onClick={() => onPick(template)}>
+                <code>{how}</code>
+                <span className="xy-dim">{what}</span>
+              </button>
+            ))}
+        </div>
+      ))}
+      {!shown.length && <span className="xy-dim">Nothing by that name</span>}
+    </Pop>
+  );
+}
+
 // ---- saving the graph as a picture
 
 export function SaveMenu({ onPick, onClose }: { onPick: (kind: "png" | "svg") => void; onClose: () => void }) {
