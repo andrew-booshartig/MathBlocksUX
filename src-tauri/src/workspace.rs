@@ -165,7 +165,7 @@ pub fn print_document(app: AppHandle, name: String, html: String) -> Result<Stri
 }
 
 /// Standard base64 (no crate needed for one PNG now and then).
-fn decode_base64(text: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn decode_base64(text: &str) -> Result<Vec<u8>, String> {
     fn value(c: u8) -> Option<u32> {
         match c {
             b'A'..=b'Z' => Some((c - b'A') as u32),

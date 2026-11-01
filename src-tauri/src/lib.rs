@@ -69,6 +69,9 @@ pub fn run() {
             notebook::list_templates,
             notebook::save_template,
             notebook::open_in_neovim,
+            notebook::flat_save,
+            notebook::flat_read,
+            notebook::flat_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -87,6 +87,23 @@ const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "pytho
 const isCalcLike = (b: Block) => b.kind === "cell" && (b.lang === "calc" || b.lang === "vars");
 /** a cell's language, when a plugin's — not one of the app's own */
 const codeLanguage = (b: Block) => (b.kind === "cell" && !OWN_CELLS.has(b.lang) ? languageOf(b.lang) : undefined);
+/** a flattened cell's picture (its path from the Notebooks folder), from its fence: ```graph flat=… */
+const flatOf = (b: Block) => (b.kind === "cell" ? decodeURIComponent(b.info.match(/(?:^|\s)flat=(\S+)/)?.[1] ?? "") || null : null);
+const withFlat = (info: string, path: string | null) => [info.replace(/(?:^|\s)flat=\S+/, "").trim(), path ? `flat=${encodeURIComponent(path)}` : ""].filter(Boolean).join(" ");
+/** pictures read once, kept while the app runs */
+const flatPictures = new Map<string, string>();
+function FlatPicture({ path }: { path: string }) {
+  const [src, setSrc] = useState(flatPictures.get(path) ?? null);
+  const [gone, setGone] = useState<string | null>(null);
+  useEffect(() => {
+    if (flatPictures.has(path)) return setSrc(flatPictures.get(path)!);
+    invoke<string>("flat_read", { path })
+      .then((url) => (flatPictures.set(path, url), setSrc(url)))
+      .catch((err) => setGone(String(err)));
+  }, [path]);
+  if (gone) return <div className="nb-cell-wait">{gone} — Unflatten to work it out again</div>;
+  return src ? <img className="nb-flat" src={src} alt="the cell, flattened to a picture" draggable={false} /> : <div className="nb-cell-wait">…</div>;
+}
 /** where a cell's output is kept: Python's by its code, any other language's by both */
 const outKey = (lang: string, code: string) => (lang === "python" ? code : `${lang}\u0001${code}`);
 
@@ -585,6 +602,54 @@ export default function NotebookTile({
   // ---- blocks
 
   const updateBlock = (id: string, patch: Partial<Block>) => doc && commit({ ...doc, blocks: doc.blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b)) });
+  /** flatten: the cell as it shows, kept as a picture (PNG or JPEG) in its place — so it isn't worked out
+   * or drawn again (thirty graphs, thirty pictures); its code stays, to unflatten */
+  const [flatMenu, setFlatMenu] = useState<string | null>(null);
+  const flatten = async (b: Block, kind: "png" | "jpeg") => {
+    setFlatMenu(null);
+    if (!name || !doc || b.kind !== "cell") return;
+    const block = document.querySelector<HTMLElement>(`[data-block="${b.id}"]`);
+    const shown = block?.querySelector<HTMLElement>(".nb-cell-result") ?? block?.querySelector<HTMLElement>(".nb-code");
+    if (!shown) return setNotice("Nothing to flatten yet — run it first");
+    try {
+      const { toJpeg, toPng } = await import("html-to-image");
+      const background = getComputedStyle(block!).backgroundColor;
+      const paper = background && background !== "rgba(0, 0, 0, 0)" ? background : getComputedStyle(document.body).backgroundColor;
+      const url = await (kind === "png" ? toPng : toJpeg)(shown, { pixelRatio: 2, backgroundColor: paper, quality: 0.92, cacheBust: true });
+      const path = await invoke<string>("flat_save", { notebook: name, dataUrl: url });
+      flatPictures.set(path, url);
+      updateBlock(b.id, { info: withFlat(b.info, path) });
+    } catch (err) {
+      setNotice(`Couldn't flatten it: ${errorText(err)}`);
+    }
+  };
+  const unflatten = (b: Block) => {
+    const path = flatOf(b);
+    if (!path || b.kind !== "cell") return;
+    invoke("flat_remove", { path }).catch(() => {});
+    flatPictures.delete(path);
+    updateBlock(b.id, { info: withFlat(b.info, null) });
+  };
+  /** a block alone on its line: how wide (percent of the page), dragged by its right edge */
+  const [sizing, setSizing] = useState<{ id: string; width: number } | null>(null);
+  const startSizing = (e: ReactPointerEvent<HTMLDivElement>, b: Block) => {
+    e.preventDefault();
+    const page = e.currentTarget.closest(".nb-solo")!.parentElement!.getBoundingClientRect();
+    const left = e.currentTarget.closest(".nb-solo")!.getBoundingClientRect().left;
+    let width = b.width ?? 100;
+    const move = (ev: PointerEvent) => {
+      width = Math.max(20, Math.min(100, Math.round((((ev.clientX - left) / page.width) * 100) / 5) * 5));
+      setSizing({ id: b.id, width });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setSizing(null);
+      updateBlock(b.id, { width: width >= 100 ? undefined : width });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   /** side by side: a block put beside the one above it (sharing the row evenly), or back on its own */
   const toggleBeside = (id: string) => {
     if (!doc) return;
@@ -1163,6 +1228,19 @@ export default function NotebookTile({
         <button title="Move down" onClick={() => moveBlock(b.id, 1)}>
           <Icon name="down" size={13} />
         </button>
+        {b.kind === "cell" && !flatOf(b) && (
+          <span className="nb-flat-anchor">
+            <button title="Flatten to a picture — kept as it shows, not worked out or drawn again (its code stays, to unflatten)" onClick={() => setFlatMenu(flatMenu === b.id ? null : b.id)}>
+              <Icon name="frame" size={13} />
+            </button>
+            {flatMenu === b.id && (
+              <span className="nb-flat-menu" onMouseLeave={() => setFlatMenu(null)}>
+                <button onClick={() => flatten(b, "png")}>PNG</button>
+                <button onClick={() => flatten(b, "jpeg")}>JPEG</button>
+              </span>
+            )}
+          </span>
+        )}
         {doc!.blocks[0]?.id !== b.id && (
           <button className={b.beside ? "is-on" : ""} title={b.beside ? "Back on its own line, full width" : "Beside the block above — side by side (drag the line between to resize)"} onClick={() => toggleBeside(b.id)}>
             <Icon name="layout" size={13} />
@@ -1189,6 +1267,7 @@ export default function NotebookTile({
         </div>
       );
     }
+    const flat = flatOf(b);
     const language = codeLanguage(b);
     // a kind of cell a plugin adds (```csv): what its render makes of it
     const pluginCell = !language && b.kind === "cell" && !OWN_CELLS.has(b.lang) ? (plugins.cells.find((c) => c.id === b.lang.toLowerCase()) ?? cellKindOf(b.lang)) : undefined;
@@ -1196,7 +1275,9 @@ export default function NotebookTile({
     // a cell that runs (Python, or a plugin's language): its output's key
     const runKey = b.lang === "python" || language ? outKey(b.lang, b.code) : null;
     const result =
-      b.lang === "vars" ? (
+      flat && !isEditing ? (
+        <FlatPicture path={flat} />
+      ) : b.lang === "vars" ? (
         <VarsCell code={b.code} lines={calc?.[calcAt]} onCommit={(code) => updateBlock(b.id, { code })} />
       ) : language ? (
         <PythonOutput output={py[runKey!]} running={running.has(runKey!)} live={live?.code === runKey ? live.text : undefined} matlab={language.output === "matlab"} />
@@ -1214,16 +1295,24 @@ export default function NotebookTile({
       ) : b.lang === "python" ? (
         <PythonOutput output={py[b.code]} running={running.has(b.code)} live={live?.code === b.code ? live.text : undefined} />
       ) : null;
-    const showCode = isEditing || b.lang === "python" || !!language || !result;
+    const showCode = isEditing || (!flat && (b.lang === "python" || !!language || !result));
     // a work cell being edited: its fields, with the checked work under them
     return (
-      <div key={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}`}>
+      <div key={b.id} data-block={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}${flat ? " is-flat" : ""}`}>
         <div className="nb-cell-head">
           <span className="nb-cell-lang">{label}</span>
+          {flat && (
+            <>
+              <span className="nb-flat-tag" title="Kept as a picture — not worked out or drawn again">flattened</span>
+              <button className="nb-cell-edit" title="Work it out (and draw it) again, live" onClick={() => unflatten(b)}>
+                unflatten
+              </button>
+            </>
+          )}
           {b.lang !== "python" && b.kind === "cell" && !OWN_CELLS.has(b.lang) && !language && !pluginCell && (
             <span className="nb-cell-note" title="Add a plugin for this language to color and run it">no plugin runs {b.lang}</span>
           )}
-          {language?.run?.length ? (
+          {language?.run?.length && !flat ? (
             <>
               <button className="nb-run" title={`Run this cell — ⌘⏎ (⇧⏎ runs it and goes on, ⌥⏎ runs it and adds a cell under it)`} onClick={() => runLanguage(language, b.code)}>
                 <Icon name="run" size={12} /> Run
@@ -1237,7 +1326,7 @@ export default function NotebookTile({
               {py[runKey!]?.seconds !== undefined && !running.has(runKey!) && <span className="nb-time">{py[runKey!]!.seconds! < 1 ? `${Math.round(py[runKey!]!.seconds! * 1000)} ms` : `${py[runKey!]!.seconds!.toFixed(1)} s`}</span>}
             </>
           ) : null}
-          {b.lang === "python" && (
+          {b.lang === "python" && !flat && (
             <>
               <span className="nb-count" title={py[b.code]?.count ? `Run ${py[b.code]!.count} in this Python` : "Not run yet"}>
                 [{running.has(b.code) ? "*" : (py[b.code]?.count ?? " ")}]
@@ -1259,7 +1348,7 @@ export default function NotebookTile({
               {py[b.code]?.seconds !== undefined && !running.has(b.code) && <span className="nb-time">{py[b.code]!.seconds! < 1 ? `${Math.round(py[b.code]!.seconds! * 1000)} ms` : `${py[b.code]!.seconds!.toFixed(1)} s`}</span>}
             </>
           )}
-          {!isEditing && b.lang !== "python" && !language && result && (
+          {!isEditing && !flat && b.lang !== "python" && !language && result && (
             <button className="nb-cell-edit" onClick={() => startEditing(b)}>
               edit
             </button>
@@ -1302,7 +1391,7 @@ export default function NotebookTile({
             )
           ))}
         {result && (
-          <div className="nb-cell-result" onClick={() => !isEditing && b.lang !== "python" && !language && b.lang !== "graph" && b.lang !== "vars" && startEditing(b)}>
+          <div className="nb-cell-result" onClick={() => !isEditing && !flat && b.lang !== "python" && !language && b.lang !== "graph" && b.lang !== "vars" && startEditing(b)}>
             {result}
           </div>
         )}
@@ -1375,7 +1464,16 @@ export default function NotebookTile({
         <div className="nb-page" ref={page}>
           {header}
           {rowsOf(doc.blocks).map((row) => {
-            if (row.length === 1) return blockView(row[0], isCalcLike(row[0]) ? calcAt++ : -1);
+            if (row.length === 1) {
+              const b = row[0];
+              const width = sizing?.id === b.id ? sizing.width : (b.width ?? 100);
+              return (
+                <div key={`solo-${b.id}`} className={`nb-solo${sizing?.id === b.id ? " is-sizing" : ""}`} style={width < 100 ? { width: `${width}%` } : undefined}>
+                  {blockView(b, isCalcLike(b) ? calcAt++ : -1)}
+                  <div className="nb-solo-handle" title={`Drag to make it narrower or wider${width < 100 ? ` (${width}%)` : ""}`} onPointerDown={(e) => startSizing(e, b)} onDoubleClick={() => updateBlock(b.id, { width: undefined })} />
+                </div>
+              );
+            }
             // side by side: each block its share of the row, a line between to drag
             const widths = resizing?.row === row[0].id ? resizing.widths : widthsOf(row);
             return (

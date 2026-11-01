@@ -1749,3 +1749,77 @@
     display: none;
   }
 }
+
+/* flattened: the cell as a picture */
+.nb-flat {
+  display: block;
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.nb-flat-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t-blue, #6fa8dc) 18%, transparent);
+  color: var(--t-blue, #6fa8dc);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.nb-flat-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.nb-flat-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: var(--t-bg3);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--t-bg0, #000) 40%, transparent);
+}
+
+.nb-block-tools .nb-flat-menu button {
+  width: auto;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+/* a block alone on its line, as wide as it's dragged to */
+.nb-solo {
+  position: relative;
+  max-width: 100%;
+}
+
+.nb-solo-handle {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  right: -14px;
+  width: 10px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.nb-solo-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.nb-solo:hover > .nb-solo-handle::after,
+.nb-solo.is-sizing > .nb-solo-handle::after {
+  background: color-mix(in srgb, var(--t-pink, #c99bbf) 55%, transparent);
+}

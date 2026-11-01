@@ -12,6 +12,7 @@ import { type CalcLine, type PyOutput, calcAnswer, parseVars, plots, readWorkCel
 import { type Block, type NotebookDoc, metaValue, printSwitches, rowsOf, widthsOf } from "./format";
 import { languageOf, matlabOutput } from "./languages";
 import { cellKindOf } from "../plugins";
+import { invoke } from "@tauri-apps/api/core";
 import { renderMarkdown } from "./markdown";
 
 const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -87,6 +88,14 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
       body.push(`<div class="text">${renderMarkdown(b.text, true)}</div>`);
       continue;
     }
+    // flattened: its picture, as it was kept
+    const flat = decodeURIComponent(b.info.match(/(?:^|\s)flat=(\S+)/)?.[1] ?? "");
+    if (flat) {
+      if (b.lang === "calc" || b.lang === "vars") calcAt++;
+      const src = await invoke<string>("flat_read", { path: flat }).catch(() => "");
+      body.push(src ? `<img class="flat" src="${src}" alt="">` : `<pre class="code">${escape(b.code)}</pre>`);
+      continue;
+    }
     const language = ["vars", "calc", "graph", "numberline", "work", "python"].includes(b.lang) ? undefined : languageOf(b.lang);
     const plugin = language ? undefined : cellKindOf(b.lang);
     if (b.lang === "vars") {
@@ -118,7 +127,8 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
   }
   // side by side, as on the page: each block its share of the row
   const body = rowsOf(doc.blocks).map((row) => {
-    if (row.length === 1) return pieces.get(row[0]) ?? "";
+    // alone, narrowed: as wide as on the page
+    if (row.length === 1) return row[0].width && row[0].width < 100 ? `<div style="width:${row[0].width}%">${pieces.get(row[0]) ?? ""}</div>` : (pieces.get(row[0]) ?? "");
     const widths = widthsOf(row);
     return `<div class="row">${row.map((b, k) => `<div class="col" style="flex-basis:${widths[k].toFixed(2)}%">${pieces.get(b) ?? ""}</div>`).join("")}</div>`;
   });
@@ -153,6 +163,7 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
   .note-under { margin: -8px 0 18px; padding: 8px 0 0; border-top: 1px dashed #d4d8e0; }
   .calc { border-collapse: collapse; margin: 8px 0 14px; } .calc td { padding: 3px 18px 3px 0; }
   .vars { border-collapse: collapse; margin: 8px 0 16px; font-size: 15px; } .vars th { font: 600 11px -apple-system, Helvetica, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: #6b7280; text-align: left; padding: 2px 16px 4px 0; } .vars td { padding: 3px 16px 3px 0; border-top: 1px solid #e5e7eb; } .vars .note { color: #4b5563; }
+  img.flat { display: block; max-width: 100%; margin: 6px 0 14px; border-radius: 6px; break-inside: avoid; }
   .row { display: flex; gap: 18px; align-items: flex-start; break-inside: avoid; } .col { min-width: 0; flex-grow: 0; flex-shrink: 1; }
   .col .work, .col img.graph { max-width: 100%; }
   img.graph { display: block; width: 100%; max-width: 560px; margin: 8px auto 16px; break-inside: avoid; }

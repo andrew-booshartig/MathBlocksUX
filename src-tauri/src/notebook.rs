@@ -129,6 +129,59 @@ pub fn trash_notebook(app: AppHandle, name: String) -> Result<(), String> {
     fs::rename(dir.join(format!("{name}.md")), trash.join(format!("{name} ({stamp}).md"))).map_err(|e| e.to_string())
 }
 
+// ---- flattened cells: a cell kept as its picture (a graph, a circuit…), so
+// a notebook of thirty doesn't redraw thirty. The pictures live beside the
+// notebook, in "<name>.assets/"; the cell's fence says which (flat=…).
+
+/// A cell's picture (a PNG or JPEG data URL) kept in "<notebook>.assets/":
+/// its path, from the Notebooks folder.
+#[tauri::command]
+pub fn flat_save(app: AppHandle, notebook: String, data_url: String) -> Result<String, String> {
+    let (ext, encoded) = if let Some(e) = data_url.strip_prefix("data:image/png;base64,") {
+        ("png", e)
+    } else if let Some(e) = data_url.strip_prefix("data:image/jpeg;base64,") {
+        ("jpg", e)
+    } else {
+        return Err("expected a PNG or JPEG picture".into());
+    };
+    let bytes = crate::workspace::decode_base64(encoded)?;
+    let folder = format!("{}.assets", safe_name(&notebook)?);
+    let dir = notebooks_dir(&app)?.join(&folder);
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let file = format!("flat-{stamp}.{ext}");
+    fs::write(dir.join(&file), bytes).map_err(|e| e.to_string())?;
+    Ok(format!("{folder}/{file}"))
+}
+
+/// Where a flattened cell's picture is — only ever inside the Notebooks folder.
+fn flat_path(app: &AppHandle, path: &str) -> Result<PathBuf, String> {
+    let (folder, file) = path.split_once('/').ok_or("not a notebook's picture")?;
+    if !folder.ends_with(".assets") || file.contains('/') || folder.contains("..") || file.contains("..") || !(file.ends_with(".png") || file.ends_with(".jpg")) {
+        return Err("not a notebook's picture".into());
+    }
+    Ok(notebooks_dir(app)?.join(folder).join(file))
+}
+
+/// A flattened cell's picture, as a data URL to show.
+#[tauri::command]
+pub fn flat_read(app: AppHandle, path: String) -> Result<String, String> {
+    let file = flat_path(&app, &path)?;
+    let bytes = fs::read(&file).map_err(|_| format!("its picture is gone ({path})"))?;
+    let kind = if path.ends_with(".png") { "png" } else { "jpeg" };
+    Ok(format!("data:image/{kind};base64,{}", crate::langs::base64(&bytes)))
+}
+
+/// Unflattened: its picture goes to Notebooks/.trash (nothing's ever deleted).
+#[tauri::command]
+pub fn flat_remove(app: AppHandle, path: String) -> Result<(), String> {
+    let file = flat_path(&app, &path)?;
+    let trash = notebooks_dir(&app)?.join(".trash");
+    fs::create_dir_all(&trash).map_err(|e| e.to_string())?;
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    fs::rename(&file, trash.join(name)).map_err(|e| e.to_string())
+}
+
 /// Opens the notebook in Neovim, in your own terminal (Ghostty, or
 /// Terminal) with your own config — and since the app watches the file,
 /// every :w shows up in the Notebook tile.
