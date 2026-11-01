@@ -128,6 +128,7 @@ const SHEET: { where: string; keys: [string, string][] }[] = [
       ["⇧ drag", "Drawing: angles in 15° steps"],
       ["Esc", "Let go of what's half built · put the tool down"],
       ["← → ↑ ↓", "The picked point: a grid line over (⇧ five, ⌥ a tenth)"],
+      ["F", "Frame everything: points, shapes, intercepts, highs and lows"],
       ["↑ ↓", "In the list: the row above or below"],
     ],
   },

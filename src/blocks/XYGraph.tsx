@@ -467,6 +467,7 @@ export default function XYGraph({
   const over = useRef(false);
   /** the arrow keys move the picked point a grid line (set each render: it needs what's current) */
   const nudge = useRef<(dx: number, dy: number, fine: boolean, far: boolean) => boolean>(() => false);
+  const fitRef = useRef<() => void>(() => {});
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement)?.closest?.("input, textarea, select, math-field, [contenteditable]");
@@ -475,6 +476,7 @@ export default function XYGraph({
       if (arrow && over.current && nudge.current(arrow[0], arrow[1], e.altKey, e.shiftKey)) return e.preventDefault();
       if (e.altKey) return;
       if (e.key === "Escape") return tool !== "pan" && setTool("pan");
+      if (over.current && !e.shiftKey && e.key.toLowerCase() === "f") return e.preventDefault(), fitRef.current();
       const pick = over.current && !e.shiftKey ? TOOL_KEYS[e.key.toLowerCase()] : undefined;
       if (pick) {
         e.preventDefault();
@@ -1109,6 +1111,39 @@ export default function XYGraph({
     ].join("\n");
   };
   /** zoom about the middle of what's showing (in powers of ten on a log axis) */
+  /** the view framed round everything there is to see: points, shapes, the
+   * tables' points, and the curves' marked spots (intercepts, highs, lows…) —
+   * a curve that goes on forever can't be framed, its spots can. A y-intercept
+   * far from the rest ((x − 30)² + 20 crosses at 920) is left out of it */
+  const zoomFit = () => {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    const take = (x: unknown, y: unknown) => {
+      if (typeof x === "number" && typeof y === "number" && Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) < 1e7 && Math.abs(y) < 1e7) xs.push(x), ys.push(y);
+    };
+    for (const s of result?.series ?? []) {
+      if (hiddenAt(s.index) || s.kind === "error") continue;
+      // points, shapes and the like are all there is of them; a function, an inequality, a region go on
+      const bounded = s.kind === "points" || s.kind === "polygon" || !!s.shape || (s.kind === "curve" && (s.parametric || s.polar));
+      if (bounded) (s.x ?? []).forEach((x, k) => take(x, s.y?.[k]));
+    }
+    const markers = (result?.markers ?? []).filter((m) => (Array.isArray(m.series) ? m.series : [m.series]).every((i) => !hiddenAt(Number(i))));
+    for (const m of markers) if (m.kind !== "y-intercept") take(m.x, m.y);
+    for (const t of tables) if (!t.hidden) for (const [a, b] of t.rows) take(readNumber(a), readNumber(b));
+    const near = xs.length ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 4) * 1.5 : Infinity;
+    for (const m of markers)
+      if (m.kind === "y-intercept" && (!xs.length || (m.y >= Math.min(...ys) - near && m.y <= Math.max(...ys) + near && m.x >= Math.min(...xs) - near && m.x <= Math.max(...xs) + near))) take(m.x, m.y);
+    if (!xs.length) return home();
+    let [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    // a little room round it (and some size when it's one spot, or a flat row)
+    const [w, h] = [Math.max(x1 - x0, (y1 - y0) * 0.25, 2), Math.max(y1 - y0, (x1 - x0) * 0.25, 2)];
+    [x0, x1] = [(x0 + x1) / 2 - w * 0.6, (x0 + x1) / 2 + w * 0.6];
+    [y0, y1] = [(y0 + y1) / 2 - h * 0.6, (y0 + y1) / 2 + h * 0.6];
+    if (settings.logX) [x0, x1] = [Math.max(x0, Math.min(...xs.filter((v) => v > 0)) / 2), x1];
+    if (settings.logY) [y0, y1] = [Math.max(y0, Math.min(...ys.filter((v) => v > 0)) / 2), y1];
+    update({ window: { xmin: x0, xmax: x1, ymin: y0, ymax: y1 } });
+  };
+  fitRef.current = zoomFit;
   const zoomBy = (factor: number) => {
     const w = plot.window ?? DEFAULT_WINDOW;
     const axis = (lo: number, hi: number, log?: boolean): [number, number] => {
@@ -1566,6 +1601,9 @@ export default function XYGraph({
                 </button>
                 <button className="xy-zoom-btn" title="Back to where the view starts" onClick={home}>
                   <Icon name="home" size={13} />
+                </button>
+                <button className="xy-zoom-btn" title="Frame everything — its points, shapes and marked spots (F)" onClick={zoomFit}>
+                  <Icon name="frame" size={13} />
                 </button>
                 <span className="xy-save">
                   <button className={`xy-zoom-btn is-text xy-pop-anchor${saveOpen ? " is-on" : ""}`} title="Save the graph as a picture" onClick={() => setSaveOpen(!saveOpen)}>
