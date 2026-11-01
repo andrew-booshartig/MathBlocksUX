@@ -1472,7 +1472,7 @@ export default function XYGraph({
                 ...(settings.marks === false || settings.extremes === false ? ["vertices" as const] : []),
                 ...(settings.marks === false || settings.crossings === false ? ["intersections" as const] : []),
               ]}
-              appearance={{ grid: settings.grid, numbers: settings.numbers, xLabel: settings.xLabel, yLabel: settings.yLabel, piX: settings.piX, logX: settings.logX, logY: settings.logY, xStep: settings.xStep, yStep: settings.yStep, unit: settings.unit, dims: settings.dims }}
+              appearance={{ grid: settings.grid, numbers: settings.numbers, xLabel: settings.xLabel, yLabel: settings.yLabel, piX: settings.piX, logX: settings.logX, logY: settings.logY, xStep: settings.xStep, yStep: settings.yStep, unit: settings.unit, dims: settings.dims, degrees: settings.degrees }}
               onPlot={setPlotDiv}
               images={images}
               extraTraces={traceLines}

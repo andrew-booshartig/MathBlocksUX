@@ -534,7 +534,7 @@ export function GraphSettings({ settings, onChange, onClose }: { settings: XYSet
         Number the x axis in π <span className="xy-dim">(π/2, π, 3π/2…)</span>
       </label>
       <div className="xy-pop-head">Grid</div>
-      {seg(settings.grid ?? "major", [["none", "None"], ["major", "Lines"], ["minor", "Fine"]], (v) => set({ grid: v === "major" ? undefined : v }))}
+      {seg(settings.grid ?? "major", [["none", "None"], ["major", "Lines"], ["minor", "Fine"], ["polar", "Polar"]], (v) => set({ grid: v === "major" ? undefined : v }))}
       <div className="xy-row">
         <span>Each line is worth</span>
         {(["Auto", 0.5, 1, 2, 5, 10] as const).map((v) => {

@@ -291,6 +291,41 @@ function piLabel(quarters: number): string {
   return `${sign}${top}${d > 1 ? `/${d}` : ""}`;
 }
 
+/** k sixths of π as written: π/6, π/3, π/2, 2π/3… (or k·30°) */
+function sixthLabel(k: number, degrees: boolean): string {
+  if (degrees) return `${k * 30}°`;
+  if (k === 0) return "0";
+  let [n, d] = [k, 6];
+  for (const f of [2, 3]) while (n % f === 0 && d % f === 0) [n, d] = [n / f, d / f];
+  return `${n === 1 ? "" : n}π${d > 1 ? `/${d}` : ""}`;
+}
+
+/** polar graph paper over what's showing: rings every `step` out from the
+ * origin, spokes every 15° (the 30° ones stronger), each 30° named where its
+ * spoke leaves the view */
+function polarGrid(box: { x0: number; x1: number; y0: number; y1: number }, step: number, perUnit: number, colors: { grid: string; minor: string; ink: string; bg: string }, degrees: boolean) {
+  const shapes: Record<string, unknown>[] = [];
+  const labels: Record<string, unknown>[] = [];
+  const far = Math.max(...[box.x0, box.x1].flatMap((x) => [box.y0, box.y1].map((y) => Math.hypot(x, y))));
+  const near = Math.hypot(Math.min(Math.max(0, box.x0), box.x1), Math.min(Math.max(0, box.y0), box.y1));
+  let k = step;
+  while ((far - near) / k > 60 || k * perUnit < 12) k *= 2;
+  for (let r = Math.max(k, Math.ceil(near / k) * k); r <= far + 1e-9; r += k)
+    shapes.push({ type: "circle", xref: "x", yref: "y", x0: -r, y0: -r, x1: r, y1: r, line: { color: colors.grid, width: 1 }, layer: "below" });
+  const inside = box.x0 < 0 && box.x1 > 0 && box.y0 < 0 && box.y1 > 0;
+  for (let d = 0; d < 360; d += 15) {
+    const a = (d * Math.PI) / 180;
+    const [c, s] = [Math.cos(a), Math.sin(a)];
+    shapes.push({ type: "line", xref: "x", yref: "y", x0: 0, y0: 0, x1: far * c, y1: far * s, line: { color: d % 30 === 0 ? colors.grid : colors.minor, width: 1 }, layer: "below" });
+    if (!inside || d % 30) continue;
+    // where the spoke leaves the view, pulled back in a little
+    const out = Math.min(...[c > 1e-9 ? box.x1 / c : Infinity, c < -1e-9 ? box.x0 / c : Infinity, s > 1e-9 ? box.y1 / s : Infinity, s < -1e-9 ? box.y0 / s : Infinity]);
+    const t = out - 18 / perUnit;
+    if (t > 0) labels.push({ x: t * c, y: t * s, xref: "x", yref: "y", text: sixthLabel(d / 30, degrees), showarrow: false, font: { color: colors.ink, size: 10 }, bgcolor: toRgba(colors.bg, 0.7) });
+  }
+  return { shapes, labels };
+}
+
 /** Pen strokes and segments as lines; arrows and text as annotations. */
 function drawingLayers(drawings: GraphDrawing[]): { traces: Trace[]; annotations: Trace[] } {
   const traces: Trace[] = [];
@@ -667,7 +702,9 @@ export default function GraphView({
   }, [appearance.xStep, appearance.yStep, appearance.logX, appearance.logY, equalAspect, plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax]);
 
   const layout = useMemo(() => {
-    const grid = appearance.grid ?? "major";
+    const polar = appearance.grid === "polar" && !logX && !logY;
+    // a polar grid draws its own rings and spokes: no square lines under them
+    const grid = polar ? "none" : appearance.grid === "polar" ? "major" : (appearance.grid ?? "major");
     const numbers = appearance.numbers !== false;
     const axes = appearance.axes !== false;
     // screen pixels per unit (equal scale: the same on both axes)
@@ -712,6 +749,10 @@ export default function GraphView({
         ...(label ? { title: { text: escapeHtml(label), font: { color: theme.ink, size: 12 } } } : {}),
       };
     };
+    // what's in view (the same scale both ways shows more than the window on one axis)
+    const [cx, cy] = [(window.xmin + window.xmax) / 2, (window.ymin + window.ymax) / 2];
+    const [hx, hy] = equal && perX > 0 && perY > 0 ? [plotWidth / per(perX) / 2, plotHeight / per(perY) / 2] : [(window.xmax - window.xmin) / 2, (window.ymax - window.ymin) / 2];
+    const paper = polar && plotWidth > 0 ? polarGrid({ x0: cx - hx, x1: cx + hx, y0: cy - hy, y1: cy + hy }, gridSteps.x, per(perX), theme, !!appearance.degrees) : { shapes: [], labels: [] };
     return {
       paper_bgcolor: theme.bg,
       plot_bgcolor: theme.bg,
@@ -730,7 +771,8 @@ export default function GraphView({
       hoverlabel: { bgcolor: theme.bg, font: { color: theme.ink, size: 12, family: "-apple-system, BlinkMacSystemFont, Inter, sans-serif" } },
       width: plotWidth,
       height: plotHeight,
-      annotations: [...drawn.annotations, ...curveLabels, ...arrows, ...dimLabels],
+      annotations: [...drawn.annotations, ...curveLabels, ...arrows, ...dimLabels, ...paper.labels],
+      shapes: paper.shapes,
       images: images
         .filter((im) => !im.hidden)
         .map((im) => ({ source: im.src, xref: "x", yref: "y", x: im.x, y: im.y + im.w * im.aspect, sizex: im.w, sizey: im.w * im.aspect, xanchor: "left", yanchor: "top", sizing: "stretch", opacity: im.opacity ?? 1, layer: "below" })),

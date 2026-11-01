@@ -127,7 +127,8 @@ export type GraphTheme = "dark" | "paper" | "chalkboard" | "blueprint";
 
 export interface GraphAppearance {
   theme?: GraphTheme;
-  grid?: "none" | "major" | "minor";
+  /** polar: rings around the origin and spokes every 15° (paper for r = …) */
+  grid?: "none" | "major" | "minor" | "polar";
   axes?: boolean;
   numbers?: boolean;
   /** distance between labelled ticks; empty = automatic */
@@ -145,6 +146,8 @@ export interface GraphAppearance {
   unit?: string;
   /** drafting: lengths along sides, angles in corners */
   dims?: boolean;
+  /** the polar grid's angles in degrees (30°), not radians (π/6) */
+  degrees?: boolean;
 }
 
 export type SolveMethod = "auto" | "factor" | "formula" | "complete" | "sqrt" | "substitution" | "elimination";
@@ -373,7 +376,7 @@ export interface XYImage {
 export interface XYSettings {
   degrees?: boolean;
   piX?: boolean;
-  grid?: "none" | "major" | "minor";
+  grid?: "none" | "major" | "minor" | "polar";
   numbers?: boolean;
   /** the same scale on both axes (circles look round) — on unless turned off */
   equal?: boolean;

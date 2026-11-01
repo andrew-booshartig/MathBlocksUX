@@ -6837,6 +6837,12 @@ math-field {
   animation: xy-pop-in 0.12s ease-out;
 }
 
+/* the pop scrolls; nothing in it squeezes (a button row with its overflow
+   hidden would shrink to nothing when the pop runs long) */
+.xy-pop > * {
+  flex-shrink: 0;
+}
+
 .xy-pop-head {
   margin-top: 2px;
   font-size: 10.5px;
