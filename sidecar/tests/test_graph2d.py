@@ -380,3 +380,14 @@ def test_a_piecewise_jump_is_not_drawn_as_a_line():
     jump = graph(r"y=\begin{cases}-x&x\le-1\\3&x>-1\end{cases}")["series"][0]["y"]
     joined = graph(r"y=\begin{cases}x^{2}&x<1\\x&x\ge1\end{cases}")["series"][0]["y"]
     assert jump.count(None) == 1 and joined.count(None) == 0
+
+
+@pytest.mark.parametrize("line,said", [
+    (r"y=3\left(x-2\right)^{2}+1", r"\text{from }y=x^{2}:\ \text{right }2,\ \text{up }1,\ \text{stretched }\times3"),
+    (r"y=-2\left|x-1\right|", r"\text{from }y=\left|x\right|:\ \text{right }1,\ \text{stretched }\times2,\ \text{flipped over the x-axis}"),
+    (r"y=\sqrt{x-4}+1", r"\text{from }y=\sqrt{x}:\ \text{right }4,\ \text{up }1"),
+    (r"y=2x+1", r"\text{from }y=x:\ \text{up }1,\ \text{stretched }\times2"),
+])
+def test_compared_with_its_parent(line, said):
+    s = next(s for s in graph(line, extras=[{"parent": True}])["series"] if s.get("role") == "parent")
+    assert s["facts"] == [said] and s["kind"] == "function"

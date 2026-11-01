@@ -336,6 +336,8 @@ export interface XYPlot {
 export interface XYExtra {
   /** a straight line's slope drawn: a step across (run), a step up (rise), m = rise/run */
   slope?: boolean;
+  /** its parent function (x², |x|, √x…) drawn faint, and how it was moved and stretched to get it */
+  parent?: boolean;
   derivative?: boolean;
   tangent?: number;
   area?: [number, number];

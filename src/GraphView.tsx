@@ -81,7 +81,11 @@ function seriesTraces(s: GraphSeries, color: string, style: GraphLineStyle, outl
   switch (s.kind) {
     case "function": {
       // the derivative dashed and thinner, a tangent dotted; asymptotes dashed and faint
-      const own = s.role === "derivative" ? { ...line, dash: "dash", width: Math.max(1.5, line.width - 0.5) } : s.role === "tangent" ? { ...line, dash: "dot", width: 1.8 } : line;
+      const own =
+        s.role === "derivative" ? { ...line, dash: "dash", width: Math.max(1.5, line.width - 0.5) }
+        : s.role === "tangent" ? { ...line, dash: "dot", width: 1.8 }
+        : s.role === "parent" ? { ...line, color: toRgba(color, 0.5), dash: "dot", width: 1.6 }
+        : line;
       const asymptotes = (s.asymptotes ?? []).map((a) => ({ x: [a, a], y: [-FAR, FAR], type: "scatter", mode: "lines", line: { color: toRgba(color, 0.55), width: 1.2, dash: "dash" }, hoverinfo: "x", name: "" }));
       return [...asymptotes, { x: s.x, y: s.y, type: "scatter", mode: "lines", line: own, connectgaps: false, hoverinfo: "x+y", name: "" }];
     }

@@ -228,6 +228,10 @@ export function LineOptions({
             </label>
           )}
           <label className="xy-check">
+            <input type="checkbox" checked={!!extra.parent} onChange={(e) => ex({ parent: e.target.checked || undefined })} />
+            Compare with its parent <span className="xy-dim">(y = x², |x|, √x… faint — and how it moved)</span>
+          </label>
+          <label className="xy-check">
             <input type="checkbox" checked={!!extra.analyze} onChange={(e) => ex({ analyze: e.target.checked || undefined })} />
             Analyze it <span className="xy-dim">(domain, zeros, highs and lows, where it rises and falls)</span>
           </label>

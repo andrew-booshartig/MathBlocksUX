@@ -925,8 +925,93 @@ def _slope_triangle(i, expr, window):
     return {"kind": "curve", "role": "slope", "x": [fx, fx + frun, fx + frun], "y": [fy, fy, fy + frise], "index": i, "labels": labels, "facts": [fact]}
 
 
+def _parent_of(expr):
+    """y = a·p(x − h) + k for a parent p — x, x², |x|, √x, x³, 1/x, bˣ — as
+    (name, p, a, h, k), or None when it isn't one moved and stretched"""
+    e = sympy.nsimplify(expr) if expr.has(sympy.Float) else expr
+    try:
+        if e.is_polynomial(X):
+            deg = sympy.degree(e, X)
+            if deg == 1:
+                m, b = sympy.Poly(e, X).all_coeffs()
+                return "x", X, m, sympy.Integer(0), b
+            if deg == 2:
+                a, b, c = sympy.Poly(e, X).all_coeffs()
+                h = -b / (2 * a)
+                return "x^{2}", X**2, a, h, sympy.simplify(e.subs(X, h))
+            if deg == 3:
+                a = sympy.Poly(e, X).all_coeffs()[0]
+                h = -sympy.Poly(e, X).all_coeffs()[1] / (3 * a)
+                k = sympy.simplify(e.subs(X, h))
+                if sympy.expand(a * (X - h) ** 3 + k - e) == 0:
+                    return "x^{3}", X**3, a, h, k
+            return None
+        abs_ = list(e.atoms(sympy.Abs))
+        if len(abs_) == 1:
+            g = abs_[0].args[0]
+            if g.is_polynomial(X) and sympy.degree(g, X) == 1:
+                m, n = sympy.Poly(g, X).all_coeffs()
+                c = sympy.simplify((e - e.subs(abs_[0], 0)) / abs_[0])
+                k = sympy.simplify(e.subs(abs_[0], 0))
+                if not c.has(X) and not k.has(X):
+                    return "\\left|x\\right|", sympy.Abs(X), c * abs(m), -n / m, k
+        roots = [p for p in e.atoms(sympy.Pow) if p.exp == sympy.Rational(1, 2) and p.base.has(X)]
+        if len(roots) == 1:
+            g = roots[0].base
+            if g.is_polynomial(X) and sympy.degree(g, X) == 1:
+                m, n = sympy.Poly(g, X).all_coeffs()
+                c = sympy.simplify((e - e.subs(roots[0], 0)) / roots[0])
+                k = sympy.simplify(e.subs(roots[0], 0))
+                if not c.has(X) and not k.has(X) and m > 0:
+                    return "\\sqrt{x}", sympy.sqrt(X), c * sympy.sqrt(m), -n / m, k
+        if e.is_rational_function(X):
+            num, den = sympy.fraction(sympy.together(e))
+            if sympy.degree(den, X) == 1 and sympy.degree(num, X) <= 1:
+                q, r = sympy.div(num, den, X)
+                m, n = sympy.Poly(den, X).all_coeffs()
+                if r != 0:
+                    return "\\frac{1}{x}", 1 / X, r / m, -n / m, q
+        exps = [p for p in e.atoms(sympy.Pow) if p.base.is_number and p.base.is_positive and p.exp.has(X)]
+        if len(exps) == 1 and sympy.degree(exps[0].exp, X) == 1 and exps[0].exp.coeff(X) == 1:
+            b = exps[0].base
+            k = sympy.limit(e, X, -sympy.oo) if b > 1 else sympy.limit(e, X, sympy.oo)
+            a = sympy.simplify((e - k) / b**X)
+            if not a.has(X) and k.is_finite:
+                # a·b^x = a·b^h · b^(x − h): say it as a stretch, no shift
+                return f"{sympy.latex(b)}^{{x}}", b**X, a, sympy.Integer(0), k
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def _parent(i, expr, xr, window):
+    """its parent function drawn faint, and how it was moved to get this one"""
+    found = _parent_of(expr)
+    if not found:
+        raise MathInputError("no parent to compare with — this works on x, x², |x|, √x, x³, 1/x and bˣ, moved and stretched")
+    name, p, a, h, k = found
+    said = []
+    if h != 0:
+        said.append(f"\\text{{{'right' if h > 0 else 'left'} }}{sympy.latex(abs(h))}")
+    if k != 0:
+        said.append(f"\\text{{{'up' if k > 0 else 'down'} }}{sympy.latex(abs(k))}")
+    if abs(a) != 1:
+        said.append(f"\\text{{{'stretched' if abs(a) > 1 else 'squeezed'} }}\\times{sympy.latex(abs(a))}")
+    if a < 0:
+        said.append("\\text{flipped over the x-axis}")
+    xs, ys = _function_series(p, [], xr, window[1])
+    ax, ay = _lists(xs, ys)
+    how = ",\\ ".join(said) if said else "\\text{the parent itself}"
+    return {"kind": "function", "role": "parent", "x": ax, "y": ay, "index": i, "facts": [f"\\text{{from }}y={name}:\\ {how}"]}
+
+
 def _extras(i, expr, extra, xr, window):
     out = []
+    if extra.get("parent"):
+        try:
+            out.append(_parent(i, expr, xr, window))
+        except MathInputError as exc:
+            out.append({"kind": "error", "role": "parent", "error": str(exc), "index": i})
     if extra.get("slope"):
         try:
             out.append(_slope_triangle(i, expr, window))
