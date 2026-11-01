@@ -76,6 +76,7 @@ export function LineOptions({
   onStraight,
   builds = [],
   ties,
+  curves = [],
   trace,
   onTrace,
   onClearTrace,
@@ -97,6 +98,8 @@ export function LineOptions({
   builds?: { label: string; title: string; run: () => void }[];
   /** a segment: tie it to another line — parallel, perpendicular, the same length */
   ties?: { others: { id: string; label: string }[]; onTie: (kind: "parallel" | "perpendicular" | "length", other: string) => void } | null;
+  /** the other y = … rows, for the area between this and one of them */
+  curves?: { id: string; label: string }[];
   /** a point: whether it leaves a trail as it moves */
   trace?: boolean;
   onTrace?: (on: boolean) => void;
@@ -183,7 +186,11 @@ export function LineOptions({
       {ties && ties.others.length > 0 && <Ties ties={ties} />}
       {isFunction && (
         <>
-          <div className="xy-pop-head">Calculus</div>
+          <div className="xy-pop-head">Calculus and analysis</div>
+          <label className="xy-check">
+            <input type="checkbox" checked={!!extra.analyze} onChange={(e) => ex({ analyze: e.target.checked || undefined })} />
+            Analyze it <span className="xy-dim">(domain, zeros, highs and lows, where it rises and falls)</span>
+          </label>
           <label className="xy-check">
             <input type="checkbox" checked={!!extra.derivative} onChange={(e) => ex({ derivative: e.target.checked || undefined })} />
             Graph its derivative <span className="xy-dim">(dashed)</span>
@@ -198,6 +205,40 @@ export function LineOptions({
             <span>to</span>
             <NumberBox value={area?.[1]} placeholder="b" onChange={(n) => ex({ area: n === undefined ? undefined : [area?.[0] ?? n - 2, n] })} />
           </div>
+          <div className="xy-row">
+            <span>Rectangles</span>
+            <select
+              className="xy-select"
+              value={extra.riemann?.kind ?? ""}
+              title="A Riemann sum: rectangles under it from a to b, beside the exact area"
+              onChange={(e) => ex({ riemann: e.target.value ? { kind: e.target.value as "left", n: extra.riemann?.n ?? 8 } : undefined, ...(e.target.value && !area ? { area: [0, 2] } : {}) })}
+            >
+              <option value="">none</option>
+              <option value="left">left</option>
+              <option value="right">right</option>
+              <option value="mid">middle</option>
+              <option value="trap">trapezoids</option>
+            </select>
+            {extra.riemann && (
+              <>
+                <NumberBox value={extra.riemann.n} placeholder="8" title="How many" onChange={(n) => n && n >= 1 && ex({ riemann: { ...extra.riemann!, n: Math.min(400, Math.round(n)) } })} />
+                <span className="xy-dim">from a to b</span>
+              </>
+            )}
+          </div>
+          {curves.length > 0 && (
+            <div className="xy-row">
+              <span>Area between it and</span>
+              <select className="xy-select xy-tie-pick" value={extra.between ?? ""} onChange={(e) => ex({ between: e.target.value || undefined })}>
+                <option value="">—</option>
+                {curves.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </>
       )}
     </Pop>

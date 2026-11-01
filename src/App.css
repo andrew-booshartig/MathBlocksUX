@@ -7732,3 +7732,30 @@ math-field {
   flex: 1;
   min-width: 0;
 }
+
+/* a function, analyzed: label and math, row by row */
+.xy-analysis {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 4px 4px 2px 26px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--t-bg2, #17171f);
+  font-size: 12px;
+}
+
+.xy-analysis-label {
+  color: var(--t-muted, #7a7a90);
+  white-space: nowrap;
+}
+
+.xy-analysis-value {
+  min-width: 0;
+  overflow-x: auto;
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-fact-error {
+  color: var(--t-red, #f19a9a);
+}

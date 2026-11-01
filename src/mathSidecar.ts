@@ -41,7 +41,7 @@ export interface SolveResult {
 
 export interface GraphSeries {
   index: number;
-  kind: "function" | "points" | "vline" | "inequality" | "curve" | "region" | "field" | "area" | "polygon" | "value" | "error";
+  kind: "function" | "points" | "vline" | "inequality" | "curve" | "region" | "field" | "area" | "polygon" | "value" | "analysis" | "error";
   /** a point's name (A = (1, 2)), written beside it */
   name?: string;
   /** geometry: segment, line, ray, vector, circle, polygon, perpendicular, parallel */
@@ -59,12 +59,14 @@ export interface GraphSeries {
   equation?: string;
   /** a straight line (y = 2x + 1, x = 3): two points on it, as math — to build a perpendicular or parallel from */
   through?: [string, string];
+  /** a function, analyzed: its domain, zeros, highs and lows… as rows of math */
+  rows?: { label: string; tex: string }[];
   /** drafting labels: each side's length (turned along it), each corner's angle */
   dims?: { x: number; y: number; text: string; deg?: number; side?: boolean }[];
   /** words written on the graph beside it: an angle's size */
   label?: { x: number; y: number; text: string };
   /** a function drawn for another line: its derivative, or a tangent line */
-  role?: "derivative" | "tangent";
+  role?: "derivative" | "tangent" | "riemann" | "between";
   /** vertical asymptotes (x values), drawn dashed */
   asymptotes?: number[];
   /** a region: its grid and where it's true (rows of 0/1) */

@@ -228,3 +228,28 @@ def test_table_of_values():
     rows = op_values({"exprs": [r"f(x)=\frac{1}{x}"], "index": 0, "xs": ["-2", "0", "3"]})["rows"]
     assert [r["text"] for r in rows] == ["-1/2", "undefined", "1/3"]
     assert [r["text"] for r in op_values({"exprs": [r"y=mx+1"], "index": 0, "xs": ["2"], "vars": {"m": "3"}})["rows"]] == ["7"]
+
+
+def test_a_function_analyzed_exactly():
+    import sympy
+
+    from mathcore.analysis import analyze
+    from mathcore.graphtex import X
+
+    rows = {r["label"]: r["tex"] for r in analyze(X**3 - 3 * X, ((-10, 10), (-10, 10)))}
+    assert rows["Zeros"] == r"x=-\sqrt{3}\approx-1.732, x=0, x=\sqrt{3}\approx1.732"
+    assert rows["Highs (local max)"] == r"\left(-1,2\right)" and rows["Lows (local min)"] == r"\left(1,-2\right)"
+    assert rows["Increasing"] == r"\left(-\infty,-1\right)\cup\left(1,\infty\right)" and rows["Decreasing"] == r"\left(-1,1\right)"
+    rational = {r["label"]: r["tex"] for r in analyze((X**2 - 1) / (X - 2), ((-10, 10), (-10, 10)))}
+    assert rational["Asymptotes"] == "x=2,\\ y=x+2"
+    log = {r["label"]: r["tex"] for r in analyze(sympy.log(X), ((-10, 10), (-10, 10)))}
+    assert log["Domain"] == r"\left(0,\infty\right)" and log["Decreasing"].startswith(r"\text{nowhere}")
+    assert {r["label"]: r["tex"] for r in analyze(X**3, ((-10, 10), (-10, 10)))}["Increasing"] == r"\left(-\infty,\infty\right)"
+
+
+def test_riemann_sums_and_the_area_between():
+    out = graph(r"y=x^{2}", r"y=x+2", latex=True, window={"xmin": -10, "xmax": 10, "ymin": -10, "ymax": 10},
+                extras=[{"area": [0, 2], "riemann": {"kind": "left", "n": 4}, "between": 1}, None])["series"]
+    facts = {s.get("role") or s["kind"]: s.get("facts") for s in out}
+    assert facts["riemann"] == [r"L_{4}\approx1.75"]
+    assert facts["between"] == [r"\text{area between }\frac{10}{3}\approx3.333"]

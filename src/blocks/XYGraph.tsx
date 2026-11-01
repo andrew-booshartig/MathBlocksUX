@@ -486,6 +486,7 @@ export default function XYGraph({
     if (main?.kind === "field") parts.push("slope field");
     if (main?.asymptotes?.length) parts.push(`asymptote${main.asymptotes.length > 1 ? "s" : ""} x = ${main.asymptotes.map((a) => round3(a)).join(", ")}`);
     for (const s of all) for (const fact of s.facts ?? []) parts.push(<Tex math={fact} />);
+    for (const s of all) if (s.kind === "error" && s.role) parts.push(<span className="xy-fact-error">{s.error}</span>);
     return parts;
   };
   /** what can be built from line i: a segment's midpoint and perpendicular
@@ -1113,7 +1114,7 @@ export default function XYGraph({
                       value={line.latex}
                       placeholder={i === 0 ? "Type an equation to graph it — y = 2x + 1" : "Type another — or a point, (2, 5)"}
                       onChange={(latex) => setLine(i, { latex })}
-                      onEnter={() => line.latex.trim() && addAfter(i)}
+                      onEnter={() => (fields.current[line.id]?.getValue() ?? line.latex).trim() && addAfter(i)}
                       onBackspaceEmpty={() => (last ? i > 0 && focusLine(lines[i - 1].id) : remove(i))}
                       onFocus={() => setSelected(line.id)}
                       onMoveOut={(direction) => {
@@ -1143,6 +1144,20 @@ export default function XYGraph({
                       ))}
                     </div>
                   )}
+                  {seriesOf(i)
+                    .filter((s) => s.kind === "analysis")
+                    .map((s) => (
+                      <div key="analysis" className="xy-analysis">
+                        {(s.rows ?? []).map((r) => (
+                          <Fragment key={r.label}>
+                            <span className="xy-analysis-label">{r.label}</span>
+                            <span className="xy-analysis-value">
+                              <Tex math={r.tex} />
+                            </span>
+                          </Fragment>
+                        ))}
+                      </div>
+                    ))}
                   {optionsFor === line.id && (
                     <LineOptions
                       style={line.style ?? {}}
@@ -1154,6 +1169,7 @@ export default function XYGraph({
                       onStraight={(kind, a, b) => setLine(i, { latex: `\\operatorname{${kind}}\\left(${texName(a)},${texName(b)}\\right)` })}
                       builds={buildsOf(i)}
                   ties={tiesOf(i)}
+                  curves={lines.flatMap((l, j) => (j !== i && seriesOf(j).some((s) => s.kind === "function" && !s.role && !s.shape) ? [{ id: l.id, label: plainMath(exprOf(l)) }] : []))}
                   trace={line.trace}
                   onTrace={seriesOf(i).some((s) => s.kind === "points") ? (on) => setLine(i, { trace: on || undefined }) : undefined}
                   onClearTrace={() => {
@@ -1301,7 +1317,13 @@ export default function XYGraph({
                 ...lines.map((l) => ({ hidden: l.hidden, ...(l.style ?? {}) })),
                 ...tables.flatMap((_, k) => [{ color: tableColor(k) }, { color: tableColor(k), dash: "dash" as const }]),
               ]}
-              extras={lines.map((l) => (l.hidden ? null : (l.extra ?? null)))}
+              extras={lines.map((l) => {
+                if (l.hidden || !l.extra) return null;
+                // the area between: the other row by where it is in the list (the engine's way)
+                const { between, ...rest } = l.extra;
+                const j = between ? lines.findIndex((x) => x.id === between) : -1;
+                return j >= 0 ? { ...rest, between: j } : rest;
+              })}
               degrees={!!settings.degrees}
               equalAspect={settings.equal !== false}
               hide={[

@@ -324,6 +324,12 @@ export interface XYExtra {
   derivative?: boolean;
   tangent?: number;
   area?: [number, number];
+  /** its domain, zeros, highs and lows, where it rises and falls… listed under it */
+  analyze?: boolean;
+  /** rectangles under it from a to b (the area's a, b): left, right, middle, or trapezoids */
+  riemann?: { kind: "left" | "right" | "mid" | "trap"; n: number };
+  /** the area between it and another row (its id) */
+  between?: string;
 }
 
 export interface XYTable {

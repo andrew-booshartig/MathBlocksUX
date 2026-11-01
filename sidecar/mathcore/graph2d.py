@@ -620,6 +620,20 @@ def op_graph2d(req: dict) -> dict:
         if letters:
             series[-1]["letters"] = sorted(set(letters) - {str(v) for v in []})
 
+    # the area between two curves, once every curve is known
+    known_fx = dict(graphed)
+    for i, extra in enumerate(extras):
+        j = (extra or {}).get("between")
+        if j is None or i not in known_fx:
+            continue
+        if j not in known_fx:
+            series.append({"kind": "error", "role": "between", "error": "the area between: pick a y = … curve", "index": i})
+            continue
+        try:
+            series.append(_between(i, known_fx[i], known_fx[j], j, extra.get("area"), window))
+        except MathInputError as exc:
+            series.append({"kind": "error", "role": "between", "error": str(exc), "index": i})
+
     if "intersections" in features and len(graphed) <= 12:
         lo, hi = window[0]
         for a in range(len(graphed)):
@@ -635,8 +649,66 @@ def op_graph2d(req: dict) -> dict:
     return {"series": series, "markers": marks, "xrange": xr, "yrange": yr}
 
 
+def _riemann(i, expr, extra, area):
+    """rectangles (or trapezoids) under it from a to b — and what they add up to, beside the exact area"""
+    kind = extra["riemann"].get("kind", "left")
+    n = max(1, min(400, int(extra["riemann"].get("n", 8))))
+    a, b = sorted(float(v) for v in area)
+    f = _numeric(expr, X)
+    w = (b - a) / n
+    xs, ys, total = [], [], 0.0
+    for k in range(n):
+        left, right = a + k * w, a + (k + 1) * w
+        if kind == "trap":
+            hl, hr = float(f(np.array([left]))[0]), float(f(np.array([right]))[0])
+            total += (hl + hr) / 2 * w
+            shape_x, shape_y = [left, left, right, right, left], [0, hl, hr, 0, 0]
+        else:
+            at = {"left": left, "right": right, "mid": (left + right) / 2}[kind]
+            h = float(f(np.array([at]))[0])
+            total += h * w
+            shape_x, shape_y = [left, left, right, right, left], [0, h, h, 0, 0]
+        if xs:
+            xs.append(None)
+            ys.append(None)
+        xs += shape_x
+        ys += shape_y
+    name = {"left": "L", "right": "R", "mid": "M", "trap": "T"}[kind]
+    return {"kind": "polygon", "role": "riemann", "x": xs, "y": [None if v is None or v != v else v for v in ys], "index": i, "facts": [f"{name}_{{{n}}}\\approx{total:.6g}"]}
+
+
+def _between(i, f, g, j, area, window):
+    """the area between two curves — from a to b, or between where they cross"""
+    lo, hi = window[0]
+    if area:
+        a, b = sorted(float(v) for v in area)
+    else:
+        cross = real_roots(f - g, lo, hi)
+        if len(cross) < 2:
+            raise MathInputError("they don't cross twice in view — set where the area runs (Area from … to …)")
+        a, b = cross[0], cross[-1]
+    xs = np.linspace(a, b, 400)
+    fy, gy = _numeric(f, X)(xs), _numeric(g, X)(xs)
+    cuts = [a, *[c for c in real_roots(f - g, a, b) if a < c < b], b]
+    try:
+        exact = sum(sympy.Abs(sympy.integrate(f - g, (X, sympy.nsimplify(p), sympy.nsimplify(q)))) for p, q in zip(cuts, cuts[1:]))
+        if exact.has(sympy.Integral):
+            raise ValueError
+        said = geometry.number_tex(sympy.simplify(exact))
+    except Exception:  # noqa: BLE001
+        said = f"{float(np.trapezoid(np.abs(np.nan_to_num(fy - gy)), xs)):.6g}"
+    ax, ay = _lists(np.concatenate([xs, xs[::-1]]), np.concatenate([fy, gy[::-1]]))
+    return {"kind": "polygon", "role": "between", "x": ax, "y": ay, "index": i, "facts": [f"\\text{{area between }}{said}"], "with": j}
+
+
 def _extras(i, expr, extra, xr, window):
     out = []
+    if extra.get("analyze"):
+        from .analysis import analyze
+
+        out.append({"kind": "analysis", "index": i, "rows": analyze(expr, window)})
+    if extra.get("riemann") and extra.get("area"):
+        out.append(_riemann(i, expr, extra, extra["area"]))
     if extra.get("derivative"):
         d = sympy.diff(expr, X)
         xs, ys = _function_series(d, [], xr, window[1])
