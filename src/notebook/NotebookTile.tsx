@@ -26,6 +26,7 @@ import { TEMPLATES, type Template, problemSection, userTemplate } from "./templa
 import { fromIpynb, toIpynb, toScript } from "./jupyter";
 import { highlightCode, highlightPython, highlightWithError } from "./highlight";
 import { type Language, languageOf, useLanguages } from "./languages";
+import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import "./notebook.css";
 
 type Listing = { name: string; modified: number }[];
@@ -83,6 +84,24 @@ const OWN_CELLS = new Set(["calc", "graph", "numberline", "work", "python"]);
 const codeLanguage = (b: Block) => (b.kind === "cell" && !OWN_CELLS.has(b.lang) ? languageOf(b.lang) : undefined);
 /** where a cell's output is kept: Python's by its code, any other language's by both */
 const outKey = (lang: string, code: string) => (lang === "python" ? code : `${lang}\u0001${code}`);
+
+/** a plugin's cell: what its render(code) gives, as the page shows it */
+function PluginCell({ kind, code }: { kind: CellKind; code: string }) {
+  const [html, setHtml] = useState<string>("");
+  const [failed, setFailed] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    Promise.resolve()
+      .then(() => kind.render(code))
+      .then((out) => live && (setHtml(String(out ?? "")), setFailed(null)))
+      .catch((err) => live && setFailed(err instanceof Error ? err.message : String(err)));
+    return () => {
+      live = false;
+    };
+  }, [kind, code]);
+  if (failed) return <pre className="nb-cell-error is-code">{`${kind.plugin}: ${failed}`}</pre>;
+  return <div className="nb-plugin-out" dangerouslySetInnerHTML={{ __html: html }} />;
+}
 
 /** a textarea as tall as what's in it */
 function AutoText({
@@ -176,6 +195,7 @@ export default function NotebookTile({
   const [py, setPy] = useState<Record<string, PyOutput>>({});
   const [running, setRunning] = useState<Set<string>>(new Set());
   const allLanguages = useLanguages();
+  const plugins = usePlugins();
   const [codeMenu, setCodeMenu] = useState(false);
   /** the notebook's Python: off (not started), idle, or running a cell */
   const [kernel, setKernel] = useState<"off" | "idle" | "busy">("off");
@@ -1125,12 +1145,16 @@ export default function NotebookTile({
       );
     }
     const language = codeLanguage(b);
-    const label = language?.label ?? LANG_LABEL[b.lang] ?? b.lang;
+    // a kind of cell a plugin adds (```csv): what its render makes of it
+    const pluginCell = !language && b.kind === "cell" && !OWN_CELLS.has(b.lang) ? (plugins.cells.find((c) => c.id === b.lang.toLowerCase()) ?? cellKindOf(b.lang)) : undefined;
+    const label = language?.label ?? pluginCell?.label ?? LANG_LABEL[b.lang] ?? b.lang;
     // a cell that runs (Python, or a plugin's language): its output's key
     const runKey = b.lang === "python" || language ? outKey(b.lang, b.code) : null;
     const result =
       language ? (
         <PythonOutput output={py[runKey!]} running={running.has(runKey!)} live={live?.code === runKey ? live.text : undefined} matlab={language.output === "matlab"} />
+      ) : pluginCell ? (
+        <PluginCell kind={pluginCell} code={isEditing ? draft : b.code} />
       ) :
       b.lang === "calc" ? (
         <CalcCell lines={calc?.[calcAt]} />
@@ -1149,7 +1173,7 @@ export default function NotebookTile({
       <div key={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}`}>
         <div className="nb-cell-head">
           <span className="nb-cell-lang">{label}</span>
-          {b.lang !== "python" && b.kind === "cell" && !OWN_CELLS.has(b.lang) && !language && (
+          {b.lang !== "python" && b.kind === "cell" && !OWN_CELLS.has(b.lang) && !language && !pluginCell && (
             <span className="nb-cell-note" title="Add a plugin for this language to color and run it">no plugin runs {b.lang}</span>
           )}
           {language?.run?.length ? (
@@ -1329,6 +1353,13 @@ export default function NotebookTile({
               </button>
               {codeMenu && (
                 <div className="nb-pop is-up" onMouseLeave={() => setCodeMenu(false)}>
+                  {plugins.cells.map((c) => (
+                    <button key={`cell:${c.id}`} className="nb-pop-item" title={`A ${c.label} cell, from the plugin ${c.plugin}`} onClick={() => (setCodeMenu(false), addBlock({ lang: c.id, start: c.starter ?? "" }))}>
+                      {c.label}
+                      <span className="nb-pop-dim">{c.plugin}</span>
+                    </button>
+                  ))}
+                  {plugins.cells.length > 0 && <div className="nb-pop-line" />}
                   {allLanguages.map((l) => (
                     <button key={l.id} className="nb-pop-item" title={l.plugin === "built-in" ? "Comes with the app" : `From the plugin ${l.plugin}`} onClick={() => (setCodeMenu(false), addBlock({ lang: l.id, start: l.starter ?? "" }))}>
                       {l.label}

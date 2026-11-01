@@ -18,6 +18,7 @@ import { makeUndo, typingInField } from "./undo";
 import Icon from "../Icon";
 import mark from "../assets/mx-mark.png";
 import type { Equation } from "../equations";
+import { SAMPLE_PLUGIN, loadPlugins, usePlugins } from "../plugins";
 
 const SAVE = "__calculator__";
 const SETTINGS = "__settings__";
@@ -88,6 +89,27 @@ export default function CalculatorApp() {
   /** ⌘K: commands; ⌘?: the shortcut sheet */
   const [palette, setPalette] = useState(false);
   const [sheet, setSheet] = useState(false);
+  // plugins: loaded at the start (and again on ⌘K → Reload plugins); a plugin's words shown a moment
+  const plugins = usePlugins();
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    loadPlugins();
+    let t = 0;
+    const show = (e: Event) => {
+      setNotice((e as CustomEvent<string>).detail);
+      clearTimeout(t);
+      t = window.setTimeout(() => setNotice(null), 3500);
+    };
+    window.addEventListener("matrixlab-notice", show);
+    return () => window.removeEventListener("matrixlab-notice", show);
+  }, []);
+  const say = (text: string) => window.dispatchEvent(new CustomEvent("matrixlab-notice", { detail: text }));
+  const reloadPlugins = async () => {
+    const loaded = await loadPlugins();
+    const broken = loaded.filter((p) => p.error);
+    const ok = loaded.length - broken.length;
+    say(`${ok} plugin${ok === 1 ? "" : "s"} loaded${broken.length ? ` · ${broken[0].name} didn't: ${broken[0].error}${broken.length > 1 ? ` (and ${broken.length - 1} more — ⌘K, Plugin installed)` : ""}` : ""}`);
+  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
@@ -258,6 +280,33 @@ export default function CalculatorApp() {
     ...workspaces.map((w) => ({ id: `ws:${w}`, label: `Open ${w}`, group: "Workspace", icon: "folder", run: () => openWorkspace(w) })),
     ...themes.map((t) => ({ id: `theme:${t.name}`, label: `${t.name} theme`, group: "Theme", icon: "eye", run: () => setThemeName(t.name) })),
     { id: "sheet", label: "Keyboard shortcuts", group: "Help", icon: "text", keys: "⌘?", run: () => setSheet(true) },
+    ...plugins.commands.map((c) => ({ id: `plugin:${c.id}`, label: c.title, group: `Plugin · ${c.plugin}`, icon: "source", run: () => void c.run() })),
+    { id: "plugins:reload", label: "Reload plugins", group: "Plugins", icon: "reset", run: reloadPlugins },
+    {
+      id: "plugins:folder",
+      label: "Open the plugins folder",
+      group: "Plugins",
+      icon: "folder",
+      run: async () => revealItemInDir(await invoke<string>("plugins_folder")).catch(() => {}),
+    },
+    {
+      id: "plugins:new",
+      label: "New plugin (from a sample)",
+      group: "Plugins",
+      icon: "plus",
+      run: async () => {
+        const taken = new Set(plugins.loaded.map((p) => p.folder));
+        const folder = ["my-plugin", ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => `my-plugin-${n}`)].find((f) => !taken.has(f)) ?? `my-plugin-${Date.now()}`;
+        try {
+          const at = await invoke<string>("plugins_create", { folder, files: SAMPLE_PLUGIN });
+          await reloadPlugins();
+          revealItemInDir(at).catch(() => {});
+        } catch (err) {
+          say(String(err));
+        }
+      },
+    },
+    ...plugins.loaded.map((p) => ({ id: `plugins:about:${p.folder}`, label: `${p.name}${p.error ? ` — didn't load: ${p.error}` : p.adds.length ? ` — ${p.adds.join(", ")}` : ""}`, group: "Plugin installed", icon: "source", run: async () => revealItemInDir(`${await invoke<string>("plugins_folder")}/${p.folder}`).catch(() => {}) })),
   ];
 
   const openFolder = async () => {
@@ -308,6 +357,7 @@ export default function CalculatorApp() {
         </span>
       </header>
       {palette && <CommandPalette commands={commands()} onClose={() => setPalette(false)} />}
+      {notice && <div className="calc-app-notice">{notice}</div>}
       {sheet && <ShortcutSheet onClose={() => setSheet(false)} />}
       {layoutOpen && (
         <LayoutMenu

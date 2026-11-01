@@ -1458,3 +1458,21 @@ body {
   cursor: default;
   background: none;
 }
+
+/* a plugin's words (or the app's), for a moment, under the title bar */
+.calc-app-notice {
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  z-index: 200;
+  transform: translateX(-50%);
+  max-width: min(560px, 90vw);
+  padding: 8px 14px;
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  background: var(--t-bg3);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--t-bg0, #000) 50%, transparent);
+  color: var(--t-text);
+  font-size: 13px;
+  animation: xy-pop-in 0.14s ease-out;
+}

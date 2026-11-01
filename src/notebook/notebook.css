@@ -1459,3 +1459,24 @@
   font-size: 11px;
   color: var(--t-muted);
 }
+
+/* a plugin's cell (what its render gave), and the sample's table */
+.nb-plugin-out {
+  overflow-x: auto;
+}
+
+.nb-plugin-table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.nb-plugin-table th,
+.nb-plugin-table td {
+  padding: 4px 12px;
+  border: 1px solid var(--t-line);
+  text-align: left;
+}
+
+.nb-plugin-table th {
+  background: var(--t-bg2);
+}
