@@ -1,8 +1,8 @@
 """Geometry on the xy graph: points by name (A = (1, 2)) and what's built
 from them — segment(A, B), line(A, B), ray(A, B) (from A, through B),
 vector(A, B), circle(A, r) or circle(A, B) (center A, through B),
-polygon(A, B, C, …), perpendicular(…, C) and parallel(…, C) — plus
-midpoint(A, B), a point, and distance(A, B), a number.
+polygon(A, B, C, …), angle(A, B, C) (at B), perpendicular(…, C) and
+parallel(…, C) — plus midpoint(A, B), a point, and distance(A, B), a number.
 
 A shape stays name(points…) until it's drawn, so moving A moves everything
 built on it. Each comes with what's true about it, exact where it can be:
@@ -51,6 +51,11 @@ def build(name: str, args: list):
         _point(args[0], name)
         if isinstance(args[1], Tuple):
             _point(args[1], name)
+    elif name == "angle":
+        if len(args) != 3:
+            raise MathInputError("angle( ) takes three points, the corner in the middle: angle(A, B, C)")
+        for p in args:
+            _point(p, name)
     elif name == "polygon":
         if len(args) < 3:
             raise MathInputError("a polygon needs three points or more: polygon(A, B, C)")
@@ -155,11 +160,53 @@ def _square(var: str, h) -> str:
 # ------------------------------------------------------------------ drawn
 
 
-def draw(shape):
+def _angle(shape, window, num):
+    """the angle at B between BA and BC: an arc (a square corner at 90°) and its size"""
+    a, b, c = shape.args
+    u = (a[0] - b[0], a[1] - b[1])
+    v = (c[0] - b[0], c[1] - b[1])
+    nu, nv = sympy.sqrt(u[0] ** 2 + u[1] ** 2), sympy.sqrt(v[0] ** 2 + v[1] ** 2)
+    if num(nu) < 1e-12 or num(nv) < 1e-12:
+        raise MathInputError("an angle needs three different points, the corner in the middle")
+    degrees = _exact(sympy.acos(_exact((u[0] * v[0] + u[1] * v[1]) / (nu * nv))) * 180 / sympy.pi)
+    d = num(degrees)
+    whole = abs(d - round(d)) < 1e-9
+    if whole:
+        fact = f"\\angle={int(round(d))}^{{\\circ}}"
+        part = sympy.Rational(int(round(d)), 180)
+        if part != 0 and part.q <= 12:
+            fact += f"={_tex(part * sympy.pi)}"
+    else:
+        fact = f"\\angle\\approx{d:.4g}^{{\\circ}}"
+    bx, by = num(b[0]), num(b[1])
+    ux, uy, vx, vy = num(u[0]), num(u[1]), num(v[0]), num(v[1])
+    r = 0.3 * min(math.hypot(ux, uy), math.hypot(vx, vy))
+    if window:
+        r = min(r, 0.06 * (window[0][1] - window[0][0]))
+    t1, t2 = math.atan2(uy, ux), math.atan2(vy, vx)
+    sweep = (t2 - t1 + math.pi) % (2 * math.pi) - math.pi
+    if whole and round(d) == 90:
+        # a right angle: the little square
+        e1 = (ux / math.hypot(ux, uy) * r * 0.75, uy / math.hypot(ux, uy) * r * 0.75)
+        e2 = (vx / math.hypot(vx, vy) * r * 0.75, vy / math.hypot(vx, vy) * r * 0.75)
+        xs = [bx + e1[0], bx + e1[0] + e2[0], bx + e2[0]]
+        ys = [by + e1[1], by + e1[1] + e2[1], by + e2[1]]
+    else:
+        ts = np.linspace(t1, t1 + sweep, 48)
+        xs, ys = (bx + r * np.cos(ts)).tolist(), (by + r * np.sin(ts)).tolist()
+    mid = t1 + sweep / 2
+    text = f"{int(round(d))}°" if whole else f"{d:.1f}°"
+    label = {"x": bx + 1.9 * r * math.cos(mid), "y": by + 1.9 * r * math.sin(mid), "text": text}
+    return {"kind": "curve", "x": xs, "y": ys, "shape": "angle", "facts": [fact], "label": label}
+
+
+def draw(shape, window=None):
     """a shape (its letters all known) → a series to draw, and y as a function
     of x for a whole line (so its intercepts and crossings get marked)"""
     kind = shape.func.__name__
     num = lambda v: float(sympy.N(v))  # noqa: E731
+    if kind == "angle":
+        return _angle(shape, window, num), None
     if kind == "circle":
         c, second = shape.args
         r = sympy.sqrt((second[0] - c[0]) ** 2 + (second[1] - c[1]) ** 2) if isinstance(second, Tuple) else second

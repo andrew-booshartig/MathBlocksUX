@@ -7,8 +7,8 @@ d/dx), integrals and sums, piecewise definitions (cases), restrictions in
 braces (y = x² {0 ≤ x ≤ 2}), points and parametric pairs, θ for polar,
 and functions defined on another line (f(x) = …, then f(2), f'(x)).
 Geometry too: points by name (A = (1, 2), then A.x) and what's built on
-them — segment(A, B), line, ray, vector, circle, polygon, midpoint,
-distance, perpendicular, parallel (see geometry.py).
+them — segment(A, B), line, ray, vector, circle, polygon, angle,
+midpoint, distance, perpendicular, parallel (see geometry.py).
 
 2x means 2·x, sin 2x means sin(2x), and a letter that isn't a function's
 name is a letter: m(x + 1) is m·(x + 1)."""
@@ -58,9 +58,24 @@ _FUNCS = {
     "erf": sympy.erf, "gamma": sympy.gamma,
 }
 # geometry's words, typed whole (\operatorname{segment}) or letter by letter
-GEOMETRY = ("segment", "line", "ray", "vector", "circle", "polygon", "perpendicular", "parallel", "midpoint", "distance")
+GEOMETRY = ("segment", "line", "ray", "vector", "circle", "polygon", "angle", "perpendicular", "parallel", "midpoint", "distance")
 _SPELLED = sorted(GEOMETRY, key=len, reverse=True)
 _INVERSE = {"sin": "arcsin", "cos": "arccos", "tan": "arctan", "sec": "arcsec", "csc": "arccsc", "cot": "arccot", "sinh": "arcsinh", "cosh": "arccosh", "tanh": "arctanh"}
+
+
+def _braced(text: str, i: int, what: str) -> tuple[str, int]:
+    """{…} at text[i] (after spaces), braces inside and all: what's in it, and where it ends"""
+    j = i
+    while j < len(text) and text[j].isspace():
+        j += 1
+    if j >= len(text) or text[j] != "{":
+        raise MathInputError(f"{what} needs {{…}}")
+    depth = 0
+    for k in range(j, len(text)):
+        depth += {"{": 1, "}": -1}.get(text[k], 0)
+        if depth == 0:
+            return text[j + 1 : k], k + 1
+    raise MathInputError(f"{what}'s {{ isn't closed")
 
 
 def tokenize(latex: str) -> list[tuple[str, str]]:
@@ -84,12 +99,10 @@ def tokenize(latex: str) -> list[tuple[str, str]]:
             if value in _AS_SYM:
                 kind, value = "sym", _AS_SYM[value]
             elif value in ("\\text", "\\mathrm", "\\operatorname", "\\mathit", "\\textrm", "\\mathbf"):
-                # its name, read whole: \operatorname{sign}, \text{ and }
-                m2 = re.match(r"\s*\{([^{}]*)\}", text[i:])
-                if not m2:
-                    raise MathInputError(f"{value} needs {{…}}")
-                i += m2.end()
-                kind, value = "name", m2.group(1).strip()
+                # its name, read whole: \operatorname{sign}, \text{ and } — and as
+                # MathLive saves one once it's edited: \operatorname{\mathrm{line}}
+                inner, i = _braced(text, i, value)
+                kind, value = "name", re.sub(r"\\[a-zA-Z]+|[{}]", "", inner).strip()
             elif value in ("\\begin", "\\end"):
                 m2 = re.match(r"\s*\{([a-z*]+)\}", text[i:])
                 if not m2:
@@ -237,18 +250,28 @@ class Reader:
 
     def script(self):
         """what's after ^ or _: {…}, or one thing"""
-        if self.at("sym", "{"):
-            self.take()
-            value = self.sum()
-            self.expect("sym", "}")
-            return value
         if self.at("sym", "-"):
             self.take()
             return -self.script()
-        if self.at("num"):
-            text = self.take()[1]
-            return Integer(text[0]) if len(text) > 1 and "." not in text else Rational(text)
+        if self.at("sym", "{") or self.at("num"):
+            return self.arg()
         return self.postfix()
+
+    def arg(self):
+        """one argument, the TeX way: {…} or a single character — \\frac23 is
+        2/3 and x^23 is x²·3 (MathLive writes one-digit parts without braces)"""
+        if self.at("sym", "{"):
+            self.take()
+            return self.group()
+        kind, value = self.peek()
+        if kind == "num":
+            if len(value) > 1 and "." not in value:
+                # one digit; the rest is still there for what follows
+                self.t[self.i] = ("num", value[1:])
+                return Integer(value[0])
+            self.take()
+            return Rational(value) if "." in value else Integer(value)
+        return self.primary()
 
     def postfix(self):
         value = self.primary()
@@ -417,11 +440,8 @@ class Reader:
                 self.take()
                 n = self.sum()
                 self.expect("sym", "]")
-                self.expect("sym", "{")
-                inner = self.group()
-                return _root(inner, n)
-            self.expect("sym", "{")
-            return sympy.sqrt(self.group())
+                return _root(self.arg(), n)
+            return sympy.sqrt(self.arg())
         if name in ("sum", "prod"):
             return self.series(name)
         if name == "int":
@@ -450,10 +470,8 @@ class Reader:
         if top == ["d", "y"] and bottom == ["d", "x"]:
             return DYDX
         self.i = start
-        self.expect("sym", "{")
-        num = self.group()
-        self.expect("sym", "{")
-        den = self.group()
+        num = self.arg()
+        den = self.arg()
         return num / den
 
     def _braced_raw(self) -> list[str]:

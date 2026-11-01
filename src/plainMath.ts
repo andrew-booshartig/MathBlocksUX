@@ -5,7 +5,8 @@ const SUPERSCRIPT: Record<string, string> = { "0": "⁰", "1": "¹", "2": "²", 
 export function plainMath(latex: string): string {
   const wrap = (a: string) => (a.length > 1 && /[+\-−]/.test(a.slice(1)) ? `(${a})` : a);
   const sup = (a: string) => ([...a].every((c) => c in SUPERSCRIPT) ? [...a].map((c) => SUPERSCRIPT[c]).join("") : `^(${a})`);
-  let t = latex.replace(/\\left|\\right/g, "").replace(/\\(?:operatorname|mathrm|text)\{([^{}]*)\}/g, "$1");
+  let t = latex.replace(/\\left|\\right/g, "");
+  for (let k = 0; k < 3; k++) t = t.replace(/\\(?:operatorname|mathrm|text)\{([^{}]*)\}/g, "$1");
   for (let k = 0; k < 4; k++) t = t.replace(/\\[dt]?frac\{([^{}]*)\}\{([^{}]*)\}/g, (_, a, b) => `${wrap(a)}/${wrap(b)}`);
   // 3/2 before x is (3/2)x, not 3 over 2x
   t = t.replace(/(\d+\/\d+)(?=[a-zA-Z(\\])/g, "($1)");

@@ -121,3 +121,48 @@ def test_calculus_facts_are_exact():
     assert facts["derivative"] == ["y'=2 x"]
     assert facts["tangent"] == [r"\text{tangent at }x=1:\ y=2x-5"]
     assert facts["area"] == [r"\int_{0}^{2}y\,dx=-\frac{16}{3}\approx-5.333"]
+
+
+def test_angles_exact_with_a_square_corner_at_90():
+    pts = [r"A=\left(4,0\right)", r"B=\left(0,0\right)", r"C=\left(0,3\right)", r"D=\left(3,3\right)"]
+    s = shapes(*pts, r"angle(A,B,C)", r"angle(A,B,D)", r"angle(C,A,B)", r"angle(A,A,B)")
+    assert s[4]["facts"] == [r"\angle=90^{\circ}=\frac{\pi}{2}"] and len(s[4]["x"]) == 3 and s[4]["label"]["text"] == "90°"
+    assert s[5]["facts"] == [r"\angle=45^{\circ}=\frac{\pi}{4}"]
+    assert s[6]["facts"] == [r"\angle\approx36.87^{\circ}"]
+    assert "three different points" in s[7]["error"]
+
+
+def test_straight_lines_offer_two_points_to_build_from():
+    s = shapes(r"y=2x+1", r"x=\frac{3}{2}", r"y=x^{2}")
+    assert s[0]["through"] == [r"\left(0,1\right)", r"\left(1,3\right)"]
+    assert s[1]["through"] == [r"\left(\frac{3}{2},0\right)", r"\left(\frac{3}{2},1\right)"]
+    assert "through" not in s[2]
+    p = shapes(r"D=\left(3,3\right)", r"perpendicular(line((0,1),(1,3)),D)", r"parallel(line((0,1),(1,3)),D)")
+    assert p[1]["facts"] == [r"y=-\frac{1}{2}x+\frac{9}{2}"] and p[2]["facts"] == [r"y=2x-3"]
+
+
+def test_log_axes_sample_in_powers_of_ten():
+    out = graph(r"y=x^{2}", r"x^{2}+y^{2}=4", latex=True, window={"xmin": 0.1, "xmax": 100, "ymin": 0.1, "ymax": 100}, log={"x": True, "y": True}, xrange=[0.01, 1000])["series"]
+    xs = out[0]["x"]
+    assert xs[0] == pytest.approx(0.01) and xs[2] / xs[1] == pytest.approx(xs[1] / xs[0], rel=1e-3)
+    assert out[1]["kind"] == "curve"
+
+
+@pytest.mark.parametrize("latex,expected", [
+    (r"y=\frac23x", "2*x/3"), (r"y=x^23", "3*x**2"), (r"y=\sqrt2x", "sqrt(2)*x"), (r"y=\frac{1}2", "1/2"),
+    (r"y=\frac1{2}x", "x/2"), (r"y=\frac\pi2", "pi/2"), (r"y=\frac x2", "x/2"),
+])
+def test_one_character_tex_arguments_as_mathlive_writes_them(latex, expected):
+    from mathcore import graphtex
+
+    assert str(graphtex.read_line(latex).sides[1]) == expected
+
+
+def test_a_point_with_a_bare_fraction():
+    s = shapes(r"A=\left(2,\frac23\right)", r"(-12,\frac23)")
+    assert s[0]["y"][0] == pytest.approx(2 / 3) and s[1]["y"][0] == pytest.approx(2 / 3)
+
+
+def test_names_as_mathlive_saves_them_once_edited():
+    s = shapes(A, B, r"\operatorname{\mathrm{segment}}\left(A,B\right)", r"y=\operatorname{\mathrm{floor}}\left(x\right)")
+    assert s[2]["shape"] == "segment" and s[3]["kind"] == "function"

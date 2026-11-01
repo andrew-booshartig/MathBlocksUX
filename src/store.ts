@@ -134,6 +134,9 @@ export interface GraphAppearance {
   title?: string;
   /** the x axis numbered in π (π/2, π, 3π/2…), for trig */
   piX?: boolean;
+  /** logarithmic axes (1, 10, 100…), for data that spans powers of ten */
+  logX?: boolean;
+  logY?: boolean;
 }
 
 export type SolveMethod = "auto" | "factor" | "formula" | "complete" | "sqrt" | "substitution" | "elimination";
@@ -292,12 +295,16 @@ export interface XYPlot {
     style?: Pick<GraphLineStyle, "color" | "dash" | "width" | "label">;
     /** calculus on it: its derivative graphed, a tangent at x, the area from a to b */
     extra?: XYExtra;
+    /** a note: words in the list, not math */
+    note?: string;
   }[];
   /** data: points in a table, and the curve that fits them */
   tables?: XYTable[];
   /** how the graph is set up */
   settings?: XYSettings;
   letters?: Record<string, number>;
+  /** a letter's slider: from, to */
+  ranges?: Record<string, [number, number]>;
   window?: GraphWindow;
   /** drawn by hand: segments, arrows, pen, text */
   drawings?: GraphDrawing[];
@@ -330,6 +337,8 @@ export interface XYSettings {
   marks?: boolean;
   xLabel?: string;
   yLabel?: string;
+  logX?: boolean;
+  logY?: boolean;
 }
 
 /** An inequality drawn on a number line (the calculator's Graph tab) —

@@ -28,6 +28,7 @@ pub fn run() {
             workspace::delete_workspace,
             workspace::export_workspace,
             workspace::save_image,
+            workspace::save_svg,
             workspace::save_document,
             workspace::print_document,
             workspace::theme_folder,

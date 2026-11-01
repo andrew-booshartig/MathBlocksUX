@@ -75,15 +75,19 @@ def _degrees(expr):
 # ------------------------------------------------------------------ shapes
 
 
+# log axes, for this request: sample in powers of ten along them
+_LOG = {"x": False, "y": False}
+
+
 def _function_series(expr, conds, xr, yr):
-    xs = np.linspace(xr[0], xr[1], 1800)
+    xs = np.geomspace(xr[0], xr[1], 1800) if _LOG["x"] and xr[0] > 0 else np.linspace(xr[0], xr[1], 1800)
     ys = _numeric(expr, X)(xs)
     ys = _mask(ys, conds, xs, ys)
     span = yr[1] - yr[0]
     # a jump across the window between two samples is an asymptote, not a line
     jump = np.abs(np.diff(ys)) > 3 * span
     ys[:-1][jump & (np.sign(ys[:-1]) != np.sign(ys[1:]))] = np.nan
-    ys[np.abs(ys) > 1e6] = np.nan
+    ys[np.abs(ys) > (1e15 if _LOG["y"] else 1e6)] = np.nan
     return xs, ys
 
 
@@ -140,8 +144,8 @@ def _grid(window, cells=260):
     nx = cells
     ny = int(max(60, min(500, cells * h / w)))
     pad_x, pad_y = w * 0.15, h * 0.15
-    xs = np.linspace(x0 - pad_x, x1 + pad_x, nx)
-    ys = np.linspace(y0 - pad_y, y1 + pad_y, ny)
+    xs = np.geomspace(x0 / 1.5, x1 * 1.5, nx) if _LOG["x"] and x0 > 0 else np.linspace(x0 - pad_x, x1 + pad_x, nx)
+    ys = np.geomspace(y0 / 1.5, y1 * 1.5, ny) if _LOG["y"] and y0 > 0 else np.linspace(y0 - pad_y, y1 + pad_y, ny)
     return xs, ys, np.meshgrid(xs, ys)
 
 
@@ -373,7 +377,7 @@ def graph_line(i, p: graphtex.Parsed, values: dict, xr, window, degrees: bool):
 
     if not p.ops and geometry.is_shape(sides[0]):
         need(sides[0])
-        return geometry.draw(sides[0])
+        return geometry.draw(sides[0], window)
 
     if not p.ops:
         e = sides[0]
@@ -496,6 +500,8 @@ def op_graph2d(req: dict) -> dict:
         third = (xr[1] - xr[0]) / 3
         window = ((xr[0] + third, xr[1] - third), (yr[0], yr[1]))
     features = set(req.get("features") or ["intercepts", "vertices", "intersections"])
+    log = req.get("log") or {}
+    _LOG.update(x=bool(log.get("x")), y=bool(log.get("y")))
     extras = req.get("extras") or []
     degrees = bool(req.get("degrees"))
     values = _values(req.get("vars") or {})
@@ -528,6 +534,10 @@ def op_graph2d(req: dict) -> dict:
             p = graphtex.read_line(text, functions, consts, points)
             letters = _letters(*p.sides, *p.conditions, *(p.tuples or []), bound={"x", "y", "t", "theta", "r"})
             s, expr = graph_line(i, p, values, xr, window, degrees)
+            # a straight line (y = 2x + 1, x = 3): two points on it, to build from
+            through = _through(expr) if s["kind"] == "function" and expr is not None else _through_vertical(s)
+            if through:
+                s["through"] = through
             if expr is not None:
                 graphed.append((i, expr))
                 if s["kind"] == "function" or s.get("shape"):
@@ -611,6 +621,23 @@ def _extras(i, expr, extra, xr, window):
         said = said or f"{value:.6g}"
         out.append({"kind": "area", "x": ax, "y": ay, "index": i, "value": round(value, 6), "from": lo, "to": hi, "facts": [f"\\int_{{{sympy.latex(a)}}}^{{{sympy.latex(b)}}}y\\,dx={said}"]})
     return out
+
+
+def _through(expr):
+    """y = mx + b: (0, b) and (1, m + b), as math — None when it isn't straight"""
+    try:
+        if expr.free_symbols - {X} or not expr.is_polynomial(X) or sympy.degree(expr, X) > 1:
+            return None
+        return [f"\\left(0,{sympy.latex(expr.subs(X, 0))}\\right)", f"\\left(1,{sympy.latex(expr.subs(X, 1))}\\right)"]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _through_vertical(s):
+    if s.get("kind") != "vline" or s.get("x0") is None:
+        return None
+    c = sympy.latex(sympy.nsimplify(s["x0"], rational=True))
+    return [f"\\left({c},0\\right)", f"\\left({c},1\\right)"]
 
 
 def _short_tex(e) -> str:

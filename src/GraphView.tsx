@@ -333,6 +333,50 @@ function drawingLayers(drawings: GraphDrawing[]): { traces: Trace[]; annotations
   return { traces, annotations };
 }
 
+/** a client point → pixels inside the plot's drawing area, or null when it's outside */
+function plotPixels(plot: PlotDiv, clientX: number, clientY: number): [number, number] | null {
+  const xa = plot?._fullLayout?.xaxis;
+  const ya = plot?._fullLayout?.yaxis;
+  if (!xa || !ya) return null;
+  const rect = plot.getBoundingClientRect();
+  const [px, py] = [clientX - rect.left - xa._offset, clientY - rect.top - ya._offset];
+  return px >= 0 && px <= xa._length && py >= 0 && py <= ya._length ? [px, py] : null;
+}
+
+/** a value on an axis → pixels along it (log axes too) */
+export const toAxisPx = (ax: { type?: string; l2p: (v: number) => number }, v: number) => ax.l2p(ax.type === "log" ? Math.log10(v) : v);
+
+/** the line whose curve, point or edge passes within 10px of `at`, nearest first */
+function nearestSeries(plot: PlotDiv, series: GraphSeries[], hidden: (i: number) => boolean, at: [number, number]): number | null {
+  const xa = plot?._fullLayout?.xaxis;
+  const ya = plot?._fullLayout?.yaxis;
+  if (!xa || !ya) return null;
+  const P = (x: number, y: number): [number, number] => [toAxisPx(xa, x), toAxisPx(ya, y)];
+  const toSegment = (p: [number, number], a: [number, number], b: [number, number]) => {
+    const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+    const len = dx * dx + dy * dy;
+    const t = len ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len)) : 0;
+    return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+  };
+  let best: { i: number; d: number } | null = null;
+  for (const s of series) {
+    if (hidden(s.index) || s.kind === "error" || s.kind === "value" || s.kind === "field") continue;
+    let d = Infinity;
+    if (s.kind === "vline" && s.x0 !== undefined) d = Math.abs(toAxisPx(xa, s.x0) - at[0]);
+    else if (s.x && s.y) {
+      const pts = s.x.map((x, k) => (x === null || s.y![k] === null || s.y![k] === undefined ? null : P(x, s.y![k] as number)));
+      if (s.kind === "points") for (const p of pts) d = p ? Math.min(d, Math.hypot(p[0] - at[0], p[1] - at[1]) - 4) : d;
+      else
+        for (let k = 1; k < pts.length; k++) {
+          const [a, b] = [pts[k - 1], pts[k]];
+          if (a && b && Number.isFinite(a[0] + a[1] + b[0] + b[1])) d = Math.min(d, toSegment(at, a, b));
+        }
+    }
+    if (d < 10 && (!best || d < best.d)) best = { i: s.index, d };
+  }
+  return best?.i ?? null;
+}
+
 /** Plotly annotation text is HTML-ish — show typed < > & as themselves. */
 const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -370,6 +414,9 @@ export default function GraphView({
   extras,
   degrees = false,
   colors,
+  focus = null,
+  onPick,
+  wheel = false,
   onResult,
   onPlot,
   overlay,
@@ -402,6 +449,13 @@ export default function GraphView({
   degrees?: boolean;
   /** colors of its own, over the graph theme's (the app's theme — useAppGraphColors) */
   colors?: Partial<GraphColors>;
+  /** the line picked (in the list, or by clicking its curve): drawn with a
+   * glow, and only its marked points labelled — the rest say theirs when hovered */
+  focus?: number | null;
+  /** a click on the graph: the line whose curve is under it, or null */
+  onPick?: (index: number | null) => void;
+  /** pinch or ⌘-scroll zooms, two-finger scrolling moves around (a tile; not the canvas, where scrolling scrolls the page) */
+  wheel?: boolean;
   onResult?: (result: GraphResult | null, error: string | null) => void;
   /** the Plotly element, once drawn — for exporting and for drawing tools */
   onPlot?: (plot: PlotDiv) => void;
@@ -443,13 +497,16 @@ export default function GraphView({
   // sample a wider strip than what's visible, so a pan reveals curve that
   // is already there instead of empty space while the new request runs
   const span = window.xmax - window.xmin;
+  const logX = !!appearance.logX;
+  const logY = !!appearance.logY;
   const request = exprs.some((e) => e.trim())
     ? {
         op: "graph",
         exprs,
         vars,
         ...(latex ? { latex: true, window, ...(extras?.some(Boolean) ? { extras } : {}), ...(degrees ? { degrees: true } : {}) } : {}),
-        xrange: [window.xmin - span, window.xmax + span],
+        ...(logX || logY ? { log: { x: logX, y: logY } } : {}),
+        xrange: logX ? [Math.max(window.xmin, 1e-12) / 10, window.xmax * 10] : [window.xmin - span, window.xmax + span],
         yrange: [window.ymin, window.ymax],
         features: (["intercepts", "vertices", "intersections"] as MarkerFeature[]).filter((f) => !hide.includes(f)),
       }
@@ -489,7 +546,19 @@ export default function GraphView({
     const traces: Trace[] = [];
     for (const s of result?.series ?? []) {
       if (hidden(s.index)) continue;
-      traces.push(...seriesTraces(s, colorOf(s.index), styles[s.index] ?? {}, theme.bg));
+      const own = seriesTraces(s, colorOf(s.index), styles[s.index] ?? {}, theme.bg);
+      // the picked line glows: a wide soft stroke under it
+      if (focus === s.index)
+        for (const t of own) {
+          if (t.type !== "scatter") continue;
+          if (t.mode === "lines" && (t.line?.width ?? 1) > 0)
+            traces.push({ x: t.x, y: t.y, type: "scatter", mode: "lines", line: { color: toRgba(colorOf(s.index), 0.28), width: (t.line?.width ?? 2.5) + 7 }, connectgaps: false, hoverinfo: "skip" });
+          else if (String(t.mode).includes("markers"))
+            traces.push({ x: t.x, y: t.y, type: "scatter", mode: "markers", marker: { color: toRgba(colorOf(s.index), 0.3), size: (t.marker?.size ?? 10) + 12 }, hoverinfo: "skip" });
+        }
+      traces.push(...own);
+      if (s.label)
+        traces.push({ x: [s.label.x], y: [s.label.y], type: "scatter", mode: "text", text: [escapeHtml(s.label.text)], textfont: { color: colorOf(s.index), size: 12 }, hoverinfo: "skip" });
     }
     traces.push(...extraTraces);
     traces.push(...drawn.traces);
@@ -498,17 +567,19 @@ export default function GraphView({
       (m) => owned(m) && m.x >= window.xmin - 1e-9 && m.x <= window.xmax + 1e-9 && m.y >= window.ymin - span && m.y <= window.ymax + span,
     );
     traces.push(...markerTrace(visible, theme.bg, theme.ink));
-    if (showLabels && visible.length) {
+    // labelled: the picked line's points (and its crossings), or every line's when none is picked
+    const labelled = visible.filter((m) => focus === null || (Array.isArray(m.series) ? m.series : [m.series]).map(Number).includes(focus));
+    if (showLabels && labelled.length && !logX && !logY) {
       // pixels per unit, near enough: the plot's inside over the window
       const across = Math.max(1, plotWidth - 42) / (window.xmax - window.xmin);
       const up = Math.max(1, plotHeight - 34) / (window.ymax - window.ymin);
-      const sides = placeLabels(visible, equalAspect ? [Math.min(across, up), Math.min(across, up)] : [across, up]);
+      const sides = placeLabels(labelled, equalAspect ? [Math.min(across, up), Math.min(across, up)] : [across, up]);
       traces.push({
-        x: visible.map((m) => m.x),
-        y: visible.map((m) => m.y),
+        x: labelled.map((m) => m.x),
+        y: labelled.map((m) => m.y),
         type: "scatter",
         mode: "text",
-        text: visible.map((m, i) => (sides[i] ? m.label : "")),
+        text: labelled.map((m, i) => (sides[i] ? m.label : "")),
         textposition: sides.map((side) => side ?? "top right"),
         textfont: { color: theme.ink, size: 9 },
         hoverinfo: "skip",
@@ -516,7 +587,7 @@ export default function GraphView({
     }
     return traces;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result, extraTraces, drawn, styles, theme, window.xmin, window.xmax, window.ymin, window.ymax, span, showLabels, plotWidth, plotHeight, equalAspect]);
+  }, [result, extraTraces, drawn, styles, theme, window.xmin, window.xmax, window.ymin, window.ymax, span, showLabels, plotWidth, plotHeight, equalAspect, focus, logX, logY]);
 
   // the equation written next to each curve that asked for a label
   const curveLabels = useMemo(() => {
@@ -547,10 +618,17 @@ export default function GraphView({
   // the grid: lines every `step` (what points snap to) — but numbers only as
   // often as they fit, so a fine grid doesn't crowd (or turn) the labels
   const gridSteps = useMemo(() => {
-    // "auto" is graph paper: about 20 lines across the view (1 per unit at ±10)
-    const pick = (chosen: number | undefined, span: number) => (chosen && chosen > 0 ? chosen : niceStep(span / 20));
-    return { x: pick(appearance.xStep, window.xmax - window.xmin), y: pick(appearance.yStep, window.ymax - window.ymin) };
-  }, [appearance.xStep, appearance.yStep, window.xmin, window.xmax, window.ymin, window.ymax]);
+    // "auto" is graph paper: about 20 lines across what's showing (1 per unit
+    // at ±10) — what's showing, since the same scale both ways stretches one
+    // axis past the window asked for; and square cells when it's the same scale
+    const [spanX, spanY] = [window.xmax - window.xmin, window.ymax - window.ymin];
+    const equal = equalAspect && !appearance.logX && !appearance.logY && plotWidth > 0 && plotHeight > 0;
+    const per = equal ? Math.min(plotWidth / spanX, plotHeight / spanY) : 0;
+    const [showX, showY] = equal ? [plotWidth / per, plotHeight / per] : [spanX, spanY];
+    const auto = equal ? [niceStep(Math.min(showX, showY) / 20), niceStep(Math.min(showX, showY) / 20)] : [niceStep(showX / 20), niceStep(showY / 20)];
+    const pick = (chosen: number | undefined, fallback: number) => (chosen && chosen > 0 ? chosen : fallback);
+    return { x: pick(appearance.xStep, auto[0]), y: pick(appearance.yStep, auto[1]) };
+  }, [appearance.xStep, appearance.yStep, appearance.logX, appearance.logY, equalAspect, plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax]);
 
   const layout = useMemo(() => {
     const grid = appearance.grid ?? "major";
@@ -559,8 +637,22 @@ export default function GraphView({
     // screen pixels per unit (equal scale: the same on both axes)
     const perX = plotWidth / (window.xmax - window.xmin);
     const perY = plotHeight / (window.ymax - window.ymin);
-    const per = (own: number) => (equalAspect ? Math.min(perX, perY) : own);
-    const axis = (range: [number, number], step: number | undefined, pixelsPerUnit: number, label: string | undefined, pi = false) => {
+    const equal = equalAspect && !logX && !logY;
+    const per = (own: number) => (equal ? Math.min(perX, perY) : own);
+    const axis = (range: [number, number], step: number | undefined, pixelsPerUnit: number, label: string | undefined, pi = false, log = false) => {
+      // powers of ten: Plotly's own ticks (1, 10, 100 with 2…9 between), its range in exponents
+      if (log)
+        return {
+          type: "log" as const,
+          range: range.map((v) => Math.log10(Math.max(v, 1e-12))),
+          showgrid: grid !== "none",
+          gridcolor: theme.grid,
+          minor: { showgrid: grid !== "none", gridcolor: theme.minor },
+          zeroline: false,
+          showticklabels: numbers,
+          tickfont: { color: theme.ink, size: 10 },
+          ...(label ? { title: { text: escapeHtml(label), font: { color: theme.ink, size: 12 } } } : {}),
+        };
       // a number every k grid lines, k the smallest of 1, 2, 5, 10 … that gives each ~34px
       const every = step ? ([1, 2, 5, 10, 20, 50, 100, 200, 500].find((k) => step * k * pixelsPerUnit >= 34) ?? 1000) : 1;
       const lines = grid === "none" ? {} : step && grid === "minor" ? { minor: { showgrid: true, gridcolor: theme.minor, dtick: minorStep(step) } }
@@ -596,16 +688,19 @@ export default function GraphView({
       ...(appearance.title ? { title: { text: escapeHtml(appearance.title), font: { color: theme.ink, size: 15 } } } : {}),
       showlegend: false,
       dragmode: "pan" as const,
+      hovermode: "closest" as const,
+      hoverdistance: 18,
+      hoverlabel: { bgcolor: theme.bg, font: { color: theme.ink, size: 12, family: "-apple-system, BlinkMacSystemFont, Inter, sans-serif" } },
       width: plotWidth,
       height: plotHeight,
       annotations: [...drawn.annotations, ...curveLabels, ...arrows],
-      xaxis: axis([window.xmin, window.xmax], gridSteps.x, per(perX), appearance.xLabel, !!appearance.piX),
+      xaxis: axis([window.xmin, window.xmax], gridSteps.x, per(perX), appearance.xLabel, !!appearance.piX && !logX, logX),
       yaxis: {
-        ...axis([window.ymin, window.ymax], gridSteps.y, per(perY), appearance.yLabel),
-        ...(equalAspect ? { scaleanchor: "x" as const, scaleratio: 1 } : {}),
+        ...axis([window.ymin, window.ymax], gridSteps.y, per(perY), appearance.yLabel, false, logY),
+        ...(equal ? { scaleanchor: "x" as const, scaleratio: 1 } : {}),
       },
     };
-  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels, arrows, gridSteps]);
+  }, [plotWidth, plotHeight, window.xmin, window.xmax, window.ymin, window.ymax, equalAspect, appearance, theme, drawn, curveLabels, arrows, gridSteps, logX, logY]);
 
   const [plot, setPlot] = useState<PlotDiv>(null);
   const ready = (_figure: unknown, div: PlotDiv) => {
@@ -614,6 +709,95 @@ export default function GraphView({
       onPlot?.(div);
     }
   };
+
+  // the latest of what the listeners below read, without re-adding them
+  const live$ = useRef({ plot, result, window, onWindowChange, onPick, hidden });
+  live$.current = { plot, result, window, onWindowChange, onPick, hidden };
+
+  // a click (not a drag) on the graph picks the line whose curve or point is
+  // under it — within 10px — or none. (The release is heard on the document:
+  // Plotly lays a cover over the page while the button is down.)
+  useEffect(() => {
+    const el = box.current;
+    if (!el || !onPick) return;
+    let start: { x: number; y: number } | null = null;
+    const down = (e: PointerEvent) => {
+      const target = e.target as HTMLElement;
+      start = e.button === 0 && !target.closest(".graph-draw-layer:not(.is-pan), .graph-handle") ? { x: e.clientX, y: e.clientY } : null;
+    };
+    const up = (e: PointerEvent) => {
+      const from = start;
+      start = null;
+      if (!from || Math.hypot(e.clientX - from.x, e.clientY - from.y) > 4) return;
+      const { plot, result, onPick, hidden } = live$.current;
+      const at = plotPixels(plot, e.clientX, e.clientY);
+      if (!at || !onPick) return;
+      onPick(nearestSeries(plot, result?.series ?? [], hidden, at));
+    };
+    el.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointerup", up, true);
+    return () => {
+      el.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointerup", up, true);
+    };
+  }, [!!onPick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // pinch (or ⌘ + scroll) zooms where the pointer is; two fingers move the
+  // graph around; a mouse wheel zooms — gathered up and applied once a frame
+  useEffect(() => {
+    const el = box.current;
+    if (!el || !wheel) return;
+    let pending: { factor: number; dx: number; dy: number; at: [number, number] } | null = null;
+    let frame = 0;
+    const flush = () => {
+      frame = 0;
+      const { plot, window: w, onWindowChange } = live$.current;
+      const xa = plot?._fullLayout?.xaxis;
+      const ya = plot?._fullLayout?.yaxis;
+      if (!pending || !xa || !ya || !onWindowChange) return (pending = null);
+      const { factor, dx, dy, at } = pending;
+      pending = null;
+      // in the axes' own (linear, or exponent) units, as drawn right now
+      const [x0, x1] = (xa.range as number[]).map(Number);
+      const [y0, y1] = (ya.range as number[]).map(Number);
+      const [ux, uy] = [(x1 - x0) / xa._length, (y1 - y0) / ya._length];
+      const [cx, cy] = [x0 + at[0] * ux, y1 - at[1] * uy];
+      const f = Math.min(Math.max(factor, 0.2), 5);
+      const scale = (v: number, c: number, shift: number) => c + (v + shift - c) * f;
+      const back = (ax: { type?: string }, v: number) => Math.round((ax.type === "log" ? 10 ** v : v) * 1e6) / 1e6;
+      const next = {
+        xmin: back(xa, scale(x0, cx, dx * ux)),
+        xmax: back(xa, scale(x1, cx, dx * ux)),
+        ymin: back(ya, scale(y0, cy, -dy * uy)),
+        ymax: back(ya, scale(y1, cy, -dy * uy)),
+      };
+      const sane = (a: number, b: number) => b - a > 1e-6 && b - a < 1e8 && Number.isFinite(a) && Number.isFinite(b);
+      if (sane(next.xmin, next.xmax) && sane(next.ymin, next.ymax)) onWindowChange(next);
+      else if (w) onWindowChange(w);
+    };
+    const onWheel = (e: WheelEvent) => {
+      const { plot } = live$.current;
+      const at = plotPixels(plot, e.clientX, e.clientY);
+      if (!at) return;
+      e.preventDefault();
+      const pinch = e.ctrlKey || e.metaKey;
+      const mouse = !pinch && (e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 50 && Number.isInteger(e.deltaY)));
+      pending ??= { factor: 1, dx: 0, dy: 0, at };
+      pending.at = at;
+      if (pinch) pending.factor *= Math.exp(Math.max(-30, Math.min(30, e.deltaY)) * 0.012);
+      else if (mouse) pending.factor *= e.deltaY > 0 ? 1.15 : 1 / 1.15;
+      else {
+        pending.dx += e.deltaX;
+        pending.dy += e.deltaY;
+      }
+      if (!frame) frame = requestAnimationFrame(flush);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      cancelAnimationFrame(frame);
+    };
+  }, [wheel]);
 
   return (
     // no wheel zoom: scrolling over a graph scrolls the page like anywhere
@@ -633,14 +817,17 @@ export default function GraphView({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onRelayout={(event: any) => {
           if (!onWindowChange) return;
-          const x0 = event["xaxis.range[0]"] ?? event["xaxis.range"]?.[0];
-          const x1 = event["xaxis.range[1]"] ?? event["xaxis.range"]?.[1];
-          const y0 = event["yaxis.range[0]"] ?? event["yaxis.range"]?.[0];
-          const y1 = event["yaxis.range[1]"] ?? event["yaxis.range"]?.[1];
+          // a log axis reports its range in powers of ten
+          const fx = (v: number | undefined) => (v === undefined ? v : logX ? 10 ** v : v);
+          const fy = (v: number | undefined) => (v === undefined ? v : logY ? 10 ** v : v);
+          const x0 = fx(event["xaxis.range[0]"] ?? event["xaxis.range"]?.[0]);
+          const x1 = fx(event["xaxis.range[1]"] ?? event["xaxis.range"]?.[1]);
+          const y0 = fy(event["yaxis.range[0]"] ?? event["yaxis.range"]?.[0]);
+          const y1 = fy(event["yaxis.range[1]"] ?? event["yaxis.range"]?.[1]);
           if (event["xaxis.autorange"] || event["yaxis.autorange"]) {
             onWindowChange(DEFAULT_WINDOW);
           } else if (x0 !== undefined && x1 !== undefined) {
-            const round = (n: number) => Math.round(n * 1000) / 1000;
+            const round = (n: number) => Math.round(n * 1e6) / 1e6;
             onWindowChange({
               xmin: round(x0),
               xmax: round(x1),

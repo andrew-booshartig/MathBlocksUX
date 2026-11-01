@@ -99,6 +99,26 @@ pub fn save_image(app: AppHandle, name: String, data_url: String) -> Result<Stri
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Saves a vector picture (SVG text — e.g. a graph, sharp at any size) to
+/// ~/Downloads as `<name>.svg`. Never overwrites: adds " (2)", " (3)", …
+#[tauri::command]
+pub fn save_svg(app: AppHandle, name: String, svg: String) -> Result<String, String> {
+    let name = safe_filename(&name)?;
+    let head = svg.trim_start();
+    if !(head.starts_with("<svg") || head.starts_with("<?xml")) {
+        return Err("expected an SVG picture".into());
+    }
+    let dir = app.path().download_dir().map_err(|e| e.to_string())?;
+    let mut path = dir.join(format!("{name}.svg"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("{name} ({n}).svg"));
+        n += 1;
+    }
+    fs::write(&path, svg).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// Saves a document (a web page — e.g. a Show-your-work history) to
 /// ~/Downloads as `<name>.html`. Never overwrites: adds " (2)", " (3)", …
 #[tauri::command]

@@ -6780,45 +6780,6 @@ math-field {
   margin-left: auto;
 }
 
-/* a point (or a line's two points) typed instead of clicked */
-.xy-typed {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--t-muted, #7a7a90);
-}
-
-.xy-typed-point {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--t-text, #e8e8f0);
-  font-size: 15px;
-}
-
-.xy-typed-num {
-  width: 54px;
-  height: 26px;
-  padding: 0 6px;
-  border: 1px solid var(--t-line, #2e2e3a);
-  border-radius: 6px;
-  background: var(--t-bg1, #0e0e12);
-  color: var(--t-text, #e8e8f0);
-  font: 14px -apple-system, "Inter", sans-serif;
-  text-align: center;
-  outline: none;
-}
-
-.xy-typed-num:focus {
-  border-color: var(--t-faint, #55606e);
-}
-
-.xy-typed-num.is-bad {
-  border-color: var(--t-red, #f19a9a);
-}
-
 /* ---- the xy graph's panels: a line's options, settings, data tables */
 @keyframes xy-pop-in {
   from {
@@ -6837,15 +6798,8 @@ math-field {
   padding: 2px 12px 0 32px;
 }
 
-.xy-remove.is-on,
-.xy-add.is-on {
+.xy-remove.is-on {
   color: var(--t-text, #e8e8f0);
-}
-
-.xy-adds {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
 }
 
 .xy-tools {
@@ -7262,20 +7216,258 @@ math-field {
   background: var(--t-bg2, #17171f);
 }
 
-/* points typed in: over the graph's corner, so the graph keeps its size */
-.xy-plot {
-  position: relative;
+/* ---- the xy graph, round 2: the picked line, playing sliders, saving */
+.xy-line.is-selected .xy-line-row {
+  border-color: color-mix(in srgb, var(--t-pink, #c99bbf) 55%, var(--t-line, #2e2e3a));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--t-pink, #c99bbf) 22%, transparent);
 }
 
-.xy-plot > .xy-typed {
+
+.xy-letter-play {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 50%;
+  background: var(--t-bg1, #0e0e12);
+  color: var(--t-muted, #7a7a90);
+  cursor: pointer;
+}
+
+.xy-letter-play:hover,
+.xy-letter-play.is-on {
+  color: var(--t-text, #e8e8f0);
+  border-color: var(--t-pink, #c99bbf);
+}
+
+.xy-letter-end {
+  flex: 0 0 auto;
+  width: 34px;
+  padding: 1px 2px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  color: var(--t-muted, #7a7a90);
+  font: 11px -apple-system, "Inter", sans-serif;
+  text-align: center;
+  outline: none;
+}
+
+.xy-letter-end:hover,
+.xy-letter-end:focus {
+  border-color: var(--t-line, #2e2e3a);
+  color: var(--t-text, #e8e8f0);
+}
+
+/* with the hand: a handle over each point you can drag; the rest of the
+   graph still pans and zooms underneath */
+.graph-draw-layer.is-pan {
+  pointer-events: none;
+}
+
+.graph-handle {
   position: absolute;
-  z-index: 6;
-  top: 8px;
-  left: 44px;
-  max-width: calc(100% - 60px);
-  padding: 4px 8px;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  pointer-events: auto;
+  cursor: grab;
+  transition: box-shadow 0.12s;
+}
+
+.graph-handle:hover {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-text, #e8e8f0) 45%, transparent);
+}
+
+.graph-handle.is-held {
+  cursor: grabbing;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--t-pink, #c99bbf) 60%, transparent);
+}
+
+.graph-draw-layer.is-ray,
+.graph-draw-layer.is-circle,
+.graph-draw-layer.is-polygon,
+.graph-draw-layer.is-angle,
+.graph-draw-layer.is-perpendicular,
+.graph-draw-layer.is-parallel {
+  cursor: crosshair;
+}
+
+.xy-save {
+  position: relative;
+  display: inline-flex;
+}
+
+.xy-pop.xy-save-pop {
+  top: auto;
+  bottom: calc(100% + 6px);
+  width: 250px;
+  max-width: none;
+  gap: 2px;
+  padding: 6px;
+}
+
+.xy-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--t-text, #e8e8f0);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.xy-menu-item:hover {
+  background: var(--t-bg4, #23232d);
+}
+
+/* ---- the list: its head (+, Examples, Clear all), the empty row at the
+   end that's always there to type in, and notes */
+.xy-list-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.xy-add-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.xy-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   border: 1px solid var(--t-line, #2e2e3a);
   border-radius: 9px;
-  background: color-mix(in srgb, var(--t-bg3, #1c1c24) 92%, transparent);
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--t-bg0, #000) 35%, transparent);
+  background: var(--t-bg2, #17171f);
+  color: var(--t-text, #e8e8f0);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.xy-plus:hover,
+.xy-plus.is-on {
+  border-color: var(--t-pink, #c99bbf);
+  background: color-mix(in srgb, var(--t-pink, #c99bbf) 14%, var(--t-bg2, #17171f));
+}
+
+.xy-head-btn {
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--t-muted, #7a7a90);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.xy-head-btn:hover,
+.xy-head-btn.is-on {
+  color: var(--t-text, #e8e8f0);
+}
+
+.xy-head-btn.xy-clear {
+  margin-left: auto;
+}
+
+.xy-head-btn.xy-clear:hover {
+  color: var(--t-red, #f19a9a);
+}
+
+/* (both open from a small button: their own width, not the button's) */
+.xy-pop.xy-add-pop {
+  left: 0;
+  right: auto;
+  width: 296px;
+  max-width: none;
+  gap: 6px;
+}
+
+.xy-add-items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.xy-add-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--t-text, #e8e8f0);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.xy-add-item:hover {
+  background: var(--t-bg4, #23232d);
+}
+
+.xy-add-tex {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--t-muted, #7a7a90);
+  font-size: 12px;
+}
+
+/* the empty row at the end: a dashed dot, waiting */
+.xy-line.is-blank .xy-swatch {
+  background: transparent !important;
+  border: 1.5px dashed var(--t-faint, #55606e) !important;
+  cursor: default;
+}
+
+.xy-line.is-blank .xy-line-row {
+  border-style: dashed;
+}
+
+.xy-line.is-blank .xy-line-row:focus-within {
+  border-style: solid;
+}
+
+.xy-line.is-note .xy-line-row {
+  align-items: flex-start;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  background: color-mix(in srgb, var(--t-yellow, #e5c07b) 6%, var(--t-bg1, #0e0e12));
+}
+
+.xy-note-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 2px;
+  color: var(--t-yellow, #e5c07b);
+}
+
+.xy-note {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  overflow: hidden;
+  border: none;
+  outline: none;
+  background: none;
+  color: var(--t-text, #e8e8f0);
+  font: 14px/1.45 -apple-system, "Inter", sans-serif;
 }

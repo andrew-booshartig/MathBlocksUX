@@ -350,6 +350,15 @@ export function GraphSettings({ settings, onChange, onClose }: { settings: XYSet
         <input type="checkbox" checked={settings.equal !== false} onChange={(e) => set({ equal: e.target.checked ? undefined : false })} />
         Same scale on both axes <span className="xy-dim">(circles look round)</span>
       </label>
+      <div className="xy-pop-head">Scale</div>
+      <label className="xy-check">
+        <input type="checkbox" checked={!!settings.logX} onChange={(e) => set({ logX: e.target.checked || undefined })} />
+        Logarithmic x axis <span className="xy-dim">(1, 10, 100…)</span>
+      </label>
+      <label className="xy-check">
+        <input type="checkbox" checked={!!settings.logY} onChange={(e) => set({ logY: e.target.checked || undefined })} />
+        Logarithmic y axis <span className="xy-dim">(for data across powers of ten)</span>
+      </label>
       <label className="xy-check">
         <input type="checkbox" checked={settings.marks !== false} onChange={(e) => set({ marks: e.target.checked ? undefined : false })} />
         Mark intercepts, highs and lows, crossings <span className="xy-dim">(holes always show)</span>
@@ -359,6 +368,65 @@ export function GraphSettings({ settings, onChange, onClose }: { settings: XYSet
         <input className="xy-text" value={settings.xLabel ?? ""} placeholder="x axis — time (s)" onChange={(e) => set({ xLabel: e.target.value || undefined })} />
         <input className="xy-text" value={settings.yLabel ?? ""} placeholder="y axis — height (m)" onChange={(e) => set({ yLabel: e.target.value || undefined })} />
       </div>
+    </Pop>
+  );
+}
+
+// ---- the + : a row to type in, or a starter with boxes to fill
+
+/** what the + adds. A template's #? are boxes to fill (Tab goes to the
+ * next); NAME is a free point name, FN a free function name. */
+export const ADDS: { id: string; group: string; label: string; tex: string; template?: string; title: string }[] = [
+  { id: "equation", group: "Graph", label: "Equation", tex: "y=2x+1", template: "", title: "A row to type any equation in — it graphs as you type" },
+  { id: "function", group: "Graph", label: "Function", tex: "f(x)=x^2", template: "FN\\left(x\\right)=#?", title: "A named function — then f(3) or f'(x) on other rows" },
+  { id: "inequality", group: "Graph", label: "Inequality", tex: "y<x+1", template: "y<#?", title: "Shaded where it's true" },
+  { id: "polar", group: "Graph", label: "Polar", tex: "r=2\\sin 3\\theta", template: "r=#?", title: "r in terms of θ" },
+  { id: "parametric", group: "Graph", label: "Parametric", tex: "(\\cos t,\\sin t)", template: "\\left(#?,#?\\right)", title: "x and y in terms of t" },
+  { id: "point", group: "Geometry", label: "Point", tex: "A=(2,\\tfrac{2}{3})", template: "NAME=\\left(#?,#?\\right)", title: "A point by its numbers — fractions like 2/3 too" },
+  { id: "segment", group: "Geometry", label: "Segment", tex: "\\overline{AB}", template: "\\operatorname{segment}\\left(#?,#?\\right)", title: "Between two points: A, B — or (1, 2), (3, 4)" },
+  { id: "line", group: "Geometry", label: "Line", tex: "\\overleftrightarrow{AB}", template: "\\operatorname{line}\\left(#?,#?\\right)", title: "Through two points, on forever both ways" },
+  { id: "circle", group: "Geometry", label: "Circle", tex: "\\odot A", template: "\\operatorname{circle}\\left(#?,#?\\right)", title: "Its center, then its radius or a point on it" },
+  { id: "polygon", group: "Geometry", label: "Polygon", tex: "\\triangle ABC", template: "\\operatorname{polygon}\\left(#?,#?,#?\\right)", title: "Its corners, in order" },
+  { id: "table", group: "Data and notes", label: "Table", tex: "x\\;\\big|\\;y", title: "Data points — and a curve fitted to them" },
+  { id: "note", group: "Data and notes", label: "Note", tex: "\\text{Aa}", title: "Words in the list: what this shows, what to try next" },
+];
+
+export function AddMenu({ onPick, onClose }: { onPick: (id: string) => void; onClose: () => void }) {
+  const groups = [...new Set(ADDS.map((a) => a.group))];
+  return (
+    <Pop onClose={onClose} className="xy-add-pop">
+      {groups.map((g) => (
+        <div key={g} className="xy-add-group">
+          <div className="xy-pop-head">{g}</div>
+          <div className="xy-add-items">
+            {ADDS.filter((a) => a.group === g).map((a) => (
+              <button key={a.id} className="xy-add-item" title={a.title} onClick={() => onPick(a.id)}>
+                <span className="xy-add-label">{a.label}</span>
+                <span className="xy-add-tex">
+                  <Tex math={a.tex} />
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </Pop>
+  );
+}
+
+// ---- saving the graph as a picture
+
+export function SaveMenu({ onPick, onClose }: { onPick: (kind: "png" | "svg") => void; onClose: () => void }) {
+  return (
+    <Pop onClose={onClose} className="xy-save-pop">
+      <button className="xy-menu-item" onClick={() => onPick("png")}>
+        <span>Picture (PNG)</span>
+        <span className="xy-dim">for messages and documents</span>
+      </button>
+      <button className="xy-menu-item" onClick={() => onPick("svg")}>
+        <span>Vector (SVG)</span>
+        <span className="xy-dim">sharp at any size — papers, slides, posters</span>
+      </button>
     </Pop>
   );
 }

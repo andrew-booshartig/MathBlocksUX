@@ -52,6 +52,10 @@ export interface GraphSeries {
   facts?: string[];
   /** a straight shape's equation alone (y = mx + b) */
   equation?: string;
+  /** a straight line (y = 2x + 1, x = 3): two points on it, as math — to build a perpendicular or parallel from */
+  through?: [string, string];
+  /** words written on the graph beside it: an angle's size */
+  label?: { x: number; y: number; text: string };
   /** a function drawn for another line: its derivative, or a tangent line */
   role?: "derivative" | "tangent";
   /** vertical asymptotes (x values), drawn dashed */

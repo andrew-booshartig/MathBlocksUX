@@ -116,6 +116,8 @@ export interface MathInputHandle {
   setValue: (latex: string) => void;
   /** Is the cursor at the top level — not inside a fraction, power or root? */
   atTopLevel: () => boolean;
+  /** Is the field on the page and set up yet (a new one takes a frame or two)? */
+  ready: () => boolean;
 }
 
 export default function MathInput({
@@ -386,6 +388,7 @@ export default function MathInput({
       handlers.current.onChange(mf.value);
     },
     getValue: () => field.current?.value ?? "",
+    ready: () => !!field.current,
     // inside a fraction (or power, root…) the math before the cursor comes
     // back flattened, so it stops being the start of the whole line
     atTopLevel: () => {

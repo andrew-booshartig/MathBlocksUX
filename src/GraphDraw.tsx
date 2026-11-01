@@ -12,17 +12,25 @@ import { useEffect, useRef, useState } from "react";
 import type { PlotDiv } from "./GraphView";
 import { type GraphDrawing, type GraphWindow, newId } from "./store";
 
-export type GraphTool = "pan" | "move" | "point" | "line" | "segment" | "ray" | "circle" | "polygon" | "arrow" | "pen" | "text" | "eraser";
+export type GraphTool =
+  | "pan" | "move" | "point" | "line" | "segment" | "ray" | "circle" | "polygon" | "angle" | "perpendicular" | "parallel"
+  | "arrow" | "pen" | "text" | "eraser";
 
 /** a point plotted as math (its line's key), to snap to and drag — unless
  * it's built from others (a midpoint), which can't be dragged */
 export type GraphTarget = { key: string; x: number; y: number; name?: string; movable?: boolean };
 
-/** a spot picked to build from: a point already there (its key), or a new one */
-export type GraphPick = { x: number; y: number; key?: string };
+/** a spot picked to build from: a point already there (its key), or a new
+ * one — or, for perpendicular and parallel, the line picked first (`shape`) */
+export type GraphPick = { x: number; y: number; key?: string; shape?: string };
+
+/** a straight shape drawn from the list (segment, line, ray…), to pick: two points on it */
+export type GraphShape = { key: string; a: [number, number]; b: [number, number] };
 
 /** the tools that build from points, given onConstruct */
-export const CONSTRUCT: readonly GraphTool[] = ["segment", "line", "ray", "circle", "polygon"];
+export const CONSTRUCT: readonly GraphTool[] = ["segment", "line", "ray", "circle", "polygon", "angle", "perpendicular", "parallel"];
+/** how many picks each needs (a polygon: until it's closed) */
+const PICKS: Partial<Record<GraphTool, number>> = { segment: 2, line: 2, ray: 2, circle: 2, angle: 3, perpendicular: 2, parallel: 2 };
 
 type Px = { px: number; py: number };
 
@@ -50,11 +58,15 @@ function geometry(plot: PlotDiv) {
   const xa = layout?.xaxis;
   const ya = layout?.yaxis;
   if (!xa || !ya) return null;
+  // a log axis works in powers of ten
+  const lin = (ax: { type?: string }, v: number) => (ax.type === "log" ? Math.log10(v) : v);
+  const unlin = (ax: { type?: string }, v: number) => (ax.type === "log" ? 10 ** v : v);
   return {
     /** the spacing of the grid lines drawn right now */
     steps: [Number(xa.dtick), Number(ya.dtick)] as [number, number],
-    toGraph: ({ px, py }: Px): [number, number] => [xa.p2l(px - xa._offset), ya.p2l(py - ya._offset)],
-    toPx: ([x, y]: [number, number]): Px => ({ px: xa._offset + xa.l2p(x), py: ya._offset + ya.l2p(y) }),
+    log: xa.type === "log" || ya.type === "log",
+    toGraph: ({ px, py }: Px): [number, number] => [unlin(xa, xa.p2l(px - xa._offset)), unlin(ya, ya.p2l(py - ya._offset))],
+    toPx: ([x, y]: [number, number]): Px => ({ px: xa._offset + xa.l2p(lin(xa, x)), py: ya._offset + ya.l2p(lin(ya, y)) }),
     inside: ({ px, py }: Px) => px >= xa._offset && px <= xa._offset + xa._length && py >= ya._offset && py <= ya._offset + ya._length,
     box: { x: Number(xa._offset), y: Number(ya._offset), w: Number(xa._length), h: Number(ya._length) },
   };
@@ -83,6 +95,7 @@ export default function GraphDrawLayer({
   onPoint,
   onLine,
   targets = [],
+  shapes = [],
   onMovePoint,
   onConstruct,
 }: {
@@ -105,6 +118,8 @@ export default function GraphDrawLayer({
   onLine?: (a: [number, number], b: [number, number]) => void;
   /** points plotted as math: ends snap onto them (2/3 and all), the move tool drags them */
   targets?: GraphTarget[];
+  /** straight shapes, for perpendicular and parallel to pick */
+  shapes?: GraphShape[];
   onMovePoint?: (key: string, x: number, y: number) => void;
   /** segment, line, ray, circle, polygon: build from the points picked */
   onConstruct?: (tool: GraphTool, picks: GraphPick[]) => void;
@@ -145,7 +160,6 @@ export default function GraphDrawLayer({
     return () => clearTimeout(timer);
   }, [typing?.at]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (tool === "pan") return null;
   const geo = geometry(plot);
   if (!geo) return null;
 
@@ -158,6 +172,8 @@ export default function GraphDrawLayer({
   const stepY = gridLines?.y ? (fine ? minorStep(gridLines.y) : gridLines.y) : grid(geo.steps[1], window.ymax - window.ymin);
   const onGrid = (p: Px): [number, number] => {
     const [x, y] = geo.toGraph(p);
+    // (a log axis has no even steps: 3 significant figures there)
+    if (geo.log) return [Number(x.toPrecision(3)), Number(y.toPrecision(3))];
     return snap ? [round(Math.round(x / stepX) * stepX), round(Math.round(y / stepY) * stepY)] : [round(x), round(y)];
   };
   /** what an end can snap onto: plotted points, and the ends of drawings
@@ -209,6 +225,16 @@ export default function GraphDrawLayer({
     return { x, y };
   };
   const same = (a: GraphPick, b: GraphPick) => (a.key || b.key ? a.key === b.key : a.x === b.x && a.y === b.y);
+  /** the straight shape within 10px of p, for perpendicular and parallel */
+  const shapeAt = (p: Px): GraphShape | null => {
+    let best: { s: GraphShape; d: number } | null = null;
+    for (const sh of shapes) {
+      const d = distanceToSegment(p, geo.toPx(sh.a), geo.toPx(sh.b));
+      if (d < 10 && (!best || d < best.d)) best = { s: sh, d };
+    }
+    return best?.s ?? null;
+  };
+  const needsShape = tool === "perpendicular" || tool === "parallel";
   const finish = (all: GraphPick[]) => {
     setPicks([]);
     setDown(null);
@@ -246,7 +272,24 @@ export default function GraphDrawLayer({
     if (typing) return commitText();
     if (constructing) {
       if (!geo.inside(p)) return;
+      if (needsShape && !picks.length) {
+        // a line first: what it'll be perpendicular (or parallel) to
+        const sh = shapeAt(p);
+        if (sh) {
+          const [x, y] = geo.toGraph(p);
+          setPicks([{ x, y, shape: sh.key }]);
+        }
+        return;
+      }
       const at = pick(p);
+      if (needsShape) return finish([picks[0], at]);
+      if (tool === "angle") {
+        // a point, the corner, another point
+        if (picks.some((q) => same(q, at))) return;
+        if (picks.length === 2) return finish([...picks, at]);
+        setPicks([...picks, at]);
+        return;
+      }
       if (!picks.length) {
         // the first point: click again somewhere — or drag there now
         setPicks([at]);
@@ -318,7 +361,7 @@ export default function GraphDrawLayer({
   const onPointerUp = (e: React.PointerEvent) => {
     if (constructing) {
       // pressed on one point and let go on another: that's both picked
-      if (down && picks.length === 1 && tool !== "polygon") {
+      if (down && picks.length === 1 && PICKS[tool] === 2 && !needsShape) {
         const p = local(e);
         if (Math.hypot(p.px - down.px, p.py - down.py) > 6) {
           const at = pick(p);
@@ -370,10 +413,28 @@ export default function GraphDrawLayer({
 
   /** what's being built, drawn as it would be with the cursor's spot as its next point */
   const building = (() => {
-    if (!constructing || !picks.length) return null;
-    const pts = picks.map((q) => geo.toPx([q.x, q.y]));
-    const cur = next ? geo.toPx([next.x, next.y]) : null;
+    if (!constructing) return null;
     const { box } = geo;
+    const clip = (
+      <clipPath id="graph-build-clip">
+        <rect x={box.x} y={box.y} width={box.w} height={box.h} />
+      </clipPath>
+    );
+    // perpendicular or parallel, nothing picked yet: the line under the pointer lights up
+    if (needsShape && !picks.length) {
+      const sh = hover ? shapeAt(hover) : null;
+      if (!sh) return null;
+      const [a, b] = [geo.toPx(sh.a), geo.toPx(sh.b)];
+      return (
+        <g className="graph-building" stroke={color} strokeWidth={width + 6} opacity={0.3} strokeLinecap="round">
+          {clip}
+          <line x1={a.px} y1={a.py} x2={b.px} y2={b.py} clipPath="url(#graph-build-clip)" />
+        </g>
+      );
+    }
+    if (!picks.length) return null;
+    const pts = picks.filter((q) => !q.shape).map((q) => geo.toPx([q.x, q.y]));
+    const cur = next ? geo.toPx([next.x, next.y]) : null;
     const far = (a: Px, b: Px, both: boolean) => {
       const d = Math.hypot(b.px - a.px, b.py - a.py) || 1;
       const [ux, uy] = [(b.px - a.px) / d, (b.py - a.py) / d];
@@ -381,7 +442,20 @@ export default function GraphDrawLayer({
       return { x1: both ? a.px - ux * reach : a.px, y1: both ? a.py - uy * reach : a.py, x2: a.px + ux * reach, y2: a.py + uy * reach };
     };
     let shape = null;
-    if (cur && tool === "segment") shape = <line x1={pts[0].px} y1={pts[0].py} x2={cur.px} y2={cur.py} />;
+    const base = picks[0].shape ? shapes.find((sh) => sh.key === picks[0].shape) : undefined;
+    if (base && cur) {
+      // through the pointer, at right angles to the line picked (or alongside it)
+      const [a, b] = [geo.toPx(base.a), geo.toPx(base.b)];
+      let [dx, dy] = [b.px - a.px, b.py - a.py];
+      if (tool === "perpendicular") [dx, dy] = [-dy, dx];
+      shape = (
+        <>
+          <line x1={a.px} y1={a.py} x2={b.px} y2={b.py} strokeWidth={width + 6} opacity={0.35} />
+          <line {...far(cur, { px: cur.px + dx, py: cur.py + dy }, true)} />
+        </>
+      );
+    } else if (cur && tool === "angle") shape = <polyline points={[...pts, cur].map((q) => `${q.px},${q.py}`).join(" ")} />;
+    else if (cur && tool === "segment") shape = <line x1={pts[0].px} y1={pts[0].py} x2={cur.px} y2={cur.py} />;
     else if (cur && (tool === "line" || tool === "ray") && (cur.px !== pts[0].px || cur.py !== pts[0].py)) shape = <line {...far(pts[0], cur, tool === "line")} />;
     else if (cur && next && tool === "circle") {
       const [c, at] = [picks[0], next];
@@ -399,9 +473,7 @@ export default function GraphDrawLayer({
     }
     return (
       <g className="graph-building" stroke={color} strokeWidth={width} fill="none" strokeLinecap="round" opacity={0.75}>
-        <clipPath id="graph-build-clip">
-          <rect x={box.x} y={box.y} width={box.w} height={box.h} />
-        </clipPath>
+        {clip}
         <g clipPath="url(#graph-build-clip)">{shape}</g>
         {pts.map((q, k) => (
           <circle key={k} cx={q.px} cy={q.py} r={5} fill={color} stroke="none" />
@@ -432,6 +504,39 @@ export default function GraphDrawLayer({
       )}
     </svg>
   );
+
+  // the hand: the graph pans and zooms itself; a point from the list can
+  // still be dragged, by the handle over it
+  if (tool === "pan") {
+    const movable = onMovePoint ? targets.filter((t) => t.movable !== false) : [];
+    if (!movable.length) return null;
+    return (
+      <div ref={layer} className="graph-draw-layer is-pan" style={{ width: size.width, height: size.height }}>
+        {movable.map((t) => {
+          const at = geo.toPx([t.x, t.y]);
+          if (!geo.inside(at)) return null;
+          const mine = held?.kind === "point" && held.key === t.key;
+          return (
+            <div
+              key={t.key}
+              className={`graph-handle${mine ? " is-held" : ""}`}
+              style={{ left: at.px, top: at.py }}
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                e.stopPropagation();
+                e.preventDefault();
+                e.currentTarget.setPointerCapture(e.pointerId);
+                setHeld({ kind: "point", key: t.key });
+              }}
+              onPointerMove={(e) => mine && onMovePoint!(t.key, ...snapped(local(e)))}
+              onPointerUp={() => setHeld(null)}
+              onPointerCancel={() => setHeld(null)}
+            />
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div
