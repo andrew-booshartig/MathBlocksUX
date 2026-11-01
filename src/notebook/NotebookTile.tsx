@@ -232,6 +232,55 @@ export default function NotebookTile({
     }
   });
   const [varsOpen, setVarsOpen] = useState(false);
+  // ---- find (and replace) in the notebook: every block's text and code
+  const [finding, setFinding] = useState<{ find: string; replace: string; at: number; replacing: boolean } | null>(null);
+  const findInput = useRef<HTMLInputElement>(null);
+  /** where it's found: each block, each place in it */
+  const found = useMemo(() => {
+    const q = finding?.find;
+    if (!q || !doc) return [] as { id: string; index: number }[];
+    const out: { id: string; index: number }[] = [];
+    const lower = q.toLowerCase();
+    for (const b of doc.blocks) {
+      const text = (b.kind === "text" ? b.text : b.code).toLowerCase();
+      for (let k = text.indexOf(lower); k >= 0; k = text.indexOf(lower, k + Math.max(1, lower.length))) out.push({ id: b.id, index: k });
+    }
+    return out;
+  }, [finding?.find, doc]);
+  const foundIds = useMemo(() => new Set(found.map((f) => f.id)), [found]);
+  const currentFound = finding && found.length ? found[((finding.at % found.length) + found.length) % found.length] : null;
+  useEffect(() => {
+    if (!currentFound) return;
+    document.querySelector(`[data-block="${currentFound.id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [currentFound?.id, currentFound?.index]); // eslint-disable-line react-hooks/exhaustive-deps
+  const startFinding = () => {
+    setFinding((f) => f ?? { find: "", replace: "", at: 0, replacing: false });
+    requestAnimationFrame(() => findInput.current?.select());
+  };
+  /** the one it's on (or every one) swapped for the replacement, in the file */
+  const replaceFound = (all: boolean) => {
+    if (!finding?.find || !doc) return;
+    const swap = (text: string, only?: number) => {
+      const lower = text.toLowerCase();
+      const q = finding.find.toLowerCase();
+      let out = "";
+      let from = 0;
+      for (let k = lower.indexOf(q); k >= 0; k = lower.indexOf(q, k + q.length)) {
+        if (only !== undefined && k !== only) continue;
+        out += text.slice(from, k) + finding.replace;
+        from = k + q.length;
+      }
+      return out + text.slice(from);
+    };
+    commit({
+      ...doc,
+      blocks: doc.blocks.map((b) => {
+        if (!foundIds.has(b.id) || (!all && b.id !== currentFound?.id)) return b;
+        const only = all ? undefined : currentFound!.index;
+        return b.kind === "text" ? { ...b, text: swap(b.text, only) } : { ...b, code: swap(b.code, only) };
+      }),
+    });
+  };
   /** the other languages' variables (MATLAB's workspace…), by language */
   const [langVars, setLangVars] = useState<Record<string, { name: string; type: string; shape: string; value: string }[]>>({});
   const [vars, setVars] = useState<{ name: string; type: string; shape: number[] | null; value: string }[]>([]);
@@ -1079,6 +1128,9 @@ export default function NotebookTile({
               </button>
             </span>
           )}
+          <button className={`nb-tool is-icon${finding ? " is-on" : ""}`} title="Find (and replace) in this notebook — ⌘F" onClick={() => (finding ? setFinding(null) : startFinding())}>
+            <Icon name="zoom" size={14} />
+          </button>
           {outline.length > 1 && (
             <div className="nb-switch">
               <button className={`nb-tool${outlineOpen ? " is-on" : ""}`} title="Its headings — click one to go there" onClick={() => setOutlineOpen(!outlineOpen)}>
@@ -1334,7 +1386,7 @@ export default function NotebookTile({
     );
     if (b.kind === "text") {
       return (
-        <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}`}>
+        <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}`}>
           {isEditing ? (
             vimKeys ? (
               <CodeEditor value={draft} onChange={type} onDone={finishEditing} vimKeys prose placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
@@ -1381,7 +1433,7 @@ export default function NotebookTile({
     const showCode = isEditing || (!flat && (b.lang === "python" || !!language || !result));
     // a work cell being edited: its fields, with the checked work under them
     return (
-      <div key={b.id} data-block={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}${flat ? " is-flat" : ""}`}>
+      <div key={b.id} data-block={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}${flat ? " is-flat" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}`}>
         <div className="nb-cell-head">
           <span className="nb-cell-lang">{label}</span>
           {flat && (
@@ -1485,8 +1537,60 @@ export default function NotebookTile({
 
   let calcAt = 0;
   return (
-    <div className="nb">
+    <div
+      className="nb"
+      // focusable, so its keys (⌘F) come here once it's clicked
+      tabIndex={-1}
+      onKeyDownCapture={(e) => {
+        // ⌘F: find in this notebook (the editor's own search, in vim, is /)
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "f" && !(e.target as HTMLElement).closest?.(".cm-editor")) {
+          e.preventDefault();
+          startFinding();
+        }
+      }}
+    >
       {toolbar}
+      {finding && (
+        <div className="nb-find">
+          <input
+            ref={findInput}
+            className="nb-find-input"
+            value={finding.find}
+            placeholder="Find in this notebook"
+            spellCheck={false}
+            onChange={(e) => setFinding({ ...finding, find: e.target.value, at: 0 })}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setFinding({ ...finding, at: finding.at + (e.shiftKey ? -1 : 1) });
+              if (e.key === "Escape") setFinding(null);
+            }}
+            autoFocus
+          />
+          <span className="nb-find-count">{finding.find ? (found.length ? `${(((finding.at % found.length) + found.length) % found.length) + 1} of ${found.length}` : "none") : ""}</span>
+          <button className="nb-tool is-icon" title="The one before (⇧⏎)" disabled={!found.length} onClick={() => setFinding({ ...finding, at: finding.at - 1 })}>
+            <Icon name="up" size={13} />
+          </button>
+          <button className="nb-tool is-icon" title="The next (⏎)" disabled={!found.length} onClick={() => setFinding({ ...finding, at: finding.at + 1 })}>
+            <Icon name="down" size={13} />
+          </button>
+          <button className={`nb-tool${finding.replacing ? " is-on" : ""}`} title="Replace" onClick={() => setFinding({ ...finding, replacing: !finding.replacing })}>
+            Replace
+          </button>
+          {finding.replacing && (
+            <>
+              <input className="nb-find-input" value={finding.replace} placeholder="with" spellCheck={false} onChange={(e) => setFinding({ ...finding, replace: e.target.value })} onKeyDown={(e) => e.key === "Escape" && setFinding(null)} />
+              <button className="nb-tool" disabled={!found.length} onClick={() => replaceFound(false)}>
+                This one
+              </button>
+              <button className="nb-tool" disabled={!found.length} onClick={() => replaceFound(true)}>
+                Every one
+              </button>
+            </>
+          )}
+          <button className="nb-tool is-icon" title="Close (Esc)" onClick={() => setFinding(null)}>
+            <Icon name="close" size={13} />
+          </button>
+        </div>
+      )}
       {error && (
         <div className="nb-error" onClick={() => setError(null)}>
           {error}
