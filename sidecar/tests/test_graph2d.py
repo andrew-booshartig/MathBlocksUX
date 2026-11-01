@@ -297,3 +297,11 @@ def test_a_list_counted_to_a_letter_waits_for_its_slider():
     assert [s.get("missing") for s in waiting] == [["n"], ["n"]]
     s = graph(r"L=\left[1...n\right]", r"\left(L,L^{2}\right)", vars={"n": 3})["series"][1]
     assert s["x"] == [1, 2, 3] and s["y"] == [1, 4, 9]
+
+
+@pytest.mark.parametrize("line,said", [
+    (r"2x+3y=6", r"y=-\frac{2}{3}x+2"), (r"y-2=3\left(x-1\right)", "y=3x-1"), (r"y=2\left(x-1\right)+3", "y=2x+1"), (r"y=2x+1", None),
+])
+def test_a_line_typed_another_way_says_its_slope_intercept_form(line, said):
+    facts = graph(line)["series"][0].get("facts") or []
+    assert (facts[0] if facts else None) == said

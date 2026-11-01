@@ -20,6 +20,7 @@ request: the derivative's graph, a tangent line, the area under it."""
 from __future__ import annotations
 
 import math
+import re
 
 import numpy as np
 import sympy
@@ -635,6 +636,9 @@ def op_graph2d(req: dict) -> dict:
             through = _through(expr) if s["kind"] == "function" and expr is not None else _through_vertical(s)
             if through:
                 s["through"] = through
+                said = _slope_intercept(text, p, expr) if s["kind"] == "function" else None
+                if said:
+                    s["facts"] = [said, *s.get("facts", [])]
             if expr is not None:
                 graphed.append((i, expr))
                 if s["kind"] == "function" or s.get("shape"):
@@ -874,6 +878,19 @@ def _through(expr):
         return [f"\\left(0,{sympy.latex(expr.subs(X, 0))}\\right)", f"\\left(1,{sympy.latex(expr.subs(X, 1))}\\right)"]
     except Exception:  # noqa: BLE001
         return None
+
+
+def _slope_intercept(text, p, expr):
+    """a straight line typed another way (2x + 3y = 6, y − 2 = 3(x − 1)) said
+    as y = mx + b — the form that shows its slope and where it crosses"""
+    if p.define or p.conditions:
+        return None
+    try:
+        tex, _ = geometry.line_tex((0, expr.subs(X, 0)), (1, expr.subs(X, 1)))
+    except Exception:  # noqa: BLE001
+        return None
+    plain = lambda t: re.sub(r"\\left|\\right|\\cdot|\s", "", t)  # noqa: E731
+    return None if plain(tex) == plain(text) else tex
 
 
 def _through_vertical(s):
