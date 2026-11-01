@@ -323,3 +323,8 @@ def test_a_sequence_from_the_term_before_needs_a_start_and_gives_its_formula():
     assert fib["y"][:7] == [1, 1, 2, 3, 5, 8, 13]
     alone = graph(r"a_{n}=a_{n-1}+3")["series"][0]
     assert alone["kind"] == "error" and "start" in alone["error"]
+
+
+def test_where_two_lines_cross_is_labelled_as_a_fraction_when_its_decimal_never_ends():
+    labels = [m["label"] for m in graph(r"y=2x+1", r"y=-x+3")["markers"]]
+    assert "(2/3, 7/3)" in labels and "(-0.5, 0)" in labels

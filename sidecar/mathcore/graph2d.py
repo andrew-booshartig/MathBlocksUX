@@ -28,7 +28,7 @@ from sympy import Symbol  # noqa: F401 — also a point's sliding letter
 
 from . import geometry, graphtex
 from .graphtex import DYDX, THETA, T, X, Y
-from .graphing import _label, real_roots
+from .graphing import _fmt, real_roots
 from .parsing import MathInputError, build_scope, parse
 
 R = Symbol("r")
@@ -889,6 +889,27 @@ def _through(expr):
         return [f"\\left(0,{sympy.latex(expr.subs(X, 0))}\\right)", f"\\left(1,{sympy.latex(expr.subs(X, 1))}\\right)"]
     except Exception:  # noqa: BLE001
         return None
+
+
+def _number(v) -> str:
+    """a number on the graph: whole, or a decimal that ends (0.125) — or, when
+    its decimal never would, the fraction it is (2/3, where two lines cross)"""
+    from fractions import Fraction
+
+    if v is None or not math.isfinite(v):
+        return _fmt(v)
+    f = Fraction(v).limit_denominator(64)
+    if abs(float(f) - v) > 1e-9:
+        return _fmt(v)
+    d = f.denominator
+    for p in (2, 5):
+        while d % p == 0:
+            d //= p
+    return str(f.numerator) if f.denominator == 1 else f"{float(f):g}" if d == 1 else f"{f.numerator}/{f.denominator}"
+
+
+def _label(x, y) -> str:
+    return f"({_number(x)}, {_number(y)})"
 
 
 # ------------------------------------------------------------------ sequences
