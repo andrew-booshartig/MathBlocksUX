@@ -1,7 +1,8 @@
 /** The Notebook tile: notebooks are Markdown files (~/Documents/MatrixLab/
  * Notebooks) shown as pages — the header from the front matter, text and
  * math, and cells that work themselves out (calc, graph, number line, work,
- * python). Click a block to edit its Markdown; click away and it's a page
+ * python — and code in any language a plugin adds: MATLAB, C++…, see
+ * languages.ts). Click a block to edit its Markdown; click away and it's a page
  * again. Every change is saved as you go, and a save from another editor
  * (Neovim, Obsidian…) shows up here by itself.
  *
@@ -23,7 +24,8 @@ import Preview from "./Preview";
 import { notebookHtml } from "./print";
 import { TEMPLATES, type Template, problemSection, userTemplate } from "./templates";
 import { fromIpynb, toIpynb, toScript } from "./jupyter";
-import { highlightPython, highlightWithError } from "./highlight";
+import { highlightCode, highlightPython, highlightWithError } from "./highlight";
+import { type Language, languageOf, useLanguages } from "./languages";
 import "./notebook.css";
 
 type Listing = { name: string; modified: number }[];
@@ -75,6 +77,12 @@ const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon: string
 ];
 
 const LANG_LABEL: Record<string, string> = { calc: "Calc", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
+/** the cells the app works out itself; any other fence is a language's (a plugin's) */
+const OWN_CELLS = new Set(["calc", "graph", "numberline", "work", "python"]);
+/** a cell's language, when a plugin's — not one of the app's own */
+const codeLanguage = (b: Block) => (b.kind === "cell" && !OWN_CELLS.has(b.lang) ? languageOf(b.lang) : undefined);
+/** where a cell's output is kept: Python's by its code, any other language's by both */
+const outKey = (lang: string, code: string) => (lang === "python" ? code : `${lang}\u0001${code}`);
 
 /** a textarea as tall as what's in it */
 function AutoText({
@@ -167,6 +175,8 @@ export default function NotebookTile({
   const [calc, setCalc] = useState<CalcLine[][] | null>(null);
   const [py, setPy] = useState<Record<string, PyOutput>>({});
   const [running, setRunning] = useState<Set<string>>(new Set());
+  const allLanguages = useLanguages();
+  const [codeMenu, setCodeMenu] = useState(false);
   /** the notebook's Python: off (not started), idle, or running a cell */
   const [kernel, setKernel] = useState<"off" | "idle" | "busy">("off");
   /** reactive: running a cell reruns the cells below that use what it made */
@@ -335,17 +345,17 @@ export default function NotebookTile({
   // a cell running: how long so far, counted up as it goes
   const started = useRef<Record<string, number>>({});
   const [, tick] = useState(0);
-  /** the cell running now, and what it's printed so far (asked for as it runs) */
-  const now = useRef<string | null>(null);
+  /** the cell running now (its output's key, and its language), and what it's printed so far (asked for as it runs) */
+  const now = useRef<{ key: string; lang: string } | null>(null);
   const [live, setLive] = useState<{ code: string; text: string } | null>(null);
   useEffect(() => {
     if (!running.size) return setLive(null);
     const t = setInterval(() => {
       tick((n) => n + 1);
-      const code = now.current;
-      if (name && code)
-        invoke<string>("kernel_output", { notebook: name })
-          .then((text) => now.current === code && setLive((l) => (l?.code === code && l.text === text ? l : { code, text })))
+      const at = now.current;
+      if (name && at)
+        invoke<string>(at.lang === "python" ? "kernel_output" : "lang_output", { notebook: name, lang: at.lang })
+          .then((text) => now.current === at && setLive((l) => (l?.code === at.key && l.text === text ? l : { code: at.key, text })))
           .catch(() => {});
     }, 250);
     return () => clearInterval(t);
@@ -367,7 +377,7 @@ export default function NotebookTile({
   const turn = useRef<Promise<unknown>>(Promise.resolve());
   const keepOutputs = (next: Record<string, PyOutput>) => {
     // only what's in the notebook now is kept
-    const all = codesOf(docRef.current);
+    const all = (docRef.current?.blocks ?? []).flatMap((b) => (b.kind === "cell" && (b.lang === "python" || codeLanguage(b)) ? [outKey(b.lang, b.code)] : []));
     const kept = Object.fromEntries(Object.entries(next).filter(([code]) => all.includes(code)));
     pyRef.current = kept;
     setPy(kept);
@@ -391,7 +401,7 @@ export default function NotebookTile({
         }
         setKernel("busy");
         started.current[code] = performance.now();
-        now.current = code;
+        now.current = { key: code, lang: "python" };
         let out: PyOutput;
         try {
           const calc = Object.fromEntries(Object.entries(calcVarsRef.current ?? {}).filter(([, v]) => typeof v === "number"));
@@ -415,6 +425,58 @@ export default function NotebookTile({
     turn.current = job.catch(() => {});
     return job;
   };
+  /** the programs found installed (name → where, or nothing), asked once */
+  const programs = useRef<Record<string, string | null>>({});
+  /** run a cell in a plugin's language — the first of its ways whose program is installed */
+  const runLanguage = (lang: Language, code: string) => {
+    if (!name) return Promise.resolve(false);
+    const key = outKey(lang.id, code);
+    setRunning((r) => new Set([...r, key]));
+    const job = turn.current.then(async () => {
+      started.current[key] = performance.now();
+      now.current = { key, lang: lang.id };
+      const ways = lang.run ?? [];
+      const unknown = ways.map((w) => w.needs).filter((p) => !(p in programs.current));
+      if (unknown.length) Object.assign(programs.current, await invoke<Record<string, string | null>>("lang_which", { programs: unknown }).catch(() => ({})));
+      const way = ways.find((w) => programs.current[w.needs]);
+      let out: PyOutput;
+      if (!way)
+        out = {
+          error: ways.length
+            ? `${lang.label} cells run with ${ways.map((w) => w.needs).join(" or ")} — none is installed.${lang.install ? `\n${lang.install}` : ""}`
+            : `${lang.label} cells don't run — its plugin doesn't say how`,
+        };
+      else
+        try {
+          const ran = await invoke<{ stdout: string; error: string | null; seconds: number; images: string[] }>("lang_run", {
+            notebook: name,
+            lang: lang.id,
+            spec: { once: way.once, session: way.session, init: way.init, done: way.done, timeout: way.timeout, extension: lang.extension },
+            code,
+          });
+          out = { stdout: ran.stdout, error: ran.error, seconds: ran.seconds, images: ran.images };
+        } catch (err) {
+          out = { error: errorText(err) };
+        }
+      now.current = null;
+      keepOutputs({ ...pyRef.current, [key]: out });
+      setRunning((r) => {
+        const next = new Set(r);
+        next.delete(key);
+        return next;
+      });
+      return !out.error;
+    });
+    turn.current = job.catch(() => {});
+    return job;
+  };
+  /** run a cell, whatever its language */
+  const runBlock = (b: Block, code: string) => {
+    const lang = codeLanguage(b);
+    if (lang) return runLanguage(lang, code);
+    if (b.kind === "cell" && b.lang === "python") return runCell(code);
+  };
+  const runnable = (b: Block) => b.kind === "cell" && (b.lang === "python" || !!codeLanguage(b)?.run?.length);
   /** the cells below that use what this one makes (and what those make, on down) */
   const dependents = async (code: string) => {
     const all = codesOf(docRef.current);
@@ -506,7 +568,7 @@ export default function NotebookTile({
     [blocks[at], blocks[to]] = [blocks[to], blocks[at]];
     commit({ ...doc, blocks });
   };
-  const addBlock = (kind: (typeof NEW_CELLS)[number]) => {
+  const addBlock = (kind: { lang: string; start: string }) => {
     if (!doc) return;
     const id = blockId();
     const block: Block = kind.lang === "text" || kind.lang === "math" ? { id, kind: "text", text: kind.start } : { id, kind: "cell", lang: kind.lang, info: "", code: kind.start };
@@ -571,30 +633,30 @@ export default function NotebookTile({
     if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
       e.preventDefault();
       finishEditing();
-      if (b.kind === "cell" && b.lang === "python" && e.key === "Enter") setTimeout(() => runCell(draft), 60);
-    } else if (e.key === "Enter" && e.shiftKey && b.kind === "cell" && b.lang === "python") {
+      if (runnable(b) && e.key === "Enter") setTimeout(() => runBlock(b, draft), 60);
+    } else if (e.key === "Enter" && e.shiftKey && runnable(b) && b.kind === "cell") {
       // ⇧⏎: run it, and on to the next cell (a new one at the end) — as in Jupyter
       e.preventDefault();
       finishEditing();
-      setTimeout(() => runCell(draft), 60);
+      setTimeout(() => runBlock(b, draft), 60);
       const blocks = doc!.blocks;
       const at = blocks.findIndex((x) => x.id === b.id);
-      const nextBlock = blocks.slice(at + 1).find((x) => x.kind === "cell" && x.lang === "python");
+      const nextBlock = blocks.slice(at + 1).find((x) => x.kind === "cell" && x.lang === b.lang);
       if (nextBlock) setTimeout(() => startEditing(nextBlock), 80);
       else {
         const id = blockId();
-        commit({ ...doc!, blocks: [...blocks.map((x) => (x.id === b.id ? { ...x, code: draft } : x)), { id, kind: "cell", lang: "python", info: "", code: "" }] });
+        commit({ ...doc!, blocks: [...blocks.map((x) => (x.id === b.id ? { ...x, code: draft } : x)), { id, kind: "cell", lang: b.lang, info: "", code: "" }] });
         setTimeout(() => (setEditing(id), setDraft("")), 80);
       }
-    } else if (e.key === "Enter" && e.altKey && b.kind === "cell" && b.lang === "python") {
+    } else if (e.key === "Enter" && e.altKey && runnable(b) && b.kind === "cell") {
       // ⌥⏎: run it, and a new cell right under it — as in Jupyter
       e.preventDefault();
       finishEditing();
-      setTimeout(() => runCell(draft), 60);
+      setTimeout(() => runBlock(b, draft), 60);
       const id = blockId();
       const blocks = doc!.blocks.map((x) => (x.id === b.id ? { ...x, code: draft } : x));
       const at = blocks.findIndex((x) => x.id === b.id);
-      commit({ ...doc!, blocks: [...blocks.slice(0, at + 1), { id, kind: "cell", lang: "python", info: "", code: "" }, ...blocks.slice(at + 1)] });
+      commit({ ...doc!, blocks: [...blocks.slice(0, at + 1), { id, kind: "cell", lang: b.lang, info: "", code: "" }, ...blocks.slice(at + 1)] });
       setTimeout(() => (setEditing(id), setDraft("")), 80);
     } else if (e.key === "Tab" && b.kind === "cell") {
       // code indents with spaces (Python cares)
@@ -1062,8 +1124,14 @@ export default function NotebookTile({
         </div>
       );
     }
-    const label = LANG_LABEL[b.lang] ?? b.lang;
+    const language = codeLanguage(b);
+    const label = language?.label ?? LANG_LABEL[b.lang] ?? b.lang;
+    // a cell that runs (Python, or a plugin's language): its output's key
+    const runKey = b.lang === "python" || language ? outKey(b.lang, b.code) : null;
     const result =
+      language ? (
+        <PythonOutput output={py[runKey!]} running={running.has(runKey!)} live={live?.code === runKey ? live.text : undefined} matlab={language.output === "matlab"} />
+      ) :
       b.lang === "calc" ? (
         <CalcCell lines={calc?.[calcAt]} />
       ) : b.lang === "graph" ? (
@@ -1075,12 +1143,29 @@ export default function NotebookTile({
       ) : b.lang === "python" ? (
         <PythonOutput output={py[b.code]} running={running.has(b.code)} live={live?.code === b.code ? live.text : undefined} />
       ) : null;
-    const showCode = isEditing || b.lang === "python" || !result;
+    const showCode = isEditing || b.lang === "python" || !!language || !result;
     // a work cell being edited: its fields, with the checked work under them
     return (
       <div key={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}`}>
         <div className="nb-cell-head">
           <span className="nb-cell-lang">{label}</span>
+          {b.lang !== "python" && b.kind === "cell" && !OWN_CELLS.has(b.lang) && !language && (
+            <span className="nb-cell-note" title="Add a plugin for this language to color and run it">no plugin runs {b.lang}</span>
+          )}
+          {language?.run?.length ? (
+            <>
+              <button className="nb-run" title={`Run this cell — ⌘⏎ (⇧⏎ runs it and goes on, ⌥⏎ runs it and adds a cell under it)`} onClick={() => runLanguage(language, b.code)}>
+                <Icon name="run" size={12} /> Run
+              </button>
+              {running.has(runKey!) && (
+                <button className="nb-run is-stop" title="Stop it" onClick={() => name && invoke("lang_stop", { notebook: name, lang: language.id }).catch(() => {})}>
+                  Stop
+                </button>
+              )}
+              {running.has(runKey!) && started.current[runKey!] !== undefined && <span className="nb-time is-running">{((performance.now() - started.current[runKey!]) / 1000).toFixed(1)} s</span>}
+              {py[runKey!]?.seconds !== undefined && !running.has(runKey!) && <span className="nb-time">{py[runKey!]!.seconds! < 1 ? `${Math.round(py[runKey!]!.seconds! * 1000)} ms` : `${py[runKey!]!.seconds!.toFixed(1)} s`}</span>}
+            </>
+          ) : null}
           {b.lang === "python" && (
             <>
               <span className="nb-count" title={py[b.code]?.count ? `Run ${py[b.code]!.count} in this Python` : "Not run yet"}>
@@ -1103,7 +1188,7 @@ export default function NotebookTile({
               {py[b.code]?.seconds !== undefined && !running.has(b.code) && <span className="nb-time">{py[b.code]!.seconds! < 1 ? `${Math.round(py[b.code]!.seconds! * 1000)} ms` : `${py[b.code]!.seconds!.toFixed(1)} s`}</span>}
             </>
           )}
-          {!isEditing && b.lang !== "python" && result && (
+          {!isEditing && b.lang !== "python" && !language && result && (
             <button className="nb-cell-edit" onClick={() => startEditing(b)}>
               edit
             </button>
@@ -1118,7 +1203,14 @@ export default function NotebookTile({
           (isEditing && b.lang === "work" ? (
             <WorkCellEditor code={draft} onChange={setDraft} onDone={finishEditing} />
           ) : isEditing ? (
-            <AutoText value={draft} onChange={setDraft} onBlur={() => (setComplete(null), finishEditing())} onKeyDown={(e) => editKeys(e, b)} mono highlight={b.lang === "python" ? highlightPython : undefined} />
+            <AutoText
+              value={draft}
+              onChange={setDraft}
+              onBlur={() => (setComplete(null), finishEditing())}
+              onKeyDown={(e) => editKeys(e, b)}
+              mono
+              highlight={b.lang === "python" ? highlightPython : language ? (c: string) => highlightCode(c, language.highlight) : undefined}
+            />
           ) : (
             b.lang === "python" ? (
               <pre
@@ -1126,6 +1218,8 @@ export default function NotebookTile({
                 onClick={() => startEditing(b)}
                 dangerouslySetInnerHTML={{ __html: highlightWithError(b.code || " ", Number(py[b.code]?.error?.match(/^line (\d+):/)?.[1]) || undefined) }}
               />
+            ) : language ? (
+              <pre className="nb-code" onClick={() => startEditing(b)} dangerouslySetInnerHTML={{ __html: highlightCode(b.code || " ", language.highlight) }} />
             ) : (
               <pre className="nb-code" onClick={() => startEditing(b)}>
                 {b.code || " "}
@@ -1149,7 +1243,7 @@ export default function NotebookTile({
           </div>
         )}
         {result && (
-          <div className="nb-cell-result" onClick={() => !isEditing && b.lang !== "python" && b.lang !== "graph" && startEditing(b)}>
+          <div className="nb-cell-result" onClick={() => !isEditing && b.lang !== "python" && !language && b.lang !== "graph" && startEditing(b)}>
             {result}
           </div>
         )}
@@ -1229,6 +1323,21 @@ export default function NotebookTile({
                 <Icon name={c.icon} size={13} /> {c.label}
               </button>
             ))}
+            <span className="nb-switch">
+              <button className={`nb-add-btn${codeMenu ? " is-on" : ""}`} title="Code in another language — MATLAB, C++, Rust… (plugins add more)" onClick={() => setCodeMenu(!codeMenu)}>
+                <Icon name="source" size={13} /> Code ▾
+              </button>
+              {codeMenu && (
+                <div className="nb-pop is-up" onMouseLeave={() => setCodeMenu(false)}>
+                  {allLanguages.map((l) => (
+                    <button key={l.id} className="nb-pop-item" title={l.plugin === "built-in" ? "Comes with the app" : `From the plugin ${l.plugin}`} onClick={() => (setCodeMenu(false), addBlock({ lang: l.id, start: l.starter ?? "" }))}>
+                      {l.label}
+                      {l.plugin !== "built-in" && <span className="nb-pop-dim">{l.plugin}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </span>
           </div>
           <div className="nb-foot">Saved as {name}.md · {todayLabel()}</div>
         </div>

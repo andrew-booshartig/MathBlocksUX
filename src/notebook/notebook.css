@@ -1437,3 +1437,25 @@
 .nb-time.is-running {
   color: var(--t-yellow, #e5c07b);
 }
+
+/* code in other languages: the menu of them (opens upward, from the foot of the page) */
+.nb-pop.is-up {
+  top: auto;
+  bottom: calc(100% + 6px);
+  min-width: 200px;
+}
+
+.nb-pop-dim {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--t-muted);
+}
+
+.nb-run.is-stop {
+  color: var(--t-red);
+}
+
+.nb-cell-note {
+  font-size: 11px;
+  color: var(--t-muted);
+}

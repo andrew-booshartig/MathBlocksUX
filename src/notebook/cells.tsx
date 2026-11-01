@@ -10,6 +10,7 @@
  *               look in braces: {hand yellow}), "note: …" under it
  *   python      code, run on ▶ (with every Python cell above it), its
  *               printout, plots and last line's answer under it */
+import { matlabOutput } from "./languages";
 import { useEffect, useMemo, useRef, useState } from "react";
 import GraphView, { DEFAULT_WINDOW, type PlotDiv, useAppGraphColors } from "../GraphView";
 import { mathRequest } from "../mathSidecar";
@@ -491,7 +492,27 @@ function Shown({ html, latex, value }: { value?: string | null; latex?: string |
   return value ? <pre className="nb-py-text is-value">{value}</pre> : null;
 }
 
-export function PythonOutput({ output, running, live }: { output?: PyOutput; running?: boolean; live?: string }) {
+/** what a cell printed: as it came — or, for MATLAB, x = 5 and matrices as math */
+function Printed({ text, matlab }: { text: string; matlab?: boolean }) {
+  if (!matlab) return <pre className="nb-py-text">{text}</pre>;
+  return (
+    <>
+      {matlabOutput(text).map((part, k) =>
+        "latex" in part ? (
+          <div key={k} className="nb-py-value">
+            <Tex math={part.latex} block />
+          </div>
+        ) : (
+          <pre key={k} className="nb-py-text">
+            {part.text}
+          </pre>
+        ),
+      )}
+    </>
+  );
+}
+
+export function PythonOutput({ output, running, live, matlab }: { output?: PyOutput; running?: boolean; live?: string; matlab?: boolean }) {
   // running: what it's printed so far, as it goes
   if (running)
     return live ? (
@@ -506,7 +527,7 @@ export function PythonOutput({ output, running, live }: { output?: PyOutput; run
   if (output.skipped) return <div className="nb-cell-wait">not run — a cell above it stopped with an error</div>;
   return (
     <div className="nb-py-out">
-      {output.stdout && <pre className="nb-py-text">{output.stdout}</pre>}
+      {output.stdout && <Printed text={output.stdout} matlab={matlab} />}
       {output.shown?.map((s, i) => <Shown key={i} {...s} />)}
       {output.images?.map((png, i) => <img key={i} className="nb-py-image" src={`data:image/png;base64,${png}`} alt="plot" />)}
       <Shown html={output.html} latex={output.latex} value={output.value} />

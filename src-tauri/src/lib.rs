@@ -1,4 +1,6 @@
 mod kernel;
+mod langs;
+mod plugins;
 mod notebook;
 mod sidecar;
 mod workspace;
@@ -22,6 +24,7 @@ pub fn run() {
         )
         .manage(SidecarState::spawn())
         .manage(kernel::Kernels::default())
+        .manage(langs::Sessions::default())
         .invoke_handler(tauri::generate_handler![
             sidecar::math_eval,
             workspace::save_workspace,
@@ -39,6 +42,14 @@ pub fn run() {
             kernel::kernel_complete,
             kernel::kernel_interrupt,
             kernel::kernel_restart,
+            langs::lang_run,
+            langs::lang_output,
+            langs::lang_stop,
+            langs::lang_restart,
+            langs::lang_which,
+            plugins::plugins_folder,
+            plugins::plugins_list,
+            plugins::plugins_create,
             workspace::save_document,
             workspace::print_document,
             workspace::theme_folder,
