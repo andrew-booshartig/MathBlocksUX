@@ -328,3 +328,17 @@ def test_a_sequence_from_the_term_before_needs_a_start_and_gives_its_formula():
 def test_where_two_lines_cross_is_labelled_as_a_fraction_when_its_decimal_never_ends():
     labels = [m["label"] for m in graph(r"y=2x+1", r"y=-x+3")["markers"]]
     assert "(2/3, 7/3)" in labels and "(-0.5, 0)" in labels
+
+
+@pytest.mark.parametrize("line,facts", [
+    (r"y=x^{2}-2x-3", [r"\text{vertex form }y=\left(x-1\right)^{2}-4", r"\text{factored }y=\left(x-3\right)\left(x+1\right)"]),
+    (r"y=\left(x-1\right)^{2}-4", [r"\text{standard }y=x^{2}-2x-3", r"\text{factored }y=\left(x-3\right)\left(x+1\right)"]),
+    (r"y=-x^{2}+x", [r"\text{vertex form }y=-\left(x-\frac{1}{2}\right)^{2}+\frac{1}{4}", r"\text{factored }y=-x\left(x-1\right)"]),
+    (r"y=2x^{2}+3", []),
+])
+def test_a_quadratic_says_its_other_forms(line, facts):
+    assert (graph(line)["series"][0].get("facts") or []) == facts
+
+
+def test_an_exponential_says_how_it_grows():
+    assert graph(r"y=100\left(0.8\right)^{x}")["series"][0]["facts"] == [r"\text{shrinks }\times\frac{4}{5}\text{ each step (−20\%)}", r"\text{starts at }100\text{ (x = 0)}"]

@@ -650,6 +650,8 @@ def op_graph2d(req: dict) -> dict:
                 said = _slope_intercept(text, p, expr) if s["kind"] == "function" else None
                 if said:
                     s["facts"] = [said, *s.get("facts", [])]
+            elif s["kind"] == "function" and expr is not None and not p.conditions:
+                s["facts"] = [*_other_forms(text, expr), *s.get("facts", [])]
             if expr is not None:
                 graphed.append((i, expr))
                 if s["kind"] == "function" or s.get("shape"):
@@ -990,6 +992,69 @@ def _sequence(text, lines, values, functions, consts, points, window):
             if back:
                 facts.append(f"{name}_{{n}}={sympy.latex(a1)}\\cdot{sympy.latex(r) if r.is_Integer and r > 0 else '(' + sympy.latex(r) + ')'}^{{n-{ks[0]}}}".replace("^{n-0}", "^{n}"))
     return {"kind": "points", "x": [float(k) for k in ks], "y": [float(terms[k]) for k in ks], "sequence": name, "facts": facts}
+
+
+def _plain_tex(t: str) -> str:
+    return re.sub(r"\\left|\\right|\\cdot|\s|\{|\}", "", t)
+
+
+def _signed(v) -> str:
+    """+ 3, − 3/4: a term after the first"""
+    return "" if v == 0 else f"+{sympy.latex(v)}" if v > 0 else f"-{sympy.latex(-v)}"
+
+
+def _shift(r) -> str:
+    """x − r, as written: x − 3, x + 1/2, or just x"""
+    return "x" if r == 0 else f"\\left(x{_signed(-r)}\\right)"
+
+
+def _lead(a) -> str:
+    return "" if a == 1 else "-" if a == -1 else sympy.latex(a)
+
+
+def _other_forms(text, expr) -> list[str]:
+    """a quadratic said the other ways it's written — standard (ax² + bx + c),
+    vertex (a(x − h)² + k), factored (a(x − r)(x − s)) — leaving out the one
+    typed; an exponential (a·bˣ), how much it grows or shrinks each step"""
+    out = []
+    try:
+        if expr.free_symbols != {X}:
+            return out
+        if expr.is_polynomial(X) and sympy.degree(expr, X) == 2:
+            a, b, c = (sympy.nsimplify(v) for v in sympy.Poly(expr, X).all_coeffs())
+            if not all(v.is_Rational for v in (a, b, c)):
+                return out
+            h, k = -b / (2 * a), c - b**2 / (4 * a)
+            middle = "" if b == 0 else "+x" if b == 1 else "-x" if b == -1 else f"{_signed(b)}x"
+            standard = f"y={_lead(a)}x^{{2}}{middle}{_signed(c)}"
+            vertex = f"y={_lead(a)}{_shift(h)}^{{2}}{_signed(k)}"
+            roots = sympy.roots(sympy.Poly(expr, X))
+            factored = None
+            if len(roots) == 2 and all(r.is_Rational for r in roots):
+                # the plain x first: −x(x − 1)
+                r1, r2 = sorted(roots, key=lambda r: (r != 0, -float(r)))
+                factored = f"y={_lead(a)}{_shift(r1)}{_shift(r2)}"
+            # each written once, and not the way it was typed (f(x) = … or y = …: what's after the =)
+            seen = {_plain_tex(text).split("=", 1)[-1]}
+            for label, form in (("standard", standard), ("vertex form", vertex), ("factored", factored)):
+                rhs = _plain_tex(form).split("=", 1)[-1] if form else None
+                if rhs and rhs not in seen:
+                    seen.add(rhs)
+                    out.append(f"\\text{{{label} }}{form}")
+            return out
+        # a·bˣ (+ k): grows or decays by a factor each step
+        base = [p for p in expr.atoms(sympy.Pow) if p.exp == X or (p.exp.is_polynomial(X) and sympy.degree(p.exp, X) == 1 and p.exp.coeff(X) == 1)]
+        if len(base) == 1 and base[0].base.is_number and base[0].base.is_positive and base[0].base != 1:
+            b = sympy.nsimplify(base[0].base)
+            if sympy.simplify(expr.subs(X, X + 1) - b * expr - (1 - b) * sympy.limit(expr, X, -sympy.oo if b > 1 else sympy.oo)) == 0:
+                pct = (b - 1) * 100
+                word = "grows" if b > 1 else "shrinks"
+                out.append(f"\\text{{{word} }}\\times{sympy.latex(b)}\\text{{ each step ({'+' if pct > 0 else '−'}{float(abs(pct)):g}\\%)}}")
+                y0 = sympy.simplify(expr.subs(X, 0))
+                out.append(f"\\text{{starts at }}{sympy.latex(y0)}\\text{{ (x = 0)}}")
+    except Exception:  # noqa: BLE001 — a fact we can't work out is just left out
+        return out
+    return out
 
 
 def _slope_intercept(text, p, expr):
