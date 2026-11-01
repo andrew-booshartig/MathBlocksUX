@@ -119,6 +119,25 @@ pub fn save_svg(app: AppHandle, name: String, svg: String) -> Result<String, Str
     Ok(path.to_string_lossy().into_owned())
 }
 
+/// Saves a text file — a notebook as Jupyter's .ipynb, or as a Python
+/// script — to ~/Downloads as `<name>.<extension>`. Never overwrites.
+#[tauri::command]
+pub fn save_text(app: AppHandle, name: String, extension: String, text: String) -> Result<String, String> {
+    let name = safe_filename(&name)?;
+    if !["ipynb", "py", "md", "csv", "txt"].contains(&extension.as_str()) {
+        return Err(format!("can't save a .{extension} file"));
+    }
+    let dir = app.path().download_dir().map_err(|e| e.to_string())?;
+    let mut path = dir.join(format!("{name}.{extension}"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("{name} ({n}).{extension}"));
+        n += 1;
+    }
+    fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
 /// Saves a document (a web page — e.g. a Show-your-work history) to
 /// ~/Downloads as `<name>.html`. Never overwrites: adds " (2)", " (3)", …
 #[tauri::command]

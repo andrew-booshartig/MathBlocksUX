@@ -1198,3 +1198,127 @@
   background: var(--t-bg3);
   box-shadow: 0 8px 22px color-mix(in srgb, var(--t-bg0) 45%, transparent);
 }
+
+/* ---- Python, Jupyter-style: the kernel's state, run numbers, variables */
+.nb-kernel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+  margin-right: 2px;
+  border-right: 1px solid var(--t-line);
+}
+
+.nb-kernel-dot {
+  width: 8px;
+  height: 8px;
+  margin: 0 4px;
+  border-radius: 50%;
+  background: var(--t-faint);
+}
+
+.nb-kernel-dot.is-idle {
+  background: var(--t-green, #98c379);
+}
+
+.nb-kernel-dot.is-busy {
+  background: var(--t-yellow, #e5c07b);
+  animation: nb-busy 0.9s ease-in-out infinite;
+}
+
+@keyframes nb-busy {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.nb-count {
+  font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--t-muted);
+  min-width: 28px;
+}
+
+.nb-time {
+  font-size: 11px;
+  color: var(--t-faint);
+}
+
+.nb-py-html {
+  width: 100%;
+  border: none;
+  background: transparent;
+}
+
+.nb-vars {
+  position: absolute;
+  z-index: 20;
+  top: 46px;
+  right: 10px;
+  width: min(340px, calc(100% - 20px));
+  max-height: 60%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--t-line);
+  border-radius: 12px;
+  background: var(--t-bg3);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--t-bg0, #000) 50%, transparent);
+}
+
+.nb-vars-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-muted);
+}
+
+.nb-vars-head .nb-tool {
+  margin-left: auto;
+}
+
+.nb-vars-dim {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.nb-vars-list {
+  overflow-y: auto;
+  padding: 0 6px 8px;
+}
+
+.nb-var {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+
+.nb-var:hover {
+  background: var(--t-bg4);
+}
+
+.nb-var-name {
+  font: 600 12.5px ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--t-text);
+}
+
+.nb-var-type {
+  font-size: 11px;
+  color: var(--t-blue, #61afef);
+}
+
+.nb-var-value {
+  overflow: hidden;
+  font: 12px ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--t-subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

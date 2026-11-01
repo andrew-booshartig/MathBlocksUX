@@ -1,3 +1,4 @@
+mod kernel;
 mod notebook;
 mod sidecar;
 mod workspace;
@@ -20,6 +21,7 @@ pub fn run() {
                 .build(),
         )
         .manage(SidecarState::spawn())
+        .manage(kernel::Kernels::default())
         .invoke_handler(tauri::generate_handler![
             sidecar::math_eval,
             workspace::save_workspace,
@@ -29,6 +31,12 @@ pub fn run() {
             workspace::export_workspace,
             workspace::save_image,
             workspace::save_svg,
+            workspace::save_text,
+            kernel::kernel_run,
+            kernel::kernel_vars,
+            kernel::kernel_names,
+            kernel::kernel_interrupt,
+            kernel::kernel_restart,
             workspace::save_document,
             workspace::print_document,
             workspace::theme_folder,

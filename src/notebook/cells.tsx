@@ -441,8 +441,34 @@ export interface PyOutput {
   images?: string[];
   value?: string | null;
   latex?: string | null;
+  /** a table (pandas) or anything else that shows itself as a web page */
+  html?: string | null;
   error?: string | null;
   skipped?: boolean;
+  /** its run number in the kernel, [3], and how long it took */
+  count?: number;
+  seconds?: number;
+  /** the names it made and used — what reruns when it changes */
+  defines?: string[];
+  uses?: string[];
+}
+
+/** a table (or anything shown as a page), in a frame of its own — no scripts run in it */
+function HtmlOutput({ html }: { html: string }) {
+  const [height, setHeight] = useState(60);
+  const doc = `<!doctype html><meta charset="utf-8"><style>body{margin:0;font:13px -apple-system,Inter,sans-serif;color:#ddd;background:transparent}table{border-collapse:collapse}th,td{padding:4px 10px;border-bottom:1px solid #3a3a48;text-align:right}th{color:#aaa;font-weight:600}tr:hover td{background:#ffffff0d}</style>${html}`;
+  return (
+    <iframe
+      className="nb-py-html"
+      sandbox="allow-same-origin"
+      srcDoc={doc}
+      style={{ height }}
+      onLoad={(e) => {
+        const body = e.currentTarget.contentDocument?.body;
+        if (body) setHeight(Math.min(600, body.scrollHeight + 8));
+      }}
+    />
+  );
 }
 
 export function PythonOutput({ output, running }: { output?: PyOutput; running?: boolean }) {
@@ -453,7 +479,8 @@ export function PythonOutput({ output, running }: { output?: PyOutput; running?:
     <div className="nb-py-out">
       {output.stdout && <pre className="nb-py-text">{output.stdout}</pre>}
       {output.images?.map((png, i) => <img key={i} className="nb-py-image" src={`data:image/png;base64,${png}`} alt="plot" />)}
-      {output.latex ? (
+      {output.html && <HtmlOutput html={output.html} />}
+      {output.html ? null : output.latex ? (
         <div className="nb-py-value">
           <Tex math={output.latex} block />
         </div>

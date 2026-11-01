@@ -12,7 +12,6 @@ import { type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../Icon";
-import { mathRequest } from "../mathSidecar";
 import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
 import { type CalcLine, CalcCell, GraphCell, NumberLineCell, type PyOutput, PythonOutput, WorkCell, WorkCellEditor, readWorkCell, runCalcCells } from "./cells";
@@ -23,6 +22,7 @@ import { renderMarkdown } from "./markdown";
 import Preview from "./Preview";
 import { notebookHtml } from "./print";
 import { TEMPLATES, type Template, problemSection, userTemplate } from "./templates";
+import { fromIpynb, toIpynb, toScript } from "./jupyter";
 import "./notebook.css";
 
 type Listing = { name: string; modified: number }[];
@@ -131,6 +131,19 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
   const [calc, setCalc] = useState<CalcLine[][] | null>(null);
   const [py, setPy] = useState<Record<string, PyOutput>>({});
   const [running, setRunning] = useState<Set<string>>(new Set());
+  /** the notebook's Python: off (not started), idle, or running a cell */
+  const [kernel, setKernel] = useState<"off" | "idle" | "busy">("off");
+  /** reactive: running a cell reruns the cells below that use what it made */
+  const [reactive, setReactive] = useState(() => {
+    try {
+      return localStorage.getItem("nb-reactive") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [varsOpen, setVarsOpen] = useState(false);
+  const [vars, setVars] = useState<{ name: string; type: string; shape: number[] | null; value: string }[]>([]);
+  const importer = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
 
   const lastModified = useRef(0);
@@ -269,26 +282,117 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     };
   }, [calcKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ---- python cells: ▶ runs a cell and every Python cell above it
+  // ---- python cells: a kernel of the notebook's own, kept running (like
+  // Jupyter's) — what one cell makes, the next can use. Runs wait their turn.
   const codesOf = (d: NotebookDoc | null) => (d?.blocks ?? []).filter((b) => b.kind === "cell" && b.lang === "python").map((b) => (b as { code: string }).code);
   const pythonCodes = codesOf(doc);
-  const runPython = async (through: number) => {
-    // the notebook as it is now (a cell just edited included)
+  const pyRef = useRef(py);
+  pyRef.current = py;
+  const turn = useRef<Promise<unknown>>(Promise.resolve());
+  const keepOutputs = (next: Record<string, PyOutput>) => {
+    // only what's in the notebook now is kept
     const all = codesOf(docRef.current);
-    const cells = all.slice(0, through + 1);
-    setRunning(new Set(cells));
+    const kept = Object.fromEntries(Object.entries(next).filter(([code]) => all.includes(code)));
+    pyRef.current = kept;
+    setPy(kept);
+    if (name) invoke("save_workspace", { name: `nbpy-${encodeURIComponent(name)}`, data: kept }).catch(() => {});
+  };
+  const refreshVars = async () => {
+    if (!name) return;
+    const r = await invoke<{ vars: typeof vars }>("kernel_vars", { notebook: name }).catch(() => null);
+    if (r) setVars(r.vars);
+  };
+  /** run cells one after another, stopping at the first error */
+  const runCells = (codes: string[]) => {
+    if (!name || !codes.length) return Promise.resolve(true);
+    setRunning((r) => new Set([...r, ...codes]));
+    const job = turn.current.then(async () => {
+      let ok = true;
+      for (const code of codes) {
+        if (!ok) {
+          keepOutputs({ ...pyRef.current, [code]: { skipped: true } });
+          continue;
+        }
+        setKernel("busy");
+        let out: PyOutput;
+        try {
+          out = await invoke<PyOutput>("kernel_run", { notebook: name, code });
+        } catch (err) {
+          out = { error: errorText(err) };
+        }
+        ok = !out.error;
+        keepOutputs({ ...pyRef.current, [code]: out });
+        setRunning((r) => {
+          const next = new Set(r);
+          next.delete(code);
+          return next;
+        });
+      }
+      setKernel("idle");
+      refreshVars();
+      return ok;
+    });
+    turn.current = job.catch(() => {});
+    return job;
+  };
+  /** the cells below that use what this one makes (and what those make, on down) */
+  const dependents = async (code: string) => {
+    const all = codesOf(docRef.current);
+    const info = await invoke<{ cells: { defines: string[]; uses: string[] }[] }>("kernel_names", { notebook: name, codes: all }).catch(() => null);
+    const at = all.indexOf(code);
+    if (!info || at < 0) return [];
+    const made = new Set(info.cells[at].defines);
+    const out: string[] = [];
+    for (let k = at + 1; k < all.length; k++)
+      if (info.cells[k].uses.some((n) => made.has(n))) {
+        out.push(all[k]);
+        info.cells[k].defines.forEach((n) => made.add(n));
+      }
+    return out;
+  };
+  /** run one cell — and, reactive, the cells that depend on it */
+  const runCell = async (code: string) => {
+    const ok = await runCells([code]);
+    if (ok && reactive) runCells(await dependents(code));
+  };
+  const runAll = () => runCells(codesOf(docRef.current));
+  const stopKernel = () => name && invoke("kernel_interrupt", { notebook: name }).catch(() => {});
+  const restartKernel = async (andRun = false) => {
+    if (!name) return;
+    await invoke("kernel_restart", { notebook: name }).catch(() => {});
+    setKernel("off");
+    setVars([]);
+    setNotice("Python restarted — every variable is gone");
+    if (andRun) runAll();
+  };
+  const toggleReactive = () => {
+    setReactive(!reactive);
     try {
-      const r = await mathRequest<{ cells: PyOutput[] }>({ op: "pyrun", cells });
-      const next = { ...py };
-      cells.forEach((code, i) => (next[code] = r.cells[i] ?? {}));
-      // only what's in the notebook now is kept
-      const kept = Object.fromEntries(Object.entries(next).filter(([code]) => all.includes(code)));
-      setPy(kept);
-      if (name) invoke("save_workspace", { name: `nbpy-${encodeURIComponent(name)}`, data: kept }).catch(() => {});
-    } catch (err) {
-      setPy({ ...py, [cells[cells.length - 1]]: { error: errorText(err) } });
+      localStorage.setItem("nb-reactive", reactive ? "0" : "1");
+    } catch {
+      // (only this browser's preference)
     }
-    setRunning(new Set());
+  };
+  /** the notebook as a Jupyter notebook, or as a Python script (# %% cells) */
+  const exportAs = async (kind: "ipynb" | "py") => {
+    if (!doc || !name) return;
+    const text = kind === "ipynb" ? toIpynb(doc, name, py) : toScript(doc, name);
+    const path = await invoke<string>("save_text", { name, extension: kind, text }).catch((err) => (setError(errorText(err)), null));
+    if (path) setNotice(`Saved to ${path.split("/").slice(-2).join("/")}`);
+    setMenu(false);
+  };
+  const importIpynb = async (file: File) => {
+    try {
+      const text = fromIpynb(await file.text());
+      const which = file.name.replace(/\.ipynb$/i, "").replace(/[/\\:]/g, "-");
+      await invoke("write_notebook", { name: which, text });
+      await refreshListing();
+      onOpenRef.current(which);
+      setNotice(`Opened ${file.name} — run its cells with Run all`);
+    } catch (err) {
+      setError(`Couldn't read that notebook: ${errorText(err)}`);
+    }
+    setMenu(false);
   };
 
   // ---- blocks
@@ -350,9 +454,20 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
       e.preventDefault();
       finishEditing();
-      if (b.kind === "cell" && b.lang === "python" && e.key === "Enter") {
-        const at = doc!.blocks.filter((x) => x.kind === "cell" && x.lang === "python").findIndex((x) => x.id === b.id);
-        setTimeout(() => runPython(at), 60);
+      if (b.kind === "cell" && b.lang === "python" && e.key === "Enter") setTimeout(() => runCell(draft), 60);
+    } else if (e.key === "Enter" && e.shiftKey && b.kind === "cell" && b.lang === "python") {
+      // ⇧⏎: run it, and on to the next cell (a new one at the end) — as in Jupyter
+      e.preventDefault();
+      finishEditing();
+      setTimeout(() => runCell(draft), 60);
+      const blocks = doc!.blocks;
+      const at = blocks.findIndex((x) => x.id === b.id);
+      const nextBlock = blocks.slice(at + 1).find((x) => x.kind === "cell" && x.lang === "python");
+      if (nextBlock) setTimeout(() => startEditing(nextBlock), 80);
+      else {
+        const id = blockId();
+        commit({ ...doc!, blocks: [...blocks.map((x) => (x.id === b.id ? { ...x, code: draft } : x)), { id, kind: "cell", lang: "python", info: "", code: "" }] });
+        setTimeout(() => (setEditing(id), setDraft("")), 80);
       }
     } else if (e.key === "Tab" && b.kind === "cell") {
       // code indents with spaces (Python cares)
@@ -568,9 +683,30 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
       {view !== "new" && doc && (
         <div className="nb-tools">
           {pythonCodes.length > 0 && (
-            <button className="nb-tool" title="Run every Python cell, top to bottom" onClick={() => runPython(pythonCodes.length - 1)}>
-              <Icon name="run" size={14} /> Run all
-            </button>
+            <span className="nb-kernel">
+              <span className={`nb-kernel-dot is-${kernel}`} title={kernel === "busy" ? "Python is running a cell" : kernel === "idle" ? "Python is ready — its variables kept between cells" : "Python starts on the first run"} />
+              <button className="nb-tool" title="Run every Python cell, top to bottom" onClick={runAll}>
+                <Icon name="run" size={14} /> Run all
+              </button>
+              {kernel === "busy" && (
+                <button className="nb-tool" title="Stop the cell running (its variables stay)" onClick={stopKernel}>
+                  ■ Stop
+                </button>
+              )}
+              <button className="nb-tool is-icon" title="Restart Python — every variable gone, a fresh start" onClick={() => restartKernel()}>
+                <Icon name="reset" size={14} />
+              </button>
+              <button
+                className={`nb-tool${reactive ? " is-on" : ""}`}
+                title={reactive ? "Reactive: running a cell reruns the cells below that use what it made — click to turn off" : "Reactive: run a cell, and the cells below that use what it made rerun by themselves"}
+                onClick={toggleReactive}
+              >
+                ⚡ Reactive
+              </button>
+              <button className={`nb-tool${varsOpen ? " is-on" : ""}`} title="Every variable Python has right now" onClick={() => (setVarsOpen(!varsOpen), refreshVars())}>
+                x= Variables
+              </button>
+            </span>
           )}
           <button className="nb-tool" title="Edit this notebook in Neovim, in your own terminal — every :w shows up here" onClick={neovim}>
             <Icon name="pen" size={14} /> Neovim
@@ -614,6 +750,28 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
                 <button className="nb-pop-item" onClick={copyLatex}>
                   <Icon name="copy" size={14} /> Copy as LaTeX
                 </button>
+                <div className="nb-pop-line" />
+                <button className="nb-pop-item" onClick={() => exportAs("ipynb")}>
+                  <Icon name="download" size={14} /> Save as a Jupyter notebook (.ipynb)
+                </button>
+                <button className="nb-pop-item" onClick={() => exportAs("py")}>
+                  <Icon name="download" size={14} /> Save as a Python script (.py)
+                </button>
+                <button className="nb-pop-item" onClick={() => importer.current?.click()}>
+                  <Icon name="folder" size={14} /> Open a Jupyter notebook…
+                </button>
+                <input ref={importer} type="file" accept=".ipynb" hidden onChange={(e) => e.target.files?.[0] && importIpynb(e.target.files[0])} />
+                {pythonCodes.length > 0 && (
+                  <>
+                    <button className="nb-pop-item" onClick={() => (keepOutputs({}), setMenu(false))}>
+                      <Icon name="close" size={14} /> Clear every output
+                    </button>
+                    <button className="nb-pop-item" onClick={() => (restartKernel(true), setMenu(false))}>
+                      <Icon name="reset" size={14} /> Restart and run all
+                    </button>
+                  </>
+                )}
+                <div className="nb-pop-line" />
                 {prompt ? (
                   <div className="nb-prompt">
                     <input
@@ -726,7 +884,7 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
     </div>
   );
 
-  const blockView = (b: Block, calcAt: number, pyAt: number): ReactNode => {
+  const blockView = (b: Block, calcAt: number): ReactNode => {
     const isEditing = editing === b.id;
     const tools = (
       <span className="nb-block-tools">
@@ -773,9 +931,15 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
         <div className="nb-cell-head">
           <span className="nb-cell-lang">{label}</span>
           {b.lang === "python" && (
-            <button className="nb-run" title="Run this cell (and every Python cell above it) — ⌘⏎" onClick={() => runPython(pyAt)}>
-              <Icon name="run" size={12} /> Run
-            </button>
+            <>
+              <span className="nb-count" title={py[b.code]?.count ? `Run ${py[b.code]!.count} in this Python` : "Not run yet"}>
+                [{running.has(b.code) ? "*" : (py[b.code]?.count ?? " ")}]
+              </span>
+              <button className="nb-run" title="Run this cell — ⌘⏎ (⇧⏎ runs it and goes on to the next)" onClick={() => runCell(b.code)}>
+                <Icon name="run" size={12} /> Run
+              </button>
+              {py[b.code]?.seconds !== undefined && !running.has(b.code) && <span className="nb-time">{py[b.code]!.seconds! < 1 ? `${Math.round(py[b.code]!.seconds! * 1000)} ms` : `${py[b.code]!.seconds!.toFixed(1)} s`}</span>}
+            </>
           )}
           {!isEditing && b.lang !== "python" && result && (
             <button className="nb-cell-edit" onClick={() => startEditing(b)}>
@@ -809,7 +973,6 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
   };
 
   let calcAt = 0;
-  let pyAt = 0;
   return (
     <div className="nb">
       {toolbar}
@@ -833,6 +996,28 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
         </div>
       )}
       {preview && <Preview html={preview} onClose={() => setPreview(null)} onPrint={print} />}
+      {varsOpen && view !== "new" && (
+        <div className="nb-vars">
+          <div className="nb-vars-head">
+            Variables <span className="nb-vars-dim">{kernel === "off" ? "— run a cell to start Python" : `${vars.length}`}</span>
+            <button className="nb-tool is-icon" title="Close" onClick={() => setVarsOpen(false)}>
+              <Icon name="close" size={13} />
+            </button>
+          </div>
+          <div className="nb-vars-list">
+            {vars.map((v) => (
+              <div key={v.name} className="nb-var" title={v.value}>
+                <span className="nb-var-name">{v.name}</span>
+                <span className="nb-var-type">
+                  {v.type}
+                  {v.shape ? ` ${v.shape.join("×")}` : ""}
+                </span>
+                <span className="nb-var-value">{v.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {view === "new" || !doc ? (
         gallery
       ) : view === "source" ? (
@@ -850,7 +1035,7 @@ export default function NotebookTile({ name, onOpen, work }: { name?: string; on
       ) : (
         <div className="nb-page" ref={page}>
           {header}
-          {doc.blocks.map((b) => blockView(b, b.kind === "cell" && b.lang === "calc" ? calcAt++ : -1, b.kind === "cell" && b.lang === "python" ? pyAt++ : -1))}
+          {doc.blocks.map((b) => blockView(b, b.kind === "cell" && b.lang === "calc" ? calcAt++ : -1))}
           {!doc.blocks.length && <div className="nb-empty">An empty page — add something below, or open the file in another editor.</div>}
           <div className="nb-add">
             {NEW_CELLS.map((c) => (
