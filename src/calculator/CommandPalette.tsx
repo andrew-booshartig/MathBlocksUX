@@ -127,6 +127,7 @@ const SHEET: { where: string; keys: [string, string][] }[] = [
       ["5<30  4,3", "Drawing: a length at an angle · a rectangle's size"],
       ["⇧ drag", "Drawing: angles in 15° steps"],
       ["Esc", "Let go of what's half built · put the tool down"],
+      ["← → ↑ ↓", "The picked point: a grid line over (⇧ five, ⌥ a tenth)"],
       ["↑ ↓", "In the list: the row above or below"],
     ],
   },

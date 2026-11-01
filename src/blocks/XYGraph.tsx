@@ -465,10 +465,15 @@ export default function XYGraph({
   // keys, with the pointer over the graph and not typing: a letter picks a
   // tool (S segment, L line…), Esc puts it down — back to the hand
   const over = useRef(false);
+  /** the arrow keys move the picked point a grid line (set each render: it needs what's current) */
+  const nudge = useRef<(dx: number, dy: number, fine: boolean, far: boolean) => boolean>(() => false);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement)?.closest?.("input, textarea, select, math-field, [contenteditable]");
-      if (typing || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (typing || e.defaultPrevented || e.metaKey || e.ctrlKey) return;
+      const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
+      if (arrow && over.current && nudge.current(arrow[0], arrow[1], e.altKey, e.shiftKey)) return e.preventDefault();
+      if (e.altKey) return;
       if (e.key === "Escape") return tool !== "pan" && setTool("pan");
       const pick = over.current && !e.shiftKey ? TOOL_KEYS[e.key.toLowerCase()] : undefined;
       if (pick) {
@@ -893,6 +898,21 @@ export default function XYGraph({
     const trail = trails.current[l.id];
     return trail?.length ? [{ x: trail.map((p) => p[0]), y: trail.map((p) => p[1]), type: "scatter", mode: "lines", line: { color: faint(colorOf(i), 0.55), width: 2 }, hoverinfo: "skip" }] : [];
   });
+  /** a point moved to (x, y): a free one rewritten there, one on a shape slid along it (its letter follows) */
+  const movePoint = (key: string, x: number, y: number) => {
+    const s = seriesOf(lines.findIndex((l) => l.id === key)).find((q) => q.glide && q.path);
+    if (s?.glide && s.path) return update({ letters: { ...(plot.letters ?? {}), [s.glide]: tAt(s, x, y) } });
+    setLines(lines.map((l) => (l.id === key ? { ...l, latex: movedTo(l.latex, x, y) } : l)));
+  };
+  nudge.current = (dx, dy, fine, far) => {
+    const p = targets.find((t) => t.key === selected && t.movable);
+    if (!p) return false;
+    const w = plot.window ?? DEFAULT_WINDOW;
+    const step = (settings.xStep ?? niceStep((w.xmax - w.xmin) / 20)) * (fine ? 0.1 : far ? 5 : 1);
+    const at = (v: number) => Math.round(v * 1e6) / 1e6;
+    movePoint(p.key, at(p.x + dx * step), at(p.y + dy * step));
+    return true;
+  };
   /** a point dragged to x, y — its name kept */
   const movedTo = (latex: string, x: number, y: number) => {
     const name = nameOf(latex);
@@ -1447,7 +1467,16 @@ export default function XYGraph({
               {settingsOpen && <GraphSettings settings={settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />}
             </span>
           </div>
-          <div className="xy-plot">
+          <div
+            className="xy-plot"
+            onPointerDownCapture={(e) => {
+              // a click on the graph is done with typing in the list (the graph's
+              // drag layer keeps the browser from moving focus itself) — so keys
+              // now go to the graph: tool letters, arrows for the picked point
+              const typing = document.activeElement as HTMLElement | null;
+              if (typing?.closest(".xy-side") && !(e.target as HTMLElement).closest("input, textarea, math-field")) typing.blur();
+            }}
+          >
             <GraphView
               exprs={[...lines.map(exprOf), ...tableExprs]}
               latex
@@ -1501,12 +1530,7 @@ export default function XYGraph({
                   onPoint={(x, y) => addLine(pointLatex(freshName(takenNames()), fracTex(x), fracTex(y)))}
                   targets={targets}
                   shapes={shapes}
-                  onMovePoint={(key, x, y) => {
-                // a point on a shape slides along it: its letter follows the drag
-                const s = seriesOf(lines.findIndex((l) => l.id === key)).find((q) => q.glide && q.path);
-                if (s?.glide && s.path) return update({ letters: { ...(plot.letters ?? {}), [s.glide]: tAt(s, x, y) } });
-                setLines(lines.map((l) => (l.id === key ? { ...l, latex: movedTo(l.latex, x, y) } : l)));
-              }}
+                  onMovePoint={movePoint}
                   onConstruct={construct}
                 />
               )}
