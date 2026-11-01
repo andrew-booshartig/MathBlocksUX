@@ -15,6 +15,21 @@ dotfiles.
 The app's own languages (MATLAB, C++, Rust…) are made the same way. They're
 in `src/notebook/languages.ts`, and copying one is the quickest start.
 
+## Your init.js
+
+`~/Documents/MatrixLab/init.js` is your own config, the way Neovim has `init.lua`. It runs after the plugins, with the same `matrixlab`.
+
+- ⌘K → **Edit your init.js** makes one (with examples, commented out) and opens it in Neovim.
+- The app watches it and the plugins folder, so every `:w` reloads them.
+
+```js
+export function activate(matrixlab) {
+  matrixlab.vim.map("jk", "<Esc>", "insert");          // vim in code cells
+  matrixlab.keys.map("Mod+Shift+J", "tile:notebook");   // a key to any ⌘K command
+  matrixlab.commands.register({ id: "me.today", title: "What's today?", run: () => matrixlab.notify(new Date().toDateString()) });
+}
+```
+
 ## What a plugin can add
 
 | it adds | where | how |
@@ -115,6 +130,10 @@ export function activate(matrixlab) {
 | `cells.register({ id, label, starter, render })` | a kind of cell |
 | `commands.register({ id, title, run })` | a command in ⌘K |
 | `tiles.register({ id, title, blurb, mount })` | a tile in the dock (`mount(element)` fills it) |
+| `commands.run(id)` | run any command: the app's (⌘K's: `tile:graph`, `vim`, `extensions`…) or a plugin's |
+| `keys.map(keys, commandIdOrFunction)` | a key of your own: `"Mod+Shift+G"` (Mod is ⌘), `"Ctrl+Alt+P"` |
+| `vim.map(lhs, rhs, mode)`, `vim.noremap`, `vim.defineEx(name, prefix, fn)` | vim mappings and `:commands` in code cells; `vim.raw` is the whole of @replit/codemirror-vim's Vim |
+| `storage.get(key, fallback)`, `storage.set(key, value)` | this plugin's own settings, kept on this computer |
 | `math(request)` | the math engine (the same requests the app makes) |
 | `notify(text)` | a few words at the top of the window |
 | `version` | 1 |

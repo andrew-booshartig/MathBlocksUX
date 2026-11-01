@@ -18,7 +18,7 @@ import { makeUndo, typingInField } from "./undo";
 import Icon from "../Icon";
 import mark from "../assets/mx-mark.png";
 import type { Equation } from "../equations";
-import { SAMPLE_PLUGIN, loadPlugins, usePlugins } from "../plugins";
+import { INIT_TEMPLATE, SAMPLE_PLUGIN, loadPlugins, runKeymap, setAppCommands, usePlugins } from "../plugins";
 import { setVimKeys, useVimKeys } from "../notebook/editorSettings";
 import Extensions from "./Extensions";
 import { tilesOn } from "./CalcDock";
@@ -101,6 +101,21 @@ export default function CalculatorApp() {
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => {
     loadPlugins();
+    // keys plugins (and init.js) mapped
+    const onKey = (e: KeyboardEvent) => runKeymap(e);
+    document.addEventListener("keydown", onKey, true);
+    // a plugin (or init.js) saved — in Neovim, anywhere — loaded again, by itself
+    let stamp = 0;
+    const watch = window.setInterval(async () => {
+      if (document.hidden) return;
+      const now = await invoke<number>("plugins_stamp").catch(() => 0);
+      if (stamp && now && now !== stamp) {
+        const loaded = await loadPlugins();
+        const broken = loaded.find((p) => p.error);
+        window.dispatchEvent(new CustomEvent("matrixlab-notice", { detail: broken ? `${broken.name} didn't load: ${broken.error}` : "Plugins reloaded" }));
+      }
+      if (now) stamp = now;
+    }, 1500);
     let t = 0;
     const show = (e: Event) => {
       setNotice((e as CustomEvent<string>).detail);
@@ -108,7 +123,11 @@ export default function CalculatorApp() {
       t = window.setTimeout(() => setNotice(null), 3500);
     };
     window.addEventListener("matrixlab-notice", show);
-    return () => window.removeEventListener("matrixlab-notice", show);
+    return () => {
+      window.removeEventListener("matrixlab-notice", show);
+      document.removeEventListener("keydown", onKey, true);
+      clearInterval(watch);
+    };
   }, []);
   const say = (text: string) => window.dispatchEvent(new CustomEvent("matrixlab-notice", { detail: text }));
   /** a plugin started from the sample, in its own folder, shown in Finder */
@@ -308,7 +327,15 @@ export default function CalculatorApp() {
     ...themes.map((t) => ({ id: `theme:${t.name}`, label: `${t.name} theme`, group: "Theme", icon: "eye", run: () => setThemeName(t.name) })),
     { id: "sheet", label: "Keyboard shortcuts", group: "Help", icon: "text", keys: "⌘?", run: () => setSheet(true) },
     ...plugins.commands.map((c) => ({ id: `plugin:${c.id}`, label: c.title, group: `Plugin · ${c.plugin}`, icon: "source", run: () => void c.run() })),
-    { id: "plugins:reload", label: "Reload plugins", group: "Plugins", icon: "reset", run: reloadPlugins },
+    { id: "plugins:reload", label: "Reload plugins (and your init.js)", group: "Plugins", icon: "reset", run: reloadPlugins },
+    {
+      id: "init:edit",
+      label: "Edit your init.js — your own config, like Neovim's init.lua",
+      group: "Plugins",
+      icon: "source",
+      run: () => invoke<string>("init_edit", { template: INIT_TEMPLATE }).then(() => say("init.js is open in Neovim — every :w reloads it here")).catch((err) => say(String(err))),
+    },
+    ...plugins.loaded.filter((p) => p.folder !== "init").map((p) => ({ id: `plugins:edit:${p.folder}`, label: `Edit the plugin ${p.name} in Neovim`, group: "Plugins", icon: "pen", run: () => invoke("plugin_edit", { folder: p.folder }).catch((err) => say(String(err))) })),
     { id: "vim", label: vimKeys ? "Vim keys off (code and notebook text)" : "Vim keys on (code and notebook text)", group: "Editing", icon: "source", run: () => (setVimKeys(!vimKeys), say(vimKeys ? "Vim keys off" : "Vim keys on — Space r runs a cell, :w is done")) },
     {
       id: "plugins:folder",
@@ -326,6 +353,8 @@ export default function CalculatorApp() {
     },
     ...plugins.loaded.map((p) => ({ id: `plugins:about:${p.folder}`, label: `${p.name}${p.error ? ` — didn't load: ${p.error}` : p.adds.length ? ` — ${p.adds.join(", ")}` : ""}`, group: "Plugin installed", icon: "source", run: async () => revealItemInDir(`${await invoke<string>("plugins_folder")}/${p.folder}`).catch(() => {}) })),
   ];
+
+  setAppCommands(() => commands());
 
   const openFolder = async () => {
     try {

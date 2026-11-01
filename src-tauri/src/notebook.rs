@@ -134,15 +134,19 @@ pub fn trash_notebook(app: AppHandle, name: String) -> Result<(), String> {
 /// every :w shows up in the Notebook tile.
 #[tauri::command]
 pub fn open_in_neovim(app: AppHandle, name: String) -> Result<(), String> {
-    use std::process::Command;
     let path = notebooks_dir(&app)?.join(format!("{}.md", safe_name(&name)?));
+    nvim_in_terminal(&path.to_string_lossy())
+}
+
+/// A file (or folder) opened in Neovim, in the user's own terminal (Ghostty, or Terminal).
+pub(crate) fn nvim_in_terminal(path: &str) -> Result<(), String> {
+    use std::process::Command;
     let nvim = ["/opt/homebrew/bin/nvim", "/usr/local/bin/nvim", "/usr/bin/nvim"]
         .into_iter()
         .find(|p| std::path::Path::new(p).exists())
         .ok_or("Neovim isn't installed (brew install neovim)")?;
-    let path = path.to_string_lossy().into_owned();
     if std::path::Path::new("/Applications/Ghostty.app").exists() {
-        Command::new("open").args(["-na", "Ghostty.app", "--args", "-e", nvim, &path]).spawn().map_err(|e| e.to_string())?;
+        Command::new("open").args(["-na", "Ghostty.app", "--args", "-e", nvim, path]).spawn().map_err(|e| e.to_string())?;
         return Ok(());
     }
     // Terminal: the path quoted for the shell, then for AppleScript

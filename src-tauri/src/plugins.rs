@@ -11,6 +11,52 @@ use std::path::PathBuf;
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
 
+/// ~/Documents/MatrixLab/init.js: the user's own config, run like a plugin (Neovim's init.lua)
+fn init_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().document_dir().map_err(|e| e.to_string())?.join("MatrixLab");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("init.js"))
+}
+
+/// init.js, when there is one.
+#[tauri::command]
+pub fn init_read(app: AppHandle) -> Result<Option<String>, String> {
+    Ok(fs::read_to_string(init_path(&app)?).ok())
+}
+
+/// init.js opened in Neovim (made from `template` first, when there isn't one).
+#[tauri::command]
+pub fn init_edit(app: AppHandle, template: String) -> Result<String, String> {
+    let path = init_path(&app)?;
+    if !path.exists() {
+        fs::write(&path, template).map_err(|e| e.to_string())?;
+    }
+    let shown = path.to_string_lossy().into_owned();
+    crate::notebook::nvim_in_terminal(&shown)?;
+    Ok(shown)
+}
+
+/// A plugin's folder opened in Neovim.
+#[tauri::command]
+pub fn plugin_edit(app: AppHandle, folder: String) -> Result<(), String> {
+    let name: String = folder.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
+    crate::notebook::nvim_in_terminal(&plugins_dir(&app)?.join(name).to_string_lossy())
+}
+
+/// When the plugins (or init.js) last changed — the newest file's time — so
+/// the app can reload them as soon as one is saved.
+#[tauri::command]
+pub fn plugins_stamp(app: AppHandle) -> Result<u64, String> {
+    fn newest(path: &std::path::Path, depth: u8) -> u64 {
+        let own = fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64).unwrap_or(0);
+        if depth == 0 || !path.is_dir() {
+            return own;
+        }
+        fs::read_dir(path).map(|it| it.flatten().map(|e| newest(&e.path(), depth - 1)).fold(own, u64::max)).unwrap_or(own)
+    }
+    Ok(newest(&plugins_dir(&app)?, 3).max(newest(&init_path(&app)?, 0)))
+}
+
 fn plugins_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().document_dir().map_err(|e| e.to_string())?.join("MatrixLab").join("Plugins");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

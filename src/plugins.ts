@@ -7,11 +7,17 @@
  * - commands, in ⌘K
  * - tiles: a panel of its own in the dock, beside Calculate, Work, Graph…
  *
- * and its script gets the math engine (matrixlab.math) to work with. The
- * app's own languages come in the same way (notebook/languages.ts). See
- * docs/PLUGINS.md for how to write one. */
+ * and its script gets the math engine (matrixlab.math) to work with, keys
+ * of its own (matrixlab.keys.map), vim mappings (matrixlab.vim) and a place
+ * to keep its settings (matrixlab.storage). The app's own languages come in
+ * the same way (notebook/languages.ts).
+ *
+ * ~/Documents/MatrixLab/init.js is the user's own config, as Neovim's
+ * init.lua is: run last, with the same matrixlab, after the plugins. See
+ * docs/PLUGINS.md. */
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Vim } from "@replit/codemirror-vim";
 import { type Language, forgetPluginLanguages, registerLanguage } from "./notebook/languages";
 import { partsNow, pluginOn, setParts } from "./parts";
 
@@ -54,6 +60,42 @@ export interface LoadedPlugin {
   error?: string;
   /** turned off: not loaded */
   off?: boolean;
+}
+
+/** a key (or chord) a plugin or init.js gave something to do: "Mod+Shift+G" */
+export interface KeyMap {
+  keys: string;
+  run: () => void;
+  plugin: string;
+}
+
+/** the app's own commands (⌘K's), for a plugin to run by id — the app hands them over */
+let appCommands: () => { id: string; run: () => void }[] = () => [];
+export function setAppCommands(list: () => { id: string; run: () => void }[]) {
+  appCommands = list;
+}
+
+let keymaps: KeyMap[] = [];
+/** the vim mappings plugins made (left side, mode), taken back before they load again */
+let vimMaps: [string, string | undefined][] = [];
+
+/** a key pressed: a plugin's (or init.js's) keymap, run — true when one was */
+export function runKeymap(e: KeyboardEvent): boolean {
+  const typing = (e.target as HTMLElement | null)?.closest?.("input, textarea, math-field, [contenteditable], .cm-editor");
+  for (const k of keymaps) {
+    const parts = k.keys.toLowerCase().split("+");
+    const key = parts.pop()!;
+    const want = { mod: parts.includes("mod") || parts.includes("cmd") || parts.includes("meta"), ctrl: parts.includes("ctrl"), alt: parts.includes("alt") || parts.includes("option"), shift: parts.includes("shift") };
+    if (e.metaKey !== want.mod || e.ctrlKey !== want.ctrl || e.altKey !== want.alt || e.shiftKey !== want.shift) continue;
+    const pressed = e.key.toLowerCase();
+    if (pressed !== key && e.code.toLowerCase() !== `key${key}` && e.code.toLowerCase() !== `digit${key}`) continue;
+    // a plain key while typing is the typing's
+    if (typing && !want.mod && !want.ctrl && !want.alt) continue;
+    e.preventDefault();
+    k.run();
+    return true;
+  }
+  return false;
 }
 
 /** ready: the plugins folder has been read (until then, a saved layout's plugin tile is left be) */
@@ -110,9 +152,53 @@ function apiFor(plugin: LoadedPlugin) {
       },
     },
     commands: {
+      /** run any command by id: the app's (⌘K's — "tile:graph", "vim"…) or a plugin's */
+      run: (id: string) => runCommand(id),
       register(command: Omit<PluginCommand, "plugin">) {
         changed({ commands: [...state.commands.filter((c) => c.id !== command.id), { ...command, plugin: plugin.folder }] });
         plugin.adds.push(`command ${command.title}`);
+      },
+    },
+    keys: {
+      /** a key to a command (⌘K's id, or a plugin's) or a function: keys.map("Mod+Shift+G", "tile:graph") */
+      map(keys: string, what: string | (() => void)) {
+        const run = typeof what === "function" ? what : () => runCommand(what);
+        keymaps = [...keymaps.filter((k) => k.keys.toLowerCase() !== keys.toLowerCase()), { keys, run, plugin: plugin.folder }];
+        plugin.adds.push(`key ${keys}`);
+      },
+    },
+    /** vim in code cells, as Neovim's: vim.map("jk", "<Esc>", "insert"); vim.raw is @replit/codemirror-vim's Vim */
+    vim: {
+      map(lhs: string, rhs: string, mode?: string) {
+        Vim.map(lhs, rhs, mode as string);
+        vimMaps.push([lhs, mode]);
+        plugin.adds.push(`vim ${lhs}`);
+      },
+      noremap(lhs: string, rhs: string, mode?: string) {
+        Vim.noremap(lhs, rhs, mode as string);
+        vimMaps.push([lhs, mode]);
+        plugin.adds.push(`vim ${lhs}`);
+      },
+      /** an :ex command of your own: defineEx("today", "to", (cm) => …) */
+      defineEx: (name: string, prefix: string, run: (cm: unknown) => void) => Vim.defineEx(name, prefix, run),
+      raw: Vim,
+    },
+    /** this plugin's own settings, kept on this computer */
+    storage: {
+      get<T>(key: string, fallback?: T): T | undefined {
+        try {
+          const v = localStorage.getItem(`mlx-plugin:${plugin.folder}:${key}`);
+          return v === null ? fallback : (JSON.parse(v) as T);
+        } catch {
+          return fallback;
+        }
+      },
+      set(key: string, value: unknown) {
+        try {
+          localStorage.setItem(`mlx-plugin:${plugin.folder}:${key}`, JSON.stringify(value));
+        } catch {
+          /* kept for this session only */
+        }
       },
     },
     /** the math engine: matrixlab.math({ op: "smart", latex: "x^2 = 4" }) */
@@ -122,9 +208,26 @@ function apiFor(plugin: LoadedPlugin) {
   };
 }
 
-/** (re)load every plugin in the folder: what each adds, and what went wrong */
+function runCommand(id: string) {
+  const own = appCommands().find((c) => c.id === id);
+  if (own) return own.run();
+  const theirs = state.commands.find((c) => c.id === id);
+  if (theirs) return void theirs.run();
+  throw new Error(`no command ${id} — ⌘K lists them`);
+}
+
+/** (re)load every plugin in the folder, then init.js: what each adds, and what went wrong */
 export async function loadPlugins(): Promise<LoadedPlugin[]> {
   forgetPluginLanguages();
+  keymaps = [];
+  // vim mappings made by plugins (and init.js) are made again as they load
+  for (const [lhs, mode] of vimMaps)
+    try {
+      Vim.unmap(lhs, mode as string);
+    } catch {
+      /* gone already */
+    }
+  vimMaps = [];
   changed({ cells: [], commands: [], tiles: [], loaded: [] });
   let found: { folder: string; manifest: string; main: string | null }[] = [];
   try {
@@ -132,6 +235,9 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
   } catch (err) {
     console.error("couldn't read the plugins folder", err);
   }
+  // the user's own init.js, last — as if it were a plugin with nothing but a script
+  const init = await invoke<string | null>("init_read").catch(() => null);
+  if (init) found = [...found, { folder: "init", manifest: JSON.stringify({ displayName: "Your init.js", description: "~/Documents/MatrixLab/init.js — your own config" }), main: init }];
   const loaded: LoadedPlugin[] = [];
   for (const f of found) {
     const plugin: LoadedPlugin = { folder: f.folder, name: f.folder, adds: [] };
@@ -236,3 +342,30 @@ export function activate(matrixlab) {
 `,
   ],
 ];
+
+/** a new init.js: what it can do, commented out */
+export const INIT_TEMPLATE = `// Your MatrixLab config, the way Neovim has init.lua. It runs when the app
+// starts, after the plugins — and again whenever you save it. Everything a
+// plugin can do, it can do (docs/PLUGINS.md in the app's code).
+export function activate(matrixlab) {
+  // vim in code cells: jk leaves insert mode
+  // matrixlab.vim.map("jk", "<Esc>", "insert");
+
+  // a key for any command (⌘K's): ⌘⇧G goes to the Graph tile
+  // matrixlab.keys.map("Mod+Shift+G", "tile:graph");
+
+  // a command of your own, in ⌘K
+  // matrixlab.commands.register({
+  //   id: "me.today",
+  //   title: "What's today?",
+  //   run: () => matrixlab.notify(new Date().toDateString()),
+  // });
+
+  // a language for code cells (needs the program installed): Julia
+  // matrixlab.languages.register({
+  //   id: "julia", label: "Julia", extension: "jl",
+  //   highlight: { lineComment: ["#"], strings: ['"'], keywords: ["function", "end", "for", "if", "else", "return"] },
+  //   run: [{ needs: "julia", once: ["julia", "{file}"] }],
+  // });
+}
+`;
