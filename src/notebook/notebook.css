@@ -1878,3 +1878,23 @@
 .nb:focus {
   outline: none;
 }
+
+/* a cell's code or output folded away: a line to bring it back */
+.nb-folded {
+  display: block;
+  width: 100%;
+  margin: 4px 0;
+  padding: 5px 10px;
+  border: 1px dashed var(--t-line);
+  border-radius: 8px;
+  background: none;
+  color: var(--t-muted);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nb-folded:hover {
+  color: var(--t-text);
+  border-color: color-mix(in srgb, var(--t-text) 30%, transparent);
+}

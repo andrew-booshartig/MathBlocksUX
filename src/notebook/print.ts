@@ -62,8 +62,8 @@ async function workPicture(code: string, o: ReturnType<typeof printSwitches>): P
   return `<div class="work">${workTable(work, rowNotes.map(html), answer ? { latex: answer, note: html(answerNote) } : undefined)}</div>${under}`;
 }
 
-function pythonPicture(code: string, out?: PyOutput, matlab = false): string {
-  const parts = [`<pre class="code">${escape(code)}</pre>`];
+function pythonPicture(code: string, out?: PyOutput, matlab = false, hideCode = false): string {
+  const parts = hideCode ? [] : [`<pre class="code">${escape(code)}</pre>`];
   if (out?.stdout && matlab)
     for (const part of matlabOutput(out.stdout)) parts.push("latex" in part ? `<div class="value">${pageMath(part.latex, true)}</div>` : `<pre class="printout">${escape(part.text)}</pre>`);
   else if (out?.stdout) parts.push(`<pre class="printout">${escape(out.stdout)}</pre>`);
@@ -97,6 +97,8 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
       continue;
     }
     const language = ["vars", "calc", "graph", "numberline", "work", "python"].includes(b.lang) ? undefined : languageOf(b.lang);
+    // hide-code: a report — the answers, not the code
+    const hideCode = b.info.split(/\s+/).includes("hide-code");
     const plugin = language ? undefined : cellKindOf(b.lang);
     if (b.lang === "vars") {
       // the variables: name, value (worked out when it's math of others), what it is
@@ -108,7 +110,7 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
         return `<tr><td>${pageMath(r.name)}</td><td>${value ? pageMath(value) : escape(r.value)}</td><td class="note">${escape(r.note)}</td></tr>`;
       });
       body.push(`<table class="vars"><tr><th>Name</th><th>Value</th><th>What it is</th></tr>${rows.join("")}</table>`);
-    } else if (language) body.push(pythonPicture(b.code, py[`${b.lang}\u0001${b.code}`], language.output === "matlab"));
+    } else if (language) body.push(pythonPicture(b.code, py[`${b.lang}\u0001${b.code}`], language.output === "matlab", hideCode));
     else if (plugin) {
       try {
         body.push(`<div class="plugin">${await plugin.render(b.code)}</div>`);
@@ -122,7 +124,7 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
     else if (b.lang === "numberline") {
       if (o.numberLines) body.push(await numberLinePicture(b.code.trim().split("\n")[0] ?? ""));
     } else if (b.lang === "work") body.push(await workPicture(b.code, o));
-    else if (b.lang === "python") body.push(pythonPicture(b.code, py[b.code]));
+    else if (b.lang === "python") body.push(pythonPicture(b.code, py[b.code], false, hideCode));
     else body.push(`<pre class="code">${escape(b.code)}</pre>`);
   }
   // side by side, as on the page: each block its share of the row

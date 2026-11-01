@@ -91,6 +91,9 @@ const codeLanguage = (b: Block) => (b.kind === "cell" && !OWN_CELLS.has(b.lang) 
 /** a flattened cell's picture (its path from the Notebooks folder), from its fence: ```graph flat=… */
 const flatOf = (b: Block) => (b.kind === "cell" ? decodeURIComponent(b.info.match(/(?:^|\s)flat=(\S+)/)?.[1] ?? "") || null : null);
 const withFlat = (info: string, path: string | null) => [info.replace(/(?:^|\s)flat=\S+/, "").trim(), path ? `flat=${encodeURIComponent(path)}` : ""].filter(Boolean).join(" ");
+/** a word on a cell's fence that changes how it shows: hide-code (on the page and the printed one), fold-output */
+const hasFlag = (b: Block, flag: string) => b.kind === "cell" && b.info.split(/\s+/).includes(flag);
+const withFlag = (info: string, flag: string, on: boolean) => [...info.split(/\s+/).filter((w) => w && w !== flag), ...(on ? [flag] : [])].join(" ");
 /** pictures read once, kept while the app runs */
 const flatPictures = new Map<string, string>();
 function FlatPicture({ path }: { path: string }) {
@@ -1361,6 +1364,16 @@ export default function NotebookTile({
         <button title="Move down" onClick={() => moveBlock(b.id, 1)}>
           <Icon name="down" size={13} />
         </button>
+        {b.kind === "cell" && (
+          <button className={hasFlag(b, "hide-code") ? "is-on" : ""} title={hasFlag(b, "hide-code") ? "Show its code again" : "Hide its code — the answer shows, on the page and the printed one (a report)"} onClick={() => updateBlock(b.id, { info: withFlag(b.info, "hide-code", !hasFlag(b, "hide-code")) })}>
+            <Icon name="eye" size={13} />
+          </button>
+        )}
+        {b.kind === "cell" && (b.lang === "python" || !!codeLanguage(b)) && (
+          <button className={hasFlag(b, "fold-output") ? "is-on" : ""} title={hasFlag(b, "fold-output") ? "Show its output again" : "Fold its output away (on the page — the printed one keeps it)"} onClick={() => updateBlock(b.id, { info: withFlag(b.info, "fold-output", !hasFlag(b, "fold-output")) })}>
+            <Icon name="down" size={13} />
+          </button>
+        )}
         {b.kind === "cell" && !flatOf(b) && (
           <span className="nb-flat-anchor">
             <button title="Flatten to a picture — kept as it shows, not worked out or drawn again (its code stays, to unflatten)" onClick={() => setFlatMenu(flatMenu === b.id ? null : b.id)}>
@@ -1430,7 +1443,14 @@ export default function NotebookTile({
       ) : b.lang === "python" ? (
         <PythonOutput output={py[b.code]} running={running.has(b.code)} live={live?.code === b.code ? live.text : undefined} />
       ) : null;
-    const showCode = isEditing || (!flat && (b.lang === "python" || !!language || !result));
+    const codeHidden = !isEditing && hasFlag(b, "hide-code");
+    const outFolded = hasFlag(b, "fold-output");
+    const showCode = isEditing || (!flat && !codeHidden && (b.lang === "python" || !!language || !result));
+    const foldLine = (what: string, flag: string, lines?: number) => (
+      <button className="nb-folded" title={`Show its ${what} again`} onClick={() => updateBlock(b.id, { info: withFlag(b.info, flag, false) })}>
+        {what} hidden{lines ? ` · ${lines} line${lines === 1 ? "" : "s"}` : ""} — show
+      </button>
+    );
     // a work cell being edited: its fields, with the checked work under them
     return (
       <div key={b.id} data-block={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}${flat ? " is-flat" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}`}>
@@ -1525,7 +1545,9 @@ export default function NotebookTile({
               </pre>
             )
           ))}
-        {result && (
+        {codeHidden && !flat && (b.lang === "python" || !!language || !result) && foldLine("code", "hide-code", b.code.split("\n").length)}
+        {result && outFolded && foldLine("output", "fold-output")}
+        {result && !outFolded && (
           <div className="nb-cell-result" onClick={() => !isEditing && !flat && b.lang !== "python" && !language && b.lang !== "graph" && b.lang !== "vars" && startEditing(b)}>
             {result}
           </div>
