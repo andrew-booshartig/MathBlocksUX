@@ -246,3 +246,138 @@ export function CalcRecord({ code, lines, onChange }: { code: string; lines?: Ca
     </div>
   );
 }
+
+/** a text block that's nothing but display math ($$ … $$, one or more): its rows — else null */
+export function mathRowsOf(text: string): string[] | null {
+  const t = text.trim();
+  if (!t.startsWith("$$")) return null;
+  const rows: string[] = [];
+  let rest = t;
+  while (rest) {
+    const m = rest.match(/^\$\$([\s\S]*?)\$\$\s*/);
+    if (!m) return null;
+    rows.push(m[1].trim());
+    rest = rest.slice(m[0].length);
+  }
+  return rows;
+}
+
+/** the rows → the block's text: each its own $$ … $$ (as Obsidian and Neovim read it) */
+export const writeMathRows = (rows: string[]) => {
+  const kept = rows.filter((r) => r.trim());
+  return (kept.length ? kept : [""]).map((r) => `$$\n${r}\n$$`).join("\n\n");
+};
+
+/** The Math block, being worked in: math typed as math — it's drawn as you
+ * type, a line each row (Enter for the next). Or, for those who'd rather,
+ * its LaTeX typed out, drawn live under it. Esc, ⌘⏎ or clicking away: done. */
+export function MathBlockLive({ text, onChange, onDone }: { text: string; onChange: (text: string) => void; onDone: () => void }) {
+  const [rows, setRows] = useState(() => [...(mathRowsOf(text) ?? [""]).filter((r) => r.trim()), ""]);
+  /** typing its LaTeX: the text as typed (its empty lines too, till they're filled) */
+  const [source, setSource] = useState<string | null>(null);
+  const fields = useRef<(MathInputHandle | null)[]>([]);
+  const [at, setAt] = useState(rows.length - 1);
+  const box = useRef<HTMLDivElement>(null);
+  const put = (next: string[]) => {
+    const kept = next.filter((r, i) => r.trim() || i === next.length - 1);
+    if (kept[kept.length - 1]?.trim()) kept.push("");
+    setRows(kept);
+    onChange(writeMathRows(kept));
+  };
+  const focus = (i: number) => {
+    setAt(i);
+    const go = (tries: number) => {
+      const f = fields.current[i];
+      if (f?.ready()) f.focus();
+      else if (tries) setTimeout(() => go(tries - 1), 30);
+    };
+    setTimeout(() => go(20), 0);
+  };
+  useEffect(() => focus(Math.max(0, rows.length - 1)), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const typed = rows.filter((r) => r.trim());
+  return (
+    <div
+      className="app-math"
+      ref={box}
+      onKeyDownCapture={(e) => {
+        if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
+          e.preventDefault();
+          e.stopPropagation();
+          onDone();
+        }
+      }}
+      onBlur={() =>
+        setTimeout(() => {
+          const now = document.activeElement;
+          if (box.current && !box.current.contains(now)) onDone();
+        }, 120)
+      }
+    >
+      {source !== null ? (
+        <>
+          <textarea
+            className="app-math-source"
+            autoFocus
+            spellCheck={false}
+            value={source}
+            placeholder={"A line of LaTeX each row — \\frac{a}{b}, x^2, \\sqrt{x}"}
+            onChange={(e) => (setSource(e.target.value), put([...e.target.value.split("\n"), ""]))}
+          />
+          <div className="app-math-preview">
+            {typed.length ? typed.map((r, i) => <Tex key={i} math={r} block />) : <span className="app-calc-hint">It's drawn here as you type</span>}
+          </div>
+        </>
+      ) : (
+        rows.map((row, i) => (
+          <div key={i} className={`app-math-row${i === at ? " is-at" : ""}`}>
+            <MathInput
+              ref={(h) => {
+                fields.current[i] = h;
+              }}
+              className="app-math-in"
+              value={row}
+              placeholder={i === rows.length - 1 ? (rows.length === 1 ? "Type math — x^2, a/b makes a fraction, sqrt makes a root" : "Next line") : ""}
+              onChange={(latex) => put(rows.map((r, j) => (j === i ? latex : r)))}
+              onFocus={() => setAt(i)}
+              onEnter={() => {
+                const value = fields.current[i]?.getValue() ?? row;
+                if (!value.trim()) return;
+                const next = rows.map((r, j) => (j === i ? value : r));
+                if (i < rows.length - 1) next.splice(i + 1, 0, "");
+                put(next);
+                focus(i + 1);
+              }}
+              onBackspaceEmpty={() => {
+                if (i === 0 || rows.length === 1) return;
+                put(rows.filter((_, j) => j !== i));
+                focus(i - 1);
+              }}
+              onArrow={(dir) => {
+                const to = dir === "up" ? i - 1 : i + 1;
+                if (to < 0 || to >= rows.length) return false;
+                focus(to);
+                return true;
+              }}
+            />
+          </div>
+        ))
+      )}
+      <div className="app-calc-keys" onMouseDown={(e) => e.preventDefault()}>
+        {source === null &&
+          KEYS.filter(([label]) => label !== "→").map(([label, latex, title]) => (
+            <button key={label} title={title} onClick={() => fields.current[at]?.insert(latex)}>
+              {label}
+            </button>
+          ))}
+        <button
+          className={source !== null ? "is-on" : ""}
+          title={source !== null ? "Back to typing it as math" : "Type its LaTeX instead, drawn live under it"}
+          onClick={() => (source !== null ? (setSource(null), focus(rows.length - 1)) : setSource(rows.filter((r) => r.trim()).join("\n")))}
+        >
+          {source !== null ? "Math" : "LaTeX"}
+        </button>
+        <span className="app-calc-hint">Enter: the next line · Esc: done</span>
+      </div>
+    </div>
+  );
+}

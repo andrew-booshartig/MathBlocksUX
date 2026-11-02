@@ -2261,3 +2261,54 @@
   color: var(--t-text);
   box-shadow: inset 2px 0 0 var(--t-pink);
 }
+
+/* the Math block being worked in: math typed as math, centered as it'll read */
+.app-math {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--t-bg1, #14141a);
+}
+
+.app-math-row {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.app-math-row.is-at {
+  background: color-mix(in srgb, var(--t-text) 5%, transparent);
+}
+
+.app-math-in {
+  flex: 1;
+  min-width: 0;
+  font-size: 21px;
+  text-align: center;
+}
+
+.app-math-source {
+  min-height: 70px;
+  padding: 8px 10px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-text);
+  font: 14px/1.6 "JetBrains Mono", ui-monospace, monospace;
+  resize: vertical;
+  outline: none;
+}
+
+.app-math-preview {
+  min-height: 40px;
+  padding: 2px 8px;
+}
+
+.app-math-preview .katex-display {
+  margin: 6px 0;
+  text-align: center;
+}

@@ -28,7 +28,7 @@ import { highlightCode, highlightWithError } from "./highlight";
 import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
-import { CalcLive, CalcRecord } from "./apps";
+import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
 import { setVimKeys, useVimKeys } from "./editorSettings";
@@ -1084,7 +1084,8 @@ export default function NotebookTile({
     }, 0);
     const draft = draftRef.current;
     if (b.kind === "text") {
-      if (!draft.trim()) removeBlock(b.id, true);
+      // (a Math block with no math in it goes too)
+      if (!draft.trim() || mathRowsOf(draft)?.every((r) => !r)) removeBlock(b.id, true);
       else if (draft !== b.text) updateBlock(b.id, { text: draft });
     } else if (draft !== b.code) updateBlock(b.id, { code: draft });
   };
@@ -1619,7 +1620,10 @@ export default function NotebookTile({
       return (
         <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}${picked === b.id && !isEditing ? " is-picked" : ""}`} {...dropOn(b.id)}>
           {!isEditing && blockGrip(b.id)}
-          {isEditing ? (
+          {isEditing && mathRowsOf(b.text) !== null ? (
+            // a Math block: math typed as math, drawn as it's typed
+            <MathBlockLive text={draft} onChange={type} onDone={() => finishEditing()} />
+          ) : isEditing ? (
             vimKeys ? (
               <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys prose placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
             ) : (
