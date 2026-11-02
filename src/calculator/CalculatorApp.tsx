@@ -407,7 +407,7 @@ export default function CalculatorApp() {
             <span className="calc-app-label">Layout</span>
           </button>
           <button className={`calc-app-layout calc-app-cmd${extOpen ? " is-on" : ""}`} title="Extensions — turn parts of the app off, add plugins of your own" onClick={() => setExtOpen(true)}>
-            <Icon name="panel" size={15} />
+            <Icon name="puzzle" size={15} />
           </button>
           <button className={`calc-app-theme${menuOpen ? " is-on" : ""}`} title="Theme" onClick={() => setMenuOpen((open) => !open)}>
             <span className="calc-app-swatch" style={{ background: `linear-gradient(135deg, ${theme.ui.raised} 0 50%, ${theme.numberline.solution} 50% 100%)` }} />
