@@ -10,7 +10,7 @@
  * problems finished in Work — what the Assignment tab did), Lab report,
  * Study notes, Script, and your own (any notebook → Save as template). */
 import { toJpeg, toPng } from "html-to-image";
-import { type CSSProperties, Fragment, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, Fragment, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../Icon";
@@ -31,6 +31,7 @@ import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import { toggleTask, writingKey } from "./writing";
+import type { EditorView, KeyBinding } from "@codemirror/view";
 import Library from "./Library";
 import { LINKED_LANGS, appDataFor, canLink, closeLinked, codeFor, linkedApp, linkedId, openLinked, rescopeLinked, useLinkedApps, watchLinked } from "./linked";
 import type { Equation } from "../equations";
@@ -143,62 +144,6 @@ function PluginCell({ kind, code }: { kind: CellKind; code: string }) {
   }, [kind, code]);
   if (failed) return <pre className="nb-cell-error is-code">{`${kind.plugin}: ${failed}`}</pre>;
   return <div className="nb-plugin-out" dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-/** a textarea as tall as what's in it */
-function AutoText({
-  value,
-  onChange,
-  onKeyDown,
-  onBlur,
-  onPaste,
-  mono,
-  placeholder,
-  highlight,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
-  onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
-  onBlur?: () => void;
-  mono?: boolean;
-  placeholder?: string;
-  /** code colored as it's typed: the colors drawn under clear text */
-  highlight?: (text: string) => string;
-}) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${el.scrollHeight + 2}px`;
-  }, [value]);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
-  }, []);
-  const area = (
-    <textarea
-      ref={ref}
-      className={`nb-edit${mono ? " is-mono" : ""}${highlight ? " is-over" : ""}`}
-      value={value}
-      spellCheck={!mono}
-      placeholder={placeholder}
-      onChange={(e) => onChange(e.target.value)}
-      onKeyDown={onKeyDown}
-      onBlur={onBlur}
-      onPaste={onPaste}
-    />
-  );
-  if (!highlight) return area;
-  return (
-    <div className="nb-edit-wrap">
-      <pre className="nb-edit is-mono nb-edit-under" aria-hidden dangerouslySetInnerHTML={{ __html: `${highlight(value)}\n` }} />
-      {area}
-    </div>
-  );
 }
 
 export default function NotebookTile({
@@ -1223,6 +1168,7 @@ export default function NotebookTile({
     if (!id || !now) return setEditing(null);
     const b = now.blocks.find((x) => x.id === id);
     setEditing(null);
+    clickAt.current = null;
     if (!b) return;
     // it stays picked, so the keys go on from it (with nothing else taking them)
     setPicked(id);
@@ -1271,55 +1217,55 @@ export default function NotebookTile({
     commit({ ...doc!, blocks: [...blocks.slice(0, at + 1), { id, kind: "cell", lang: b.lang, info: "", code: "" }, ...blocks.slice(at + 1)] });
     setTimeout(() => (setEditing(id), type("")), 80);
   };
-  /** a text block's keys (the plain editor): Esc or ⌘⏎ is done */
-  const editKeys = (e: KeyboardEvent<HTMLTextAreaElement>, b: Block) => {
-    // ⌘B / ⌘I / ⌘K…, lists carried on by Enter, Tab to indent one
-    const el = e.currentTarget;
-    const slashing = /^\/[\w ]*$/.test(draftRef.current);
-    const edit = slashing ? null : writingKey(e, el.value, el.selectionStart, el.selectionEnd);
-    if (edit) {
-      e.preventDefault();
-      e.stopPropagation();
-      type(edit.value);
-      requestAnimationFrame(() => el.setSelectionRange(edit.start, edit.end));
-      return;
-    }
-    // "/calc" and Enter: a Calculate block in its place
-    const slash = draftRef.current.match(/^\/([\w ]*)$/);
-    if (slash && (e.key === "Enter" || e.key === "Tab")) {
-      const first = insertItems().find((i) => i.label.toLowerCase().includes(slash[1].trim().toLowerCase()));
-      if (first) {
-        e.preventDefault();
-        insertBlock(first.kind, null, b.id);
-        return;
-      }
-    }
-    if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
-      e.preventDefault();
-      runEdited(b);
-    }
+  /** where a text block was clicked to write in it: the caret goes there */
+  const clickAt = useRef<{ x: number; y: number } | null>(null);
+  /** a text block's own keys: ⌘B ⌘I ⌘E ⌘K ⌘⇧X ⌘⇧H, and Enter or Tab taking what / asked for */
+  const proseKeys = (b: Block): KeyBinding[] => {
+    const wrapWith =
+      (key: string, shift = false) =>
+      (v: EditorView) => {
+        const sel = v.state.selection.main;
+        const edit = writingKey({ key, metaKey: true, ctrlKey: false, shiftKey: shift, altKey: false }, v.state.doc.toString(), sel.from, sel.to);
+        if (!edit) return false;
+        v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: edit.value }, selection: { anchor: edit.start, head: edit.end } });
+        return true;
+      };
+    const slashPick = () => {
+      const slash = draftRef.current.match(/^\/([\w ]*)$/);
+      const first = slash && insertItems().find((i) => i.label.toLowerCase().includes(slash[1].trim().toLowerCase()));
+      if (!first) return false;
+      insertBlock(first.kind, null, b.id);
+      return true;
+    };
+    return [
+      { key: "Mod-b", run: wrapWith("b") },
+      { key: "Mod-i", run: wrapWith("i") },
+      { key: "Mod-e", run: wrapWith("e") },
+      { key: "Mod-k", run: wrapWith("k") },
+      { key: "Mod-Shift-x", run: wrapWith("x", true) },
+      { key: "Mod-Shift-h", run: wrapWith("h", true) },
+      { key: "Enter", run: slashPick },
+      { key: "Tab", run: slashPick },
+    ];
   };
-
-  /** a picture pasted into text: kept in the notebook's folder, put in where the caret is */
-  const pastePicture = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const file = [...e.clipboardData.files].find((f) => f.type.startsWith("image/"));
-    if (!file || !name) return;
+  /** a picture pasted into a text block's editor */
+  const pasteInto = (e: ClipboardEvent, v: EditorView) => {
+    const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
+    if (!file || !name) return false;
     e.preventDefault();
-    const el = e.currentTarget;
-    const at = el.selectionStart;
+    const at = v.state.selection.main.head;
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const path = await invoke<string>("flat_save", { notebook: name, dataUrl: String(reader.result) });
         flatPictures.set(path, String(reader.result));
-        const now = draftRef.current;
-        const tag = `![](${encodeURI(path)})`;
-        type(now.slice(0, at) + tag + now.slice(at));
+        v.dispatch({ changes: { from: at, insert: `![](${encodeURI(path)})` } });
       } catch (err) {
         setNotice(`Couldn't keep that picture: ${errorText(err)}`);
       }
     };
     reader.readAsDataURL(file);
+    return true;
   };
   /** [[another notebook]] opens it (or starts it); web links open outside */
   const followLinks = (e: MouseEvent<HTMLElement>) => {
@@ -2088,11 +2034,8 @@ export default function NotebookTile({
             // a Math block: math typed as math, drawn as it's typed
             <MathBlockLive text={draft} onChange={type} onDone={() => finishEditing()} />
           ) : isEditing ? (
-            vimKeys ? (
-              <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys prose />
-            ) : (
-              <AutoText value={draft} onChange={type} onBlur={() => finishEditing()} onKeyDown={(e) => editKeys(e, b)} onPaste={pastePicture} />
-            )
+            // written as it reads (live preview): the Markdown shows only where the caret is
+            <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys={vimKeys} prose markdown keys={proseKeys(b)} onPaste={pasteInto} at={clickAt.current ?? undefined} />
           ) : (
             <div
               className="nb-md"
@@ -2104,7 +2047,10 @@ export default function NotebookTile({
                   updateBlock(b.id, { text: toggleTask(b.text, n) });
                   return;
                 }
-                if (!followLinks(e)) startEditing(b);
+                if (!followLinks(e)) {
+                  clickAt.current = { x: e.clientX, y: e.clientY };
+                  startEditing(b);
+                }
               }}
               dangerouslySetInnerHTML={{ __html: renderMarkdown(b.text) }}
             />

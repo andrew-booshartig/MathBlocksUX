@@ -13,6 +13,8 @@ import { HighlightStyle, StreamLanguage, type StreamParser, bracketMatching, ind
 import { tags } from "@lezer/highlight";
 import { Vim, getCM, vim } from "@replit/codemirror-vim";
 import type { HighlightSpec } from "./languages";
+import { markdownKeymap } from "@codemirror/lang-markdown";
+import { livePreview } from "./livePreview";
 
 /** Python, as a spec like any plugin language's (decorators and """ too) */
 export const PYTHON_SPEC: HighlightSpec = {
@@ -165,6 +167,14 @@ export interface CodeEditorProps {
   complete?: (before: string) => Promise<{ word: string; matches: string[] }>;
   /** text, not code: no line numbers, words wrap */
   prose?: boolean;
+  /** Markdown shown as it reads (live preview) — a text block's editor */
+  markdown?: boolean;
+  /** keys of its own, before the editor's (⌘B and such) */
+  keys?: KeyBinding[];
+  /** a paste it takes itself (a picture): true when it did */
+  onPaste?: (e: ClipboardEvent, view: EditorView) => boolean;
+  /** where it was clicked, to put the caret there (else at the end) */
+  at?: { x: number; y: number };
 }
 
 export default function CodeEditor(props: CodeEditorProps) {
@@ -249,6 +259,8 @@ export default function CodeEditor(props: CodeEditorProps) {
     ];
     const extensions: Extension[] = [
       ...(p.vimKeys ? [vim({ status: true })] : []),
+      ...(p.keys ? [keymap.of(p.keys)] : []),
+      ...(p.markdown ? [livePreview(), keymap.of(markdownKeymap)] : []),
       keymap.of(keys),
       history(),
       keymap.of([...historyKeymap, ...defaultKeymap]),
@@ -267,6 +279,7 @@ export default function CodeEditor(props: CodeEditorProps) {
         }
       }),
       EditorView.domEventHandlers({
+        paste: (e, v) => latest.current.onPaste?.(e, v) ?? false,
         blur: (e) => {
           // clicking the list of names isn't leaving
           if (!alive || (e.relatedTarget as HTMLElement | null)?.closest?.(".nb-complete")) return;
@@ -278,7 +291,9 @@ export default function CodeEditor(props: CodeEditorProps) {
     view.current = v;
     handlers.set(v, { run: () => (latest.current.onRun ?? latest.current.onDone)(), done: () => latest.current.onDone() });
     v.focus();
-    v.dispatch({ selection: { anchor: v.state.doc.length } });
+    // the caret where it was clicked (the text reads the same as it did, so that's the same place)
+    const clicked = p.at && v.posAtCoords(p.at);
+    v.dispatch({ selection: { anchor: clicked ?? v.state.doc.length } });
     // vim: numbers relative in normal mode, plain while inserting (init.lua's InsertEnter / InsertLeave)
     if (p.vimKeys && !p.prose) {
       const relative = lineNumbers({
@@ -308,7 +323,7 @@ export default function CodeEditor(props: CodeEditorProps) {
   }, [props.value]);
 
   return (
-    <div className={`nb-cm${props.prose ? " is-prose" : ""}`} ref={host}>
+    <div className={`nb-cm${props.prose ? " is-prose" : ""}${props.markdown ? " is-live" : ""}`} ref={host}>
       {choices && (
         <div className="nb-complete is-cm" style={{ left: choices.x, top: choices.y + 4 }} onMouseDown={(e) => e.preventDefault()}>
           {choices.items.map((item, k) => (
