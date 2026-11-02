@@ -1916,3 +1916,14 @@ body {
   font-size: 10px;
   line-height: 16px;
 }
+
+/* Work's language: one small menu */
+.work-lang-select {
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--t-line);
+  border-radius: 6px;
+  background: var(--t-bg2);
+  color: var(--t-text);
+  font-size: 12px;
+}

@@ -8,6 +8,10 @@
 import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { MathfieldElement } from "mathlive";
 import { cleanPastedLatex } from "./cleanLatex";
+import { mathRequest } from "./mathSidecar";
+
+/** pasted text that's code, not LaTeX: x**2 + 3*x, sqrt(x), math.pi, a == b */
+const looksLikeCode = (t: string) => !/\\[a-zA-Z]/.test(t) && /\*\*|\b(?:sqrt|abs|exp|log|sin|cos|tan)\s*\(|\bmath\.|\bnp\.|==|\w\s*\*\s*\w/.test(t);
 
 /** a whole new line in the field. MathLive remembers the last keys typed,
  * for its shortcuts (s + in → sin) — and a shortcut undoes back to before
@@ -238,6 +242,20 @@ export default function MathInput({
         const data = event.clipboardData;
         if (!data || data.types.includes("application/json") || data.types.includes("application/json+mathlive")) return;
         const text = data.getData("application/x-latex") || data.getData("text/plain");
+        // code (Python's way of writing math): the engine translates it, and the math goes in
+        if (text && !data.getData("application/x-latex") && looksLikeCode(text)) {
+          event.preventDefault();
+          event.stopPropagation();
+          mathRequest<{ items: { text: string; ok: boolean }[] }>({ op: "translate", from: "python", to: "latex", items: [text.trim()] })
+            .then(({ items }) => (items[0]?.ok ? items[0].text : cleanPastedLatex(text)))
+            .catch(() => cleanPastedLatex(text))
+            .then((latex) => {
+              mf.insert(latex, { format: "latex", selectionMode: "after" });
+              if (mf.mode === "text") mf.mode = "math";
+              handlers.current.onChange(mf.value);
+            });
+          return;
+        }
         const cleaned = cleanPastedLatex(text);
         if (!text || cleaned === text) return;
         event.preventDefault();
@@ -253,6 +271,7 @@ export default function MathInput({
       handlers.current.onBlur?.();
     });
     // capture phase: runs before MathLive's own key handling inside the field
+    let lastKey = "";
     mf.addEventListener(
       "keydown",
       (event) => {
@@ -261,6 +280,17 @@ export default function MathInput({
         // nothing here is typed as text, so it's always math (\ still
         // starts a LaTeX command: that's MathLive's "latex" mode, untouched)
         if (mf.mode === "text" && event.key.length === 1 && !event.metaKey && !event.ctrlKey) mf.mode = "math";
+        // ** (code's power): the × just typed becomes a power
+        const twice = event.key === "*" && lastKey === "*";
+        lastKey = event.key;
+        if (twice) {
+          event.preventDefault();
+          event.stopPropagation();
+          mf.executeCommand("deleteBackward");
+          mf.executeCommand("moveToSuperscript");
+          lastKey = "";
+          return;
+        }
         if (event.key === "Enter") {
           event.preventDefault();
           event.stopPropagation();

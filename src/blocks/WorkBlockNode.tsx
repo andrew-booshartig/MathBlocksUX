@@ -685,12 +685,13 @@ export function WorkPad({
       ) : (
         <>
           <div className="work-language nodrag">
-            <span className="work-label">Language</span>
-            <Segmented
-              value={language}
-              options={[{ value: "visual", label: "Visual" }, ...known.map((l) => ({ value: l.id, label: l.name }))]}
-              onChange={switchLanguage}
-            />
+            <select className="work-lang-select" title="How the problem is typed — Visual takes LaTeX and pasted Python too" value={language} onChange={(e) => switchLanguage(e.target.value)}>
+              {[{ value: "visual", label: "Visual" }, ...known.map((l) => ({ value: l.id, label: l.name }))].map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
             {!info?.builtin && language !== "visual" && info && (
               <button
                 className="block-icon-btn"
