@@ -1799,3 +1799,68 @@ body {
 .ext-added {
   padding: 0 8px;
 }
+
+/* ---- the apps at a calculator's size: keys a scientific calculator's,
+   kept together (not stretched across a wide tile), centered */
+.dock-tile .smart-keys,
+.dock-tile .keypad {
+  width: 100%;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+  gap: 3px;
+}
+
+.dock-tile .smart-key,
+.dock-tile .keypad-key {
+  height: 28px;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+
+.dock-tile .smart-key.is-enter {
+  font-size: 13px;
+}
+
+.dock-tile .smart-field math-field {
+  min-height: 44px;
+  font-size: 17px;
+}
+
+.dock-tile .smart-field,
+.dock-tile .smart-calc-main > .smart-preview {
+  max-width: 640px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Work's language: a small switch, not a bar across the tile */
+.dock-tile .work-language {
+  max-width: 480px;
+}
+
+.dock-tile .work-language .work-label {
+  font-size: 10px;
+}
+
+/* each app a centered column, the way a calculator sits on a desk: a wide tile doesn't stretch it */
+.dock-tile.is-work > *,
+.dock-tile.is-linked.is-work .smart-calc > * {
+  width: 100%;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.dock-tile .work-block .keypad,
+.dock-tile .keypad {
+  margin-left: 0;
+}
+
+.dock-tile .smart-calc-main > * {
+  width: 100%;
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+}

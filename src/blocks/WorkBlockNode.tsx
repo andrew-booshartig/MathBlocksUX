@@ -67,8 +67,6 @@ const LATEX_PALETTE: Snippet[] = [
 /** Visual and LaTeX are built in here; every text language (Python, Lua,
  * Haskell, and any the workspace defines) is described by the engine from
  * its definition — so a new language needs no changes to this block. */
-const VISUAL_HINT =
-  "**Visual** — tap a fraction (or type /), type the top, **↓** to the bottom, **→** to step out. Powers and roots work the same way (^ types a power). Enter: new line · ⇧Enter: copy line down";
 const LATEX_HINT = "**LaTeX** — e.g. \\frac{1}{4}s, x^{2}, \\sqrt{x}, \\le";
 const LATEX_PLACEHOLDER = "6s-4=8\\left(2+\\frac{1}{4}s\\right)";
 
@@ -748,9 +746,6 @@ export function WorkPad({
             </>
           )}
           <MathKeypad target={() => activeMath.current ?? mathInputs.current[lines.length - 1]} />
-          <div className="work-hint">
-            <RichText text={VISUAL_HINT} />
-          </div>
           {guide && <WorkGuidePanel guide={guide} update={(next) => update({ guide: next })} />}
           <ol className="work-lines nodrag">
             {lines.map((text, i) => {
