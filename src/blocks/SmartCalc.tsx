@@ -1747,6 +1747,15 @@ export default function SmartCalc({
           + Note
         </button>
       )}
+      {entries.length > 0 && (
+        <button
+          className="smart-vars-action"
+          title="Put all of this in the notebook — one Calculate block, every line (and the values saved, to change there)"
+          onClick={() => toNotebook(cellText("calc", entries.map((e) => e.latex).join("\n")))}
+        >
+          → Notebook
+        </button>
+      )}
       {wiped ? (
         <button className="smart-vars-action is-undo" title="Bring back what was just cleared" onClick={undoClear}>
           ↶ Undo
