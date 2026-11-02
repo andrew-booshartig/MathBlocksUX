@@ -1039,6 +1039,7 @@ export default function NotebookTile({
   const blockGrip = (id: string) => (
     <span
       className="nb-grip"
+      aria-hidden
       draggable
       title="Drag to move it"
       onDragStart={(e) => {
