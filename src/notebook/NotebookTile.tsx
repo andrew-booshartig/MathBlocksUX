@@ -957,6 +957,54 @@ export default function NotebookTile({
     [blocks[at], blocks[to]] = [blocks[to], blocks[at]];
     commit({ ...doc, blocks });
   };
+  // dragging a block (by its grip) to another place on the page
+  const [dragBlock, setDragBlock] = useState<string | null>(null);
+  const [dropBlock, setDropBlock] = useState<{ id: string; after: boolean } | null>(null);
+  const placeBlock = (id: string, target: string, after: boolean) => {
+    const now = docRef.current;
+    if (!now || id === target) return;
+    const moving = now.blocks.find((b) => b.id === id);
+    if (!moving) return;
+    // it lands on a line of its own
+    const rest = now.blocks.filter((b) => b.id !== id);
+    let at = rest.findIndex((b) => b.id === target);
+    if (at < 0) return;
+    if (after) at += 1;
+    commit({ ...now, blocks: [...rest.slice(0, at), { ...moving, beside: undefined, width: undefined } as Block, ...rest.slice(at)] });
+  };
+  const dropOn = (id: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!dragBlock || dragBlock === id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const box = e.currentTarget.getBoundingClientRect();
+      const after = e.clientY > box.top + box.height / 2;
+      if (dropBlock?.id !== id || dropBlock.after !== after) setDropBlock({ id, after });
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (dragBlock && dropBlock) placeBlock(dragBlock, dropBlock.id, dropBlock.after);
+      setDragBlock(null);
+      setDropBlock(null);
+    },
+  });
+  const dropMark = (id: string) => (dropBlock?.id === id ? (dropBlock.after ? " is-drop-after" : " is-drop-before") : "") + (dragBlock === id ? " is-dragging" : "");
+  const blockGrip = (id: string) => (
+    <span
+      className="nb-grip"
+      draggable
+      title="Drag to move it"
+      onDragStart={(e) => {
+        e.dataTransfer.setData("application/x-matrixlab-block", id);
+        e.dataTransfer.effectAllowed = "move";
+        setDragBlock(id);
+      }}
+      onDragEnd={() => (setDragBlock(null), setDropBlock(null))}
+    >
+      ⋮⋮
+    </span>
+  );
   const addBlock = (kind: { lang: string; start: string }) => {
     if (!doc) return;
     const id = blockId();
@@ -1534,7 +1582,8 @@ export default function NotebookTile({
     );
     if (b.kind === "text") {
       return (
-        <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}`}>
+        <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}`} {...dropOn(b.id)}>
+          {!isEditing && blockGrip(b.id)}
           {isEditing ? (
             vimKeys ? (
               <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys prose placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
@@ -1643,7 +1692,8 @@ export default function NotebookTile({
     );
     // a work cell being edited: its fields, with the checked work under them
     return (
-      <div key={b.id} data-block={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}${flat ? " is-flat" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}`}>
+      <div key={b.id} data-block={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}${flat ? " is-flat" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}`} {...dropOn(b.id)}>
+        {!isEditing && blockGrip(b.id)}
         <div className="nb-cell-head">
           <span className="nb-cell-lang">{label}</span>
           {flat && (
