@@ -555,7 +555,47 @@ export default function NotebookTile({
   }, [running.size]); // eslint-disable-line react-hooks/exhaustive-deps
   const calcVarsRef = useRef(calcVars);
   calcVarsRef.current = calcVars;
-  const [outlineOpen, setOutlineOpen] = useState(false);
+  /** the outline, kept open beside the page (remembered) */
+  const [outlineOpen, setOutlineOpenState] = useState(() => {
+    try {
+      return localStorage.getItem("nb-outline") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setOutlineOpen = (open: boolean) => {
+    setOutlineOpenState(open);
+    try {
+      localStorage.setItem("nb-outline", open ? "1" : "0");
+    } catch {
+      /* only not remembered */
+    }
+  };
+  /** which heading you're in, as you scroll (its place in the outline) */
+  const [hereAt, setHereAt] = useState(-1);
+  const spying = useRef(false);
+  const spy = () => {
+    if (spying.current) return;
+    spying.current = true;
+    requestAnimationFrame(() => {
+      spying.current = false;
+      const box = page.current;
+      if (!box) return;
+      const top = box.getBoundingClientRect().top + 90;
+      let at = -1;
+      const seen = new Set<string>();
+      outline.forEach((h, i) => {
+        if (seen.has(h.id)) return;
+        seen.add(h.id);
+        const el = box.querySelector(`[data-block="${h.id}"]`);
+        if (el && el.getBoundingClientRect().top <= top) at = i;
+      });
+      // scrolled to the very end: the last heading
+      if (box.scrollTop + box.clientHeight >= box.scrollHeight - 4 && outline.length) at = Math.max(at, outline.findIndex((h) => h.id === outline[outline.length - 1].id));
+      setHereAt(at);
+    });
+  };
+  useEffect(spy, [outline]); // eslint-disable-line react-hooks/exhaustive-deps
   const vimKeys = useVimKeys();
   /** what's typed in the block being edited, as of now (an editor's callbacks run between renders) */
   const draftRef = useRef(draft);
@@ -1325,29 +1365,10 @@ export default function NotebookTile({
           <button className={`nb-tool is-icon${finding ? " is-on" : ""}`} title="Find (and replace) in this notebook — ⌘F" onClick={() => (finding ? setFinding(null) : startFinding())}>
             <Icon name="zoom" size={14} />
           </button>
-          {outline.length > 1 && (
-            <div className="nb-switch">
-              <button className={`nb-tool${outlineOpen ? " is-on" : ""}`} title="Its headings — click one to go there" onClick={() => setOutlineOpen(!outlineOpen)}>
-                <Icon name="list" size={14} /> Outline
-              </button>
-              {outlineOpen && (
-                <div className="nb-pop" onMouseLeave={() => setOutlineOpen(false)}>
-                  {outline.map((h) => (
-                    <button
-                      key={h.id + h.text}
-                      className="nb-pop-item nb-outline-item"
-                      style={{ paddingLeft: 10 + (h.level - 1) * 14 }}
-                      onClick={() => {
-                        page.current?.querySelector(`[data-block="${h.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-                        setOutlineOpen(false);
-                      }}
-                    >
-                      {h.text}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+          {outline.length > 0 && (
+            <button className={`nb-tool${outlineOpen ? " is-on" : ""}`} title="Its headings, beside the page — click one to go there" onClick={() => setOutlineOpen(!outlineOpen)}>
+              <Icon name="list" size={14} /> Outline
+            </button>
           )}
           <button className="nb-tool" title="Edit this notebook in Neovim, in your own terminal — every :w shows up here" onClick={neovim}>
             <Icon name="pen" size={14} /> Neovim
@@ -2012,7 +2033,24 @@ export default function NotebookTile({
           />
         </div>
       ) : (
-        <div className="nb-page" ref={page}>
+        <div className="nb-main">
+        {outlineOpen && outline.length > 0 && (
+          <nav className="nb-outline-side">
+            <div className="nb-outline-title">Outline</div>
+            {outline.map((h, i) => (
+              <button
+                key={i}
+                className={`nb-outline-item${i === hereAt ? " is-here" : ""}`}
+                style={{ paddingLeft: 8 + (h.level - 1) * 12 }}
+                title={h.text}
+                onClick={() => page.current?.querySelector(`[data-block="${h.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              >
+                {h.text}
+              </button>
+            ))}
+          </nav>
+        )}
+        <div className="nb-page" ref={page} onScroll={spy}>
           {header}
           {rowsOf(doc.blocks).map((row) => {
             if (row.length === 1) {
@@ -2071,6 +2109,7 @@ export default function NotebookTile({
             </span>
           </div>
           <div className="nb-foot">Saved as {name}.md · {todayLabel()}</div>
+        </div>
         </div>
       )}
     </div>

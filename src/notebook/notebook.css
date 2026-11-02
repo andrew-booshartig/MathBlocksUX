@@ -2209,3 +2209,55 @@
 .nb:focus {
   outline: none;
 }
+
+/* the outline, beside the page: its headings, the one you're in lit */
+.nb-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.nb-main > .nb-page {
+  min-width: 0;
+}
+
+.nb-outline-side {
+  flex: 0 0 190px;
+  overflow-y: auto;
+  padding: 22px 6px 40px 12px;
+  border-right: 1px solid var(--t-line);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nb-outline-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--t-faint);
+  padding: 0 8px 8px;
+}
+
+.nb-outline-side .nb-outline-item {
+  all: unset;
+  display: block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--t-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.nb-outline-side .nb-outline-item:hover {
+  background: color-mix(in srgb, var(--t-text) 7%, transparent);
+  color: var(--t-text);
+}
+
+.nb-outline-side .nb-outline-item.is-here {
+  color: var(--t-text);
+  box-shadow: inset 2px 0 0 var(--t-pink);
+}
