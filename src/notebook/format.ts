@@ -181,14 +181,21 @@ export const cellText = (lang: CellLang, code: string) => writeNotebook({ meta: 
  * path of headers it sits under, outermost first (each header an id of its
  * own, so two "Problem 1"s are two scopes). A ## section sees its #'s
  * variables and can shadow them; sections side by side, and the next #,
- * know nothing of each other's. Blocks before any header share the page's. */
+ * know nothing of each other's. A line (---) ends the innermost section:
+ * what's after it is back in the one around it. Blocks before any header
+ * share the page's. */
 export function scopesOf(blocks: Block[]): string[][] {
   const out: string[][] = [];
   let stack: { level: number; id: string }[] = [];
   let n = 0;
   for (const b of blocks) {
     if (b.kind === "text")
-      for (const m of b.text.matchAll(/^(#{1,6})\s+(.+)$/gm)) {
+      // a header opens a section; a line (---) closes the innermost one — back to the level around it
+      for (const m of b.text.matchAll(/^(?:(#{1,6})\s+(.+)|(?:-{3,}|\*{3,}|_{3,})\s*)$/gm)) {
+        if (!m[1]) {
+          stack = stack.slice(0, -1);
+          continue;
+        }
         const level = m[1].length;
         stack = [...stack.filter((s) => s.level < level), { level, id: `${n++}:${m[2].trim()}` }];
       }
