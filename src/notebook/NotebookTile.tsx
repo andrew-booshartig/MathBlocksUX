@@ -1961,7 +1961,10 @@ export default function NotebookTile({
         title="Drag to move it — between blocks, or to a side of one to sit beside it · click to pick it"
         onPointerDown={(e) => {
           e.stopPropagation();
-          beginMove(e, b.id, true);
+          if (b.free) {
+            pickBlock(b.id);
+            beginFreeMove(e, b);
+          } else beginMove(e, b.id, true);
         }}
       >
         <Icon name="grip" size={15} />
@@ -2035,6 +2038,15 @@ export default function NotebookTile({
             <button className={spot === "right" ? "is-on" : ""} title={cell ? "On the right" : "Lines on the right"} onClick={() => set({ align: "right", wrap: undefined, wide: undefined, ...(cell ? { width: narrow(70) } : {}) })}>
               <Icon name="alignRight" size={15} />
             </button>
+            {!cell && (
+              <button
+                className={b.free ? "is-on" : ""}
+                title={b.free ? "Back into the text" : "Free — a text box you drag anywhere on the page (by its grip), helper lines lining it up"}
+                onClick={() => set(b.free ? { free: undefined } : { free: { x: 0, y: 0 }, width: b.width && b.width < 90 ? b.width : 40 })}
+              >
+                <Icon name="move" size={15} />
+              </button>
+            )}
             {cell && (
               <>
                 <button className={spot === "wrap-left" ? "is-on" : ""} title="On the left, the text after it flowing around it" onClick={() => set({ wrap: "left", align: undefined, wide: undefined, width: b.width && b.width <= 70 ? b.width : 45 })}>

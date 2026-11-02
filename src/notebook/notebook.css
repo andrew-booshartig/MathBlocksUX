@@ -3786,3 +3786,17 @@ body.nb-is-moving * {
   font-size: 12.5px;
   font-weight: 600;
 }
+
+/* a free text box: framed, in front of the text */
+.nb-free > .nb-block.is-text {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  background: var(--nb-paper, var(--t-bg2));
+  box-shadow: 0 8px 26px rgb(0 0 0 / 0.3);
+}
+
+.nb-free > .nb-block.is-text > .nb-gutter {
+  left: -30px;
+}
