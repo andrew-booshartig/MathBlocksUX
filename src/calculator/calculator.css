@@ -1930,9 +1930,8 @@ body {
 
 /* ==== premium pass: each app a compact instrument — one column the width of a
    calculator, quiet labels, no lines it doesn't need ==== */
-.dock-tile .smart-calc-main > *,
-.dock-tile .smart-keys {
-  max-width: 440px;
+.dock-tile .smart-calc-main > * {
+  max-width: 720px;
 }
 
 .dock-tile .smart-calc-main {
@@ -2011,4 +2010,34 @@ body {
 .dock-tile .smart-calc-split > .smart-side {
   width: 180px;
   flex: 0 0 180px;
+}
+
+/* Work's keys: the same slim strip as Calculate's */
+.dock-tile .keypad {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: var(--t-bg2);
+}
+
+.dock-tile .keypad-key {
+  min-width: 26px;
+  width: auto;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: none;
+  box-shadow: none;
+  color: var(--t-subtle, #b8b8cc);
+  font-size: 12.5px;
+}
+
+.dock-tile .keypad-key:hover {
+  background: var(--t-bg4);
+  color: var(--t-text);
 }

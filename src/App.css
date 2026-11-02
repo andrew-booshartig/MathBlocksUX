@@ -7904,3 +7904,107 @@ math-field {
 .xy-folder.is-drop-after {
   box-shadow: 0 2px 0 var(--t-pink, #c99bbf);
 }
+
+/* ---- Calculate's keys: one slim strip under the line, in groups */
+.smart-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.smart-strip-group {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--t-bg2, #1b1b23);
+  border: 1px solid var(--t-line, #2e2e3a);
+}
+
+.smart-strip-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-subtle, #b8b8cc);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.smart-strip-key .katex {
+  font-size: 0.9em;
+}
+
+.smart-strip-key:hover {
+  background: var(--t-bg4, #262632);
+  color: var(--t-text, #fff);
+}
+
+.smart-strip-key.is-on {
+  color: var(--t-teal, #55d6be);
+  background: color-mix(in srgb, var(--t-teal, #55d6be) 14%, transparent);
+}
+
+.smart-strip-space {
+  flex: 1;
+}
+
+.smart-strip-key.is-quiet {
+  color: var(--t-muted, #7a7a8e);
+  border: 1px solid var(--t-line, #2e2e3a);
+}
+
+.smart-strip-key.is-enter {
+  min-width: 44px;
+  background: var(--t-orange, #f0a33c);
+  color: var(--t-bg2, #2a1a05);
+  font-weight: 700;
+}
+
+.smart-strip-more {
+  position: relative;
+}
+
+.smart-strip-pop {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 9px;
+  background: var(--t-bg2, #1b1b23);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.35);
+  z-index: 10;
+}
+
+/* where an answer can go (copy, Work, notebook): small icons at the end of its actions */
+.smart-send {
+  display: inline-flex;
+  gap: 1px;
+  margin-left: 4px;
+}
+
+.smart-send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--t-orange, #f0a35c);
+  cursor: pointer;
+}
+
+.smart-send-btn:hover {
+  background: var(--t-bg4, #262632);
+}

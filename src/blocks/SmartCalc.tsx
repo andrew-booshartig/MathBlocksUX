@@ -3,6 +3,7 @@
  * one letter, solves an equation or inequality in one letter. With several
  * letters it asks what you want (solve for which letter, simplify, expand,
  * factor). A slim keypad for the structures that are awkward to type. */
+import Icon from "../Icon";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   type CalculatorBlockData,
@@ -239,6 +240,8 @@ export default function SmartCalc({
   const [noting, setNoting] = useState(false);
   /** the unit key's list */
   const [unitsOpen, setUnitsOpen] = useState(false);
+  /** the strip's ≤ ▾: the comparisons and or / and */
+  const [compareOpen, setCompareOpen] = useState(false);
   /** the history is scrolled down: older answers are up above (it fades there) */
   const [tapeScrolled, setTapeScrolled] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -1937,15 +1940,18 @@ export default function SmartCalc({
                       </button>
                     )}
                     {handoffs}
-                    <button className="chip is-handoff" title="Copy this answer — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
-                      ⧉ Copy
-                    </button>
-                    <button className="chip is-handoff" title="Add this answer to the Work tab as your next step" onClick={() => answerToWork(r)}>
-                      → Add to Work
-                    </button>
-                    <button className="chip is-handoff" title="Put this line in the notebook — it's worked out there too" onClick={() => toNotebook(cellText("calc", entry.latex))}>
-                      → Notebook
-                    </button>
+                    {/* where it can go: icons, named on hover */}
+                    <span className="smart-send">
+                      <button className="smart-send-btn" title="Copy this answer — ⌘V puts it in any line" onClick={() => copyAnswer(r)}>
+                        <Icon name="copy" size={13} />
+                      </button>
+                      <button className="smart-send-btn" title="Add this answer to Work as your next step" onClick={() => answerToWork(r)}>
+                        <Icon name="work" size={13} />
+                      </button>
+                      <button className="smart-send-btn" title="Put this line in the notebook — it's worked out there too" onClick={() => toNotebook(cellText("calc", entry.latex))}>
+                        <Icon name="notebook" size={13} />
+                      </button>
+                    </span>
                   </div>
                 )}
                 {openSteps === entry.id && r.steps && <StepList steps={r.steps} wrap />}
@@ -2017,22 +2023,82 @@ export default function SmartCalc({
         onClose={() => setUnitsOpen(false)}
       />
     )}
-    <div className="smart-keys">
-      {KEYS.map((key) => (
+    {/* the keys: one slim strip on the line, in groups — what's typed most out front, the comparisons in one ▾ */}
+    <div className="smart-strip">
+      {[KEYS.slice(1, 7), KEYS.slice(12, 15)].map((group, g) => (
+        <span key={g} className="smart-strip-group">
+          {group.map((key) => (
+            <button
+              key={key.label}
+              className={`smart-strip-key${"run" in key && key.run === "units" && unitsOpen ? " is-on" : ""}`}
+              title={key.title}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                press(key);
+              }}
+            >
+              {key.tex ? <Tex math={key.label} /> : key.label}
+            </button>
+          ))}
+        </span>
+      ))}
+      <span className="smart-strip-group smart-strip-more">
+        <button className={`smart-strip-key${compareOpen ? " is-on" : ""}`} title="Compare and combine: ≤ ≥ ≠, or, and" onPointerDown={(e) => (e.preventDefault(), setCompareOpen(!compareOpen))}>
+          <Tex math="\le" /> ▾
+        </button>
+        {compareOpen && (
+          <span className="smart-strip-pop" onMouseLeave={() => setCompareOpen(false)}>
+            {KEYS.slice(7, 12).map((key) => (
+              <button
+                key={key.label}
+                className="smart-strip-key"
+                title={key.title}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  press(key);
+                  setCompareOpen(false);
+                }}
+              >
+                {key.tex ? <Tex math={key.label} /> : key.label}
+              </button>
+            ))}
+          </span>
+        )}
+      </span>
+      <span className="smart-strip-group">
         <button
-          key={key.label}
-          className={`smart-key${"run" in key && key.run === "enter" ? " is-enter" : ""}${"run" in key && key.run === "linear" && data.smartLinear ? " is-on" : ""}${key.wide ? " is-wide" : ""}${"command" in key || ("run" in key && key.run === "clear") ? " is-tool" : ""}`}
-          title={key.title}
-          // act on press, like a real calculator (and keep the line focused)
+          className={`smart-strip-key${data.smartLinear ? " is-on" : ""}`}
+          title={KEYS[15].title}
           onPointerDown={(e) => {
             e.preventDefault();
-            e.stopPropagation();
-            press(key);
+            press(KEYS[15]);
           }}
         >
-          {key.tex ? <Tex math={key.label} /> : key.label}
+          a÷b
         </button>
-      ))}
+      </span>
+      <span className="smart-strip-space" />
+      <button
+        className="smart-strip-key is-quiet"
+        title={KEYS[0].title}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          press(KEYS[0]);
+        }}
+      >
+        AC
+      </button>
+      <button
+        className="smart-strip-key is-enter"
+        title={KEYS[16].title}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          press(KEYS[16]);
+        }}
+      >
+        ⏎
+      </button>
     </div>
     </div>
   );

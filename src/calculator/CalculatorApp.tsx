@@ -156,7 +156,8 @@ export default function CalculatorApp() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-      if (e.key.toLowerCase() === "k" && !e.shiftKey) {
+      // (in a note's text, ⌘K makes a link)
+      if (e.key.toLowerCase() === "k" && !e.shiftKey && !(e.target as HTMLElement | null)?.closest?.(".nb-block.is-text textarea")) {
         e.preventDefault();
         setSheet(false);
         setPalette((open) => !open);
