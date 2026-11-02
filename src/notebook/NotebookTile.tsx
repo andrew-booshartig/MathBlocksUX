@@ -29,6 +29,7 @@ import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord } from "./apps";
+import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
 import { setVimKeys, useVimKeys } from "./editorSettings";
 import { useParts } from "../parts";
@@ -192,7 +193,10 @@ export default function NotebookTile({
   onOpen,
   work,
   calcVars,
+  equations = [],
 }: {
+  /** your saved equations (the Equations tile's), for a calc block's ƒ */
+  equations?: Equation[];
   name?: string;
   onOpen: (name: string | undefined) => void;
   work: NotebookWork;
@@ -1584,6 +1588,8 @@ export default function NotebookTile({
           <CalcLive
             code={draft}
             lines={calc?.[calcAt]}
+            known={varsAt.get(b.id) ?? {}}
+            equations={equations}
             onChange={(c) => {
               type(c);
               updateBlock(b.id, { code: c });

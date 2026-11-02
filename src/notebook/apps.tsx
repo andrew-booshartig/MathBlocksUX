@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { Tex } from "../ui";
 import { type CalcLine, calcAnswer } from "./cells";
+import { type Equation, STARTER } from "../equations";
 
 /** a few keys a line of math wants, without the keyboard's help */
 const KEYS: [label: string, latex: string, title: string][] = [
@@ -23,7 +24,24 @@ const KEYS: [label: string, latex: string, title: string][] = [
  * math each row, its answer beside it as it's typed (worked out in the
  * block's section, with the variables it can see), Enter for the next.
  * Esc, ⌘⏎ or clicking away: done. */
-export function CalcLive({ code, lines, onChange, onDone }: { code: string; lines?: CalcLine[]; onChange: (code: string) => void; onDone: () => void }) {
+export function CalcLive({
+  code,
+  lines,
+  onChange,
+  onDone,
+  known = {},
+  equations = [],
+}: {
+  code: string;
+  lines?: CalcLine[];
+  onChange: (code: string) => void;
+  onDone: () => void;
+  /** what its section knows (x = 5…): a chip each, to type its name */
+  known?: Record<string, number>;
+  /** your saved equations, beside the starter ones, for ƒ */
+  equations?: Equation[];
+}) {
+  const [formulas, setFormulas] = useState(false);
   // the rows as typed, and always an empty one at the end for the next line
   const [rows, setRows] = useState(() => [...code.split("\n").filter((r) => r.trim()), ""]);
   const fields = useRef<(MathInputHandle | null)[]>([]);
@@ -108,12 +126,49 @@ export function CalcLive({ code, lines, onChange, onDone }: { code: string; line
           </div>
         );
       })}
+      {Object.keys(known).length > 0 && (
+        <div className="app-calc-known" onMouseDown={(e) => e.preventDefault()}>
+          <span className="app-calc-hint">In this section:</span>
+          {Object.entries(known).map(([name, value]) => (
+            <button key={name} title={`Type ${name}`} onClick={() => fields.current[at]?.insert(name.length > 1 ? `\\mathit{${name}}` : name)}>
+              <Tex math={`${name}=${Math.round(value * 1e6) / 1e6}`} />
+            </button>
+          ))}
+        </div>
+      )}
       <div className="app-calc-keys" onMouseDown={(e) => e.preventDefault()}>
         {KEYS.map(([label, latex, title]) => (
           <button key={label} title={title} onClick={() => fields.current[at]?.insert(latex)}>
             {label}
           </button>
         ))}
+        <span className="app-calc-formulas">
+          <button className={formulas ? "is-on" : ""} title="A formula — its letters filled from what the section knows" onClick={() => setFormulas(!formulas)}>
+            ƒ formulas
+          </button>
+          {formulas && (
+            <div className="app-calc-formula-list">
+              {[...(equations.length ? [{ group: "Yours", equations }] : []), ...STARTER].map((g) => (
+                <div key={g.group}>
+                  <div className="app-calc-formula-group">{g.group}</div>
+                  {g.equations.map((eq) => (
+                    <button
+                      key={eq.name + eq.latex}
+                      className="app-calc-formula"
+                      onClick={() => {
+                        setFormulas(false);
+                        fields.current[at]?.insert(eq.latex);
+                      }}
+                    >
+                      <span>{eq.name}</span>
+                      <Tex math={eq.latex} />
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </span>
         <span className="app-calc-hint">Enter: the next line · Esc: done</span>
       </div>
     </div>

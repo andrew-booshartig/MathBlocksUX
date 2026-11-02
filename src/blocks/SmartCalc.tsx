@@ -1714,7 +1714,7 @@ export default function SmartCalc({
     me: workNow.assignment ?? {},
     rememberMe: (patch) => setWork({ assignment: { ...(current()?.smartWork?.assignment ?? {}), ...patch } }),
   };
-  const notebookBody = <NotebookTile name={data.smartNotebook} onOpen={(smartNotebook) => updateBlock(data.id, { smartNotebook })} work={notebookWork} calcVars={known} />;
+  const notebookBody = <NotebookTile name={data.smartNotebook} onOpen={(smartNotebook) => updateBlock(data.id, { smartNotebook })} work={notebookWork} calcVars={known} equations={myEquations} />;
   const equationsBody = (
     <EquationsPanel
       mine={myEquations}
