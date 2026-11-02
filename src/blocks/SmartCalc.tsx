@@ -973,9 +973,9 @@ export default function SmartCalc({
   }
 
   /** the variables sidebar pops out and tucks away (⌘B) — open unless tucked */
-  const sideOpen = tiled ? openTiles.includes("variables") : data.smartSide !== false;
-  const setSideOpen = (open: boolean) =>
-    tiled ? (open ? dock.current?.show("variables") : dock.current?.close("variables")) : updateBlock(data.id, { smartSide: open ? undefined : false });
+  // the variables sit inside Calculate, beside the history (tucked away with ⌘B) — not a tile of their own
+  const sideOpen = data.smartSide !== false;
+  const setSideOpen = (open: boolean) => updateBlock(data.id, { smartSide: open ? undefined : false });
   /** the Equations sidebar, on the right (⌘E) */
   const eqOpen = tiled ? openTiles.includes("equations") : !!data.smartEqSide;
   const setEqOpen = (open: boolean) =>
@@ -2074,19 +2074,22 @@ export default function SmartCalc({
           }}
           onJump={(id) => (TABS.some((t) => t.value === id) ? setTab(id as Tab) : dock.current?.show(id))}
           badges={{
-            variables: sideEntries.length + sideExtras.length + blanks.length,
             work: (data.smartWork?.lines ?? []).filter((l) => l.trim()).length,
             graph: graphMode === "xy" ? (data.smartPlot?.xy?.lines ?? []).filter((l) => l.latex.trim()).length : data.smartPlot?.drawn ? 1 : 0,
             notebook: data.smartWork?.history?.length ?? 0,
           }}
           linked={(id) => <LinkedApp id={id} equations={equations} onEquations={onEquations} />}
           tiles={{
-            calc: calcMain,
+            calc: (
+              <div className="smart-calc-split">
+                {sideOpen && sidebar}
+                {calcMain}
+              </div>
+            ),
             work: workBody,
             graph: graphBody,
             notebook: notebookBody,
             reference: referenceBody,
-            variables: sidebar,
             equations: equationsBody,
           }}
         />

@@ -31,7 +31,6 @@ export const TILES = [
   { id: "graph", title: "Graph", hue: "blue", blurb: "Number lines and xy graphs, drawn as you type" },
   { id: "notebook", title: "Notebook", hue: "purple", blurb: "Notes, assignments and scripts — Markdown files with math and live cells" },
   { id: "reference", title: "Reference", hue: "yellow", blurb: "Any unit conversion, looked up and shown how" },
-  { id: "variables", title: "Variables", hue: "green", blurb: "Your saved values — change one and everything follows" },
   { id: "equations", title: "Equations", hue: "pink", blurb: "Formulas ready to fill in, and your own" },
 ] as const;
 export type TileId = (typeof TILES)[number]["id"];
@@ -54,6 +53,8 @@ const isOwnTile = (id: string) => TILES.some((t) => t.id === id);
 /** what stands in a layout for a tile: itself, a plugin's tile that takes
  * its place, or nothing (turned off) */
 export function standIn(id: string): string | null {
+  // (Variables is inside Calculate now: a saved layout's Variables tile goes)
+  if (id === "variables") return null;
   // a notebook block's app: there while it's open
   if (isLinkedId(id)) return linkedApp(id) ? id : null;
   if (!isOwnTile(id)) {
@@ -220,24 +221,22 @@ export const PRESETS: Preset[] = [
     id: "notebook",
     name: "Notebook",
     blurb: "The notebook fills the window — the tools a tab away, to drag beside it",
-    zones: [{ tiles: ["notebook", "calc", "work", "graph", "variables", "equations", "reference"] }],
+    zones: [{ tiles: ["notebook", "calc", "work", "graph", "equations", "reference"] }],
     boxes: [[0, 0, 100, 100, "notebook"]],
   },
   {
     id: "classic",
     name: "Classic",
-    blurb: "Variables · Calculate · Graph over Equations",
+    blurb: "Calculate · Graph over Equations",
     zones: [
       { tiles: ["calc", "work", "notebook"] },
-      { tiles: ["variables"], from: "calc", dir: "left", share: 0.19 },
-      { tiles: ["graph"], from: "calc", dir: "right", share: 0.34 },
+      { tiles: ["graph"], from: "calc", dir: "right", share: 0.4 },
       { tiles: ["equations", "reference"], from: "graph", dir: "below", share: 0.38 },
     ],
     boxes: [
-      [0, 0, 18, 100, "variables"],
-      [20, 0, 45, 100, "calc"],
-      [67, 0, 33, 60, "graph"],
-      [67, 62, 33, 38, "equations"],
+      [0, 0, 58, 100, "calc"],
+      [60, 0, 40, 60, "graph"],
+      [60, 62, 40, 38, "equations"],
     ],
   },
   {
@@ -247,12 +246,10 @@ export const PRESETS: Preset[] = [
     zones: [
       { tiles: ["calc"] },
       { tiles: ["work", "notebook"], from: "calc", dir: "right", share: 0.42 },
-      { tiles: ["variables", "equations"], from: "calc", dir: "left", share: 0.19 },
-      { tiles: ["graph", "reference"], from: "work", dir: "below", share: 0.42 },
+      { tiles: ["graph", "equations", "reference"], from: "work", dir: "below", share: 0.42 },
     ],
     boxes: [
-      [0, 0, 18, 100, "variables"],
-      [20, 0, 38, 100, "calc"],
+      [0, 0, 58, 100, "calc"],
       [60, 0, 40, 56, "work"],
       [60, 58, 40, 42, "graph"],
     ],
@@ -260,16 +257,16 @@ export const PRESETS: Preset[] = [
   {
     id: "graphing",
     name: "Graphing",
-    blurb: "A big graph, Calculate and Variables beside it",
+    blurb: "A big graph, Calculate beside it",
     zones: [
       { tiles: ["graph"] },
       { tiles: ["calc", "work", "notebook"], from: "graph", dir: "right", share: 0.36 },
-      { tiles: ["variables", "equations", "reference"], from: "calc", dir: "below", share: 0.42 },
+      { tiles: ["equations", "reference"], from: "calc", dir: "below", share: 0.36 },
     ],
     boxes: [
       [0, 0, 62, 100, "graph"],
-      [64, 0, 36, 56, "calc"],
-      [64, 58, 36, 42, "variables"],
+      [64, 0, 36, 62, "calc"],
+      [64, 64, 36, 36, "equations"],
     ],
   },
   {
@@ -279,7 +276,7 @@ export const PRESETS: Preset[] = [
     zones: [
       { tiles: ["notebook"] },
       { tiles: ["calc", "work", "reference"], from: "notebook", dir: "right", share: 0.42 },
-      { tiles: ["graph", "variables", "equations"], from: "calc", dir: "below", share: 0.45 },
+      { tiles: ["graph", "equations"], from: "calc", dir: "below", share: 0.45 },
     ],
     boxes: [
       [0, 0, 56, 100, "notebook"],
@@ -291,7 +288,7 @@ export const PRESETS: Preset[] = [
     id: "focus",
     name: "Focus",
     blurb: "Calculate alone — every other tile a tab away",
-    zones: [{ tiles: ["calc", "work", "graph", "notebook", "variables", "equations", "reference"] }],
+    zones: [{ tiles: ["calc", "work", "graph", "notebook", "equations", "reference"] }],
     boxes: [[0, 0, 100, 100, "calc"]],
   },
 ];
@@ -299,7 +296,7 @@ export const PRESETS: Preset[] = [
 /** a smaller window gets fewer, bigger zones */
 const COMPACT: Zone[] = [
   { tiles: ["calc", "work", "notebook", "reference"] },
-  { tiles: ["graph", "variables", "equations"], from: "calc", dir: "right", share: 0.45 },
+  { tiles: ["graph", "equations"], from: "calc", dir: "right", share: 0.45 },
 ];
 
 /** a saved layout from before a tile was retired (Assignment): its tab goes,
