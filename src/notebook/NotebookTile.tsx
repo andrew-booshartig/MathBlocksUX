@@ -1173,6 +1173,9 @@ export default function NotebookTile({
               </button>
             </span>
           )}
+          <button className={`nb-tool nb-vim-toggle${vimKeys ? " is-on" : ""}`} title={vimKeys ? "Vim keys are on in code and text — click to turn them off" : "Vim keys are off — click to edit code and text with vim (Space r runs a cell, :w is done)"} onClick={() => setVimKeys(!vimKeys)}>
+            vim
+          </button>
           <button className={`nb-tool is-icon${finding ? " is-on" : ""}`} title="Find (and replace) in this notebook — ⌘F" onClick={() => (finding ? setFinding(null) : startFinding())}>
             <Icon name="zoom" size={14} />
           </button>

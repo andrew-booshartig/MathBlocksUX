@@ -2013,3 +2013,14 @@
   font-size: 13px;
   color: var(--t-muted);
 }
+
+.nb-vim-toggle {
+  font-family: var(--t-mono, "SF Mono", Menlo, monospace);
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.nb-vim-toggle.is-on {
+  opacity: 1;
+  color: var(--t-green, #98c379);
+}
