@@ -478,6 +478,13 @@ export default function NotebookTile({
     });
     return at;
   }, [doc, calc, scopes]);
+  /** each calc or variables block's place among the worked-out ones */
+  const calcIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    let k = 0;
+    for (const b of doc?.blocks ?? []) if (isCalcLike(b)) m.set(b.id, k++);
+    return m;
+  }, [doc]);
   const varsAtRef = useRef(varsAt);
   varsAtRef.current = varsAt;
   /** the variables a cell (by its code) can see */
@@ -768,6 +775,44 @@ export default function NotebookTile({
     if (ids.every((id) => plots.get(id))) return;
     drawEverything(true);
     for (let t = 0; t < 40 && !ids.every((id) => plots.get(id)); t++) await new Promise((r) => setTimeout(r, 150));
+  };
+  /** a section: the blocks under a header, down to the next header as big (or bigger) — its own and its subsections' */
+  const sectionOf = (b: Block) => {
+    const blocks = docRef.current?.blocks ?? [];
+    const at = blocks.findIndex((x) => x.id === b.id);
+    const head = b.kind === "text" ? b.text.match(/^(#{1,6})\s/m) : null;
+    if (at < 0 || !head) return [];
+    const level = head[1].length;
+    const out: Block[] = [];
+    for (const x of blocks.slice(at + 1)) {
+      const h = x.kind === "text" ? x.text.match(/^(#{1,6})\s/m) : null;
+      if (h && h[1].length <= level) break;
+      out.push(x);
+    }
+    return out;
+  };
+  /** bounce in place, as a DAW does: every app block in the section kept as its picture — the
+   * section stays as it looks, and nothing in it is worked out or drawn again (⌘Z, or unflatten, brings it back) */
+  const bounceSection = async (b: Block) => {
+    const cells = sectionOf(b).filter((x) => x.kind === "cell" && !flatOf(x));
+    if (!cells.length) return setNotice("Nothing in this section to bounce — its blocks are flattened already");
+    for (const x of cells) await flatten(x, "png");
+    setNotice(`Bounced — ${cells.length} block${cells.length === 1 ? "" : "s"} kept as pictures (unflatten any, or ⌘Z)`);
+  };
+  const unbounceSection = (b: Block) => sectionOf(b).forEach((x) => flatOf(x) && unflatten(x));
+  /** a calc or variables block rendered down to text: its lines and answers as math (⌘Z brings the block back) */
+  const toLatex = (b: Block, calcAt: number) => {
+    if (b.kind !== "cell") return;
+    setFlatMenu(null);
+    const lines = calc?.[calcAt] ?? [];
+    const rows = lines.map((l) => {
+      const said = l.result?.input_latex ?? l.latex;
+      const out = l.result?.kind === "assign" ? "" : (l.result?.result_latex && l.result.result_latex !== said ? `&= ${l.result.result_latex.replace(/^[^=]*=\s*/, "")}` : "");
+      return `${said}${out ? ` ${out}` : ""}`;
+    });
+    const now = docRef.current;
+    if (!now || !rows.length) return;
+    commit({ ...now, blocks: now.blocks.map((x) => (x.id === b.id ? { id: x.id, kind: "text", text: `$$\n\\begin{aligned}\n${rows.map((r) => (r.includes("&=") ? r : `${r}&`)).join(" \\\\\n")}\n\\end{aligned}\n$$` } : x)) });
   };
   /** a graph block done: kept as its picture (the last one's put away), so the page doesn't keep it live */
   const graphDone = async (b: Block, picture: string | null) => {
@@ -1458,6 +1503,11 @@ export default function NotebookTile({
               <span className="nb-flat-menu" onMouseLeave={() => setFlatMenu(null)}>
                 <button onClick={() => flatten(b, "png")}>PNG</button>
                 <button onClick={() => flatten(b, "jpeg")}>JPEG</button>
+                {(b.lang === "calc" || b.lang === "vars") && (
+                  <button title="As math text — its lines and answers (⌘Z brings the block back)" onClick={() => toLatex(b, calcIndex.get(b.id) ?? -1)}>
+                    LaTeX
+                  </button>
+                )}
               </span>
             )}
           </span>
@@ -1483,6 +1533,18 @@ export default function NotebookTile({
             )
           ) : (
             <div className="nb-md" onClick={(e) => followLinks(e) || startEditing(b)} dangerouslySetInnerHTML={{ __html: renderMarkdown(b.text) }} />
+          )}
+          {!isEditing && /^#{1,6}\s/m.test(b.text) && sectionOf(b).length > 0 && (
+            <span className="nb-section-tools">
+              <button title="Bounce this section in place — every block under this header kept as a picture, so nothing in it is drawn or worked out again" onClick={() => bounceSection(b)}>
+                <Icon name="frame" size={12} /> bounce
+              </button>
+              {sectionOf(b).some((x) => flatOf(x)) && (
+                <button title="Every block under this header live again" onClick={() => unbounceSection(b)}>
+                  unbounce
+                </button>
+              )}
+            </span>
           )}
           {!isEditing && tools}
         </div>

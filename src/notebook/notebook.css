@@ -2067,3 +2067,33 @@
   background: color-mix(in srgb, var(--t-blue, #6fa8dc) 14%, transparent);
   font-size: 14px;
 }
+
+/* a header's section: bounce it in place */
+.nb-section-tools {
+  position: absolute;
+  top: 6px;
+  right: 120px;
+  display: none;
+  gap: 4px;
+}
+
+.nb-block.is-text:hover .nb-section-tools {
+  display: inline-flex;
+}
+
+.nb-section-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--t-line);
+  border-radius: 7px;
+  background: var(--t-bg3);
+  color: var(--t-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.nb-section-tools button:hover {
+  color: var(--t-text);
+}
