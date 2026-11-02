@@ -30,6 +30,7 @@ import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
+import { toggleTask, writingKey } from "./writing";
 import { LINKED_LANGS, appDataFor, canLink, closeLinked, codeFor, linkedApp, linkedId, openLinked, rescopeLinked, useLinkedApps, watchLinked } from "./linked";
 import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
@@ -149,12 +150,14 @@ function AutoText({
   onChange,
   onKeyDown,
   onBlur,
+  onPaste,
   mono,
   placeholder,
   highlight,
 }: {
   value: string;
   onChange: (v: string) => void;
+  onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
   onBlur?: () => void;
   mono?: boolean;
@@ -185,6 +188,7 @@ function AutoText({
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={onKeyDown}
       onBlur={onBlur}
+      onPaste={onPaste}
     />
   );
   if (!highlight) return area;
@@ -1250,6 +1254,17 @@ export default function NotebookTile({
   };
   /** a text block's keys (the plain editor): Esc or ⌘⏎ is done */
   const editKeys = (e: KeyboardEvent<HTMLTextAreaElement>, b: Block) => {
+    // ⌘B / ⌘I / ⌘K…, lists carried on by Enter, Tab to indent one
+    const el = e.currentTarget;
+    const slashing = /^\/[\w ]*$/.test(draftRef.current);
+    const edit = slashing ? null : writingKey(e, el.value, el.selectionStart, el.selectionEnd);
+    if (edit) {
+      e.preventDefault();
+      e.stopPropagation();
+      type(edit.value);
+      requestAnimationFrame(() => el.setSelectionRange(edit.start, edit.end));
+      return;
+    }
     // "/calc" and Enter: a Calculate block in its place
     const slash = draftRef.current.match(/^\/([\w ]*)$/);
     if (slash && (e.key === "Enter" || e.key === "Tab")) {
@@ -1266,6 +1281,27 @@ export default function NotebookTile({
     }
   };
 
+  /** a picture pasted into text: kept in the notebook's folder, put in where the caret is */
+  const pastePicture = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const file = [...e.clipboardData.files].find((f) => f.type.startsWith("image/"));
+    if (!file || !name) return;
+    e.preventDefault();
+    const el = e.currentTarget;
+    const at = el.selectionStart;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const path = await invoke<string>("flat_save", { notebook: name, dataUrl: String(reader.result) });
+        flatPictures.set(path, String(reader.result));
+        const now = draftRef.current;
+        const tag = `![](${encodeURI(path)})`;
+        type(now.slice(0, at) + tag + now.slice(at));
+      } catch (err) {
+        setNotice(`Couldn't keep that picture: ${errorText(err)}`);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
   /** [[another notebook]] opens it (or starts it); web links open outside */
   const followLinks = (e: MouseEvent<HTMLElement>) => {
     const link = (e.target as HTMLElement).closest("a");
@@ -1992,6 +2028,18 @@ export default function NotebookTile({
     watch.observe(el);
     return () => watch.disconnect();
   }, [view, !!doc]); // eslint-disable-line react-hooks/exhaustive-deps
+  // pictures in text (![](Name.assets/…)): read from the notebook's folder once on the page
+  useEffect(() => {
+    for (const img of page.current?.querySelectorAll<HTMLImageElement>("img[data-asset]:not([src])") ?? []) {
+      const path = decodeURI(img.dataset.asset!);
+      const cached = flatPictures.get(path);
+      if (cached) img.src = cached;
+      else
+        invoke<string>("flat_read", { path })
+          .then((url) => (flatPictures.set(path, url), (img.src = url)))
+          .catch(() => img.replaceWith(Object.assign(document.createElement("span"), { className: "nb-missing", textContent: "(a picture that's gone)" })));
+    }
+  });
   /** a picked block alone on its line: its edges, to drag */
   const sizeHandles = (b: Block) => {
     const side = b.wrap ?? b.align ?? "left";
@@ -2021,10 +2069,23 @@ export default function NotebookTile({
             vimKeys ? (
               <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys prose />
             ) : (
-              <AutoText value={draft} onChange={type} onBlur={() => finishEditing()} onKeyDown={(e) => editKeys(e, b)} />
+              <AutoText value={draft} onChange={type} onBlur={() => finishEditing()} onKeyDown={(e) => editKeys(e, b)} onPaste={pastePicture} />
             )
           ) : (
-            <div className="nb-md" onClick={(e) => followLinks(e) || startEditing(b)} dangerouslySetInnerHTML={{ __html: renderMarkdown(b.text) }} />
+            <div
+              className="nb-md"
+              onClick={(e) => {
+                const box = (e.target as HTMLElement).closest?.("input[type=checkbox]");
+                if (box) {
+                  e.stopPropagation();
+                  const n = [...e.currentTarget.querySelectorAll("input[type=checkbox]")].indexOf(box);
+                  updateBlock(b.id, { text: toggleTask(b.text, n) });
+                  return;
+                }
+                if (!followLinks(e)) startEditing(b);
+              }}
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(b.text) }}
+            />
           )}
           {slash !== null && insertMenu(null, b.id, slash)}
           {!isEditing && /^#{1,6}\s/m.test(b.text) && sectionOf(b).length > 0 && (

@@ -3203,3 +3203,71 @@ body.nb-is-moving * {
   line-height: 18px;
   z-index: 3;
 }
+
+/* ---- a note's extras: highlights, #tags, callouts, pictures */
+.nb-md mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--t-yellow, #e5c07b) 32%, transparent);
+  color: inherit;
+}
+
+.nb-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t-blue) 16%, transparent);
+  color: var(--t-blue);
+  font-size: 0.86em;
+  cursor: pointer;
+}
+
+.nb-callout {
+  margin: 10px 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--callout, var(--t-blue));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--callout, var(--t-blue)) 10%, transparent);
+}
+
+.nb-callout > :last-child {
+  margin-bottom: 0;
+}
+
+.nb-callout-title {
+  font-weight: 650;
+  color: var(--callout, var(--t-blue));
+}
+
+.nb-callout.is-tip,
+.nb-callout.is-success {
+  --callout: var(--t-green);
+}
+
+.nb-callout.is-warning,
+.nb-callout.is-caution {
+  --callout: var(--t-orange);
+}
+
+.nb-callout.is-danger,
+.nb-callout.is-error {
+  --callout: var(--t-red);
+}
+
+.nb-callout.is-question,
+.nb-callout.is-example {
+  --callout: var(--t-purple);
+}
+
+.nb-md img.nb-asset {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.nb-md input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.nb-md li:has(> input[type="checkbox"]:checked) {
+  color: var(--t-muted);
+  text-decoration: line-through;
+}
