@@ -1927,3 +1927,88 @@ body {
   color: var(--t-text);
   font-size: 12px;
 }
+
+/* ==== premium pass: each app a compact instrument — one column the width of a
+   calculator, quiet labels, no lines it doesn't need ==== */
+.dock-tile .smart-calc-main > *,
+.dock-tile .smart-keys {
+  max-width: 440px;
+}
+
+.dock-tile .smart-calc-main {
+  gap: 6px;
+}
+
+.dock-tile .smart-field math-field {
+  border-radius: 10px;
+}
+
+.dock-tile.is-work > *,
+.dock-tile.is-linked.is-work .smart-calc > * {
+  max-width: 560px;
+}
+
+/* Work: the problem's field says what it is; no shouting label, no rule under it */
+.dock-tile .work-problem-head .work-label {
+  display: none;
+}
+
+.dock-tile .work-problem-head {
+  justify-content: flex-end;
+  min-height: 0;
+}
+
+.dock-tile .work-problem {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.dock-tile .work-problem-math math-field {
+  min-height: 40px;
+  font-size: 18px;
+  border-radius: 10px;
+}
+
+.dock-tile .work-problem-math .math-input-placeholder {
+  font-size: 15px;
+}
+
+.dock-tile .work-next {
+  padding: 1px 9px;
+  font-size: 11px;
+}
+
+.dock-tile .work-language {
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* an answer on its line's row (a calculator's tape), its actions under it when they show */
+.dock-tile .smart-tape .smart-entry {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 2px;
+  padding: 4px 8px;
+}
+
+.dock-tile .smart-tape .smart-entry > .smart-out {
+  margin-left: auto;
+}
+
+.dock-tile .smart-tape .smart-entry > .smart-more,
+.dock-tile .smart-tape .smart-entry > :not(.smart-in):not(.smart-out):not(.smart-tape-tools):not(.smart-more) {
+  flex-basis: 100%;
+}
+
+/* its hover tools sit over the line's top edge, clear of the answer */
+.dock-tile .smart-tape .smart-tape-tools {
+  top: -22px;
+  z-index: 2;
+}
+
+.dock-tile .smart-calc-split > .smart-side {
+  width: 180px;
+  flex: 0 0 180px;
+}
