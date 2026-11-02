@@ -1992,3 +1992,24 @@
   border-radius: 6px;
   background: var(--t-bg1, #14141a);
 }
+
+/* a variables block's record */
+.nb-varrec {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+  cursor: text;
+}
+
+.nb-varrec-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  font-size: 16px;
+}
+
+.nb-varrec-note {
+  font-size: 13px;
+  color: var(--t-muted);
+}

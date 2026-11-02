@@ -15,7 +15,7 @@ import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../Icon";
 import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
-import { type CalcLine, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, WhenSeen, WorkCell, WorkCellEditor, drawEverything, numberOf, parseVars, plots, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
+import { type CalcLine, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, VarsRecord, WhenSeen, WorkCell, WorkCellEditor, drawEverything, numberOf, parseVars, plots, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
 import { type Block, type CellLang, type NotebookDoc, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
 import { setNotebookInbox } from "./inbox";
 import { notebookLatex } from "./latex";
@@ -1466,7 +1466,12 @@ export default function NotebookTile({
       flat && !isEditing ? (
         <FlatPicture path={flat} />
       ) : b.lang === "vars" ? (
-        <VarsCell code={b.code} lines={calc?.[calcAt]} onCommit={(code) => updateBlock(b.id, { code })} />
+        // being worked in: the table; done: the values as they read
+        isEditing ? (
+          <VarsCell code={b.code} lines={calc?.[calcAt]} onCommit={(code) => updateBlock(b.id, { code })} onDone={finishEditing} />
+        ) : (
+          <VarsRecord code={b.code} lines={calc?.[calcAt]} />
+        )
       ) : language ? (
         <PythonOutput output={py[runKey!]} running={running.has(runKey!)} live={live?.code === runKey ? live.text : undefined} matlab={language.output === "matlab"} />
       ) : pluginCell ? (
@@ -1501,7 +1506,7 @@ export default function NotebookTile({
     const codeHidden = !isEditing && hasFlag(b, "hide-code");
     const outFolded = hasFlag(b, "fold-output");
     // an app block being worked in is the app itself, not its code
-    const showCode = (isEditing && b.lang !== "calc") || (!isEditing && !flat && !codeHidden && (b.lang === "python" || !!language || !result));
+    const showCode = (isEditing && b.lang !== "calc" && b.lang !== "vars") || (!isEditing && !flat && !codeHidden && (b.lang === "python" || !!language || !result));
     const foldLine = (what: string, flag: string, lines?: number) => (
       <button className="nb-folded" title={`Show its ${what} again`} onClick={() => updateBlock(b.id, { info: withFlag(b.info, flag, false) })}>
         {what} hidden{lines ? ` · ${lines} line${lines === 1 ? "" : "s"}` : ""} — show
@@ -1604,7 +1609,7 @@ export default function NotebookTile({
         {codeHidden && !flat && (b.lang === "python" || !!language || !result) && foldLine("code", "hide-code", b.code.split("\n").length)}
         {result && outFolded && foldLine("output", "fold-output")}
         {result && !outFolded && (
-          <div className="nb-cell-result" onClick={() => !isEditing && !flat && b.lang !== "python" && !language && b.lang !== "graph" && b.lang !== "vars" && startEditing(b)}>
+          <div className="nb-cell-result" onClick={() => !isEditing && !flat && b.lang !== "python" && !language && b.lang !== "graph" && startEditing(b)}>
             {result}
           </div>
         )}

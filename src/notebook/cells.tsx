@@ -605,10 +605,35 @@ export function numberOf(line?: CalcLine): number | null {
   return n[1] ? base * 10 ** Number(n[1]) : base;
 }
 
+/** A variables block's record: each one as it reads — m = 2.5 kg, F = m·g = 24.5 kg — and what it is. */
+export function VarsRecord({ code, lines }: { code: string; lines?: CalcLine[] }) {
+  const rows = parseVars(code);
+  if (!rows.length) return <div className="nb-cell-wait">Click to name some values — m = 2.5 kg, g = 9.81</div>;
+  let at = 0;
+  return (
+    <div className="nb-varrec">
+      {rows.map((r, k) => {
+        const line = r.name && r.value ? lines?.[at++] : undefined;
+        const worked = line?.result?.result_latex?.replace(/^[^=]*=\s*/, "");
+        const typed = line?.result?.value_latex ?? r.value;
+        return (
+          <div key={k} className="nb-varrec-row">
+            <span className="nb-varrec-math">
+              <Tex math={`${r.name}=${typed}${worked && !plainValue(r.value) ? `=${line?.result?.decimal_latex && !/\\frac/.test(line.result.decimal_latex) ? line.result.decimal_latex : worked}` : ""}`} />
+            </span>
+            {line?.error && <span className="nb-cell-error">{line.error}</span>}
+            {r.note && <span className="nb-varrec-note">{r.note}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** The variables block: a table to fill in — name, value (units fine, or
  * math of the names above it), what it is — each worked out, and given to
  * every calc line, Python cell and code cell in the notebook. */
-export function VarsCell({ code, lines, onCommit }: { code: string; lines?: CalcLine[]; onCommit: (code: string) => void }) {
+export function VarsCell({ code, lines, onCommit, onDone }: { code: string; lines?: CalcLine[]; onCommit: (code: string) => void; onDone?: () => void }) {
   const [rows, setRows] = useState<VarRow[]>(() => parseVars(code));
   const seen = useRef(code);
   useEffect(() => {
@@ -637,7 +662,20 @@ export function VarsCell({ code, lines, onCommit }: { code: string; lines?: Calc
   // which worked-out line is this row's (rows without a name and value have none)
   let at = 0;
   return (
-    <table className="nb-varblock" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && commit(rows)}>
+    <table
+      className="nb-varblock"
+      onBlur={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+        commit(rows);
+        onDone?.();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          commit(rows);
+          onDone?.();
+        }
+      }}
+    >
       <thead>
         <tr>
           <th>Name</th>
