@@ -206,6 +206,14 @@ export interface Preset {
 /** every one has every tile somewhere — nothing is ever out of reach */
 export const PRESETS: Preset[] = [
   {
+    // the notebook is the place you work: every tool inline in it, and a tab away to tile beside it
+    id: "notebook",
+    name: "Notebook",
+    blurb: "The notebook fills the window — the tools a tab away, to drag beside it",
+    zones: [{ tiles: ["notebook", "calc", "work", "graph", "variables", "equations", "reference"] }],
+    boxes: [[0, 0, 100, 100, "notebook"]],
+  },
+  {
     id: "classic",
     name: "Classic",
     blurb: "Variables · Calculate · Graph over Equations",

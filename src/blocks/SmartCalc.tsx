@@ -242,7 +242,10 @@ export default function SmartCalc({
   const [openTiles, setOpenTiles] = useState<string[]>([]);
   /** a tile clicked into (in the app): it's the tab now, without a glow */
   const fromDock = useRef<string | null>(null);
+  /** the tab something here asked to bring forward (a click, a hand-off to Work) */
+  const askedFor = useRef<Tab | null>(null);
   const setTab = (smartTab: Tab) => {
+    askedFor.current = smartTab;
     focusOn.current = smartTab;
     if (tiled && smartTab === tab) {
       // already the tab, maybe behind another tile: forward it, and its line
@@ -796,6 +799,7 @@ export default function SmartCalc({
     const starting = !(work.lines ?? []).some((l) => l.trim());
     focusOn.current = "work";
     updateBlock(data.id, { smartWork: { ...work, lines, reasons, ...(starting ? { workFor: work.problem ?? "" } : {}) }, smartTab: "work" });
+    askedFor.current = "work";
   };
 
   // ---- hand-offs to the other tabs
@@ -807,6 +811,7 @@ export default function SmartCalc({
     const guide = solving.length ? { problem: latex, steps: solving, shown: 1 } : undefined;
     // the problem is step 1 too — set up, ready to work from
     updateBlock(data.id, { smartWork: { ...(current()?.smartWork ?? {}), problem: latex, lines: [latex, ""], reasons: ["", ""], workFor: latex, guide }, smartTab: "work" });
+    askedFor.current = "work";
   };
 
   /** An operator first, on an empty line, carries on from the last answer —
@@ -947,8 +952,11 @@ export default function SmartCalc({
     tiled ? (open ? dock.current?.show("equations") : dock.current?.close("equations")) : updateBlock(data.id, { smartEqSide: open || undefined });
   // tiles: a hand-off to another part (→ Work, → Graph) brings its tile
   // forward, glowing a moment so the eye can follow it there
+  // (not at the start: the layout says what's in front then — the notebook, in workflow mode)
+  // (only when something here asked for it — a workspace loading doesn't move the tiles about)
   useEffect(() => {
-    if (tiled && fromDock.current !== tab) dock.current?.show(tab as TileId, true);
+    if (tiled && askedFor.current === tab && fromDock.current !== tab) dock.current?.show(tab as TileId, true);
+    askedFor.current = null;
     fromDock.current = null;
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
