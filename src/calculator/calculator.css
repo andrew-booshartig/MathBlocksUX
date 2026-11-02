@@ -1885,3 +1885,34 @@ body {
 .dock-tile .smart-out {
   font-size: 16px;
 }
+
+/* a scientific calculator's keys: about 38 × 26 */
+.dock-tile .smart-keys,
+.dock-tile .keypad {
+  max-width: 350px;
+  gap: 3px;
+}
+
+.dock-tile .smart-key,
+.dock-tile .keypad-key {
+  height: 26px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.dock-tile .smart-key .katex,
+.dock-tile .keypad-key .katex {
+  font-size: 0.85em;
+}
+
+.dock-tile .smart-field math-field {
+  min-height: 38px;
+  font-size: 16px;
+}
+
+.dock-tile .smart-more .chip {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 16px;
+}
