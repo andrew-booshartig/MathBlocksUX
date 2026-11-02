@@ -3566,3 +3566,62 @@ body.nb-is-moving * {
   font-family: -apple-system, "Inter", "Helvetica Neue", sans-serif;
   line-height: 1.7;
 }
+
+/* ⌘P: go to a note */
+.nb-quick-back {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  padding-top: 70px;
+  background: rgb(0 0 0 / 0.25);
+}
+
+.nb-quick {
+  width: min(520px, 90%);
+  align-self: flex-start;
+  padding: 6px;
+  border: 1px solid var(--t-line);
+  border-radius: 12px;
+  background: var(--t-bg2);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.5);
+}
+
+.nb-quick input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 38px;
+  margin-bottom: 4px;
+  padding: 0 10px;
+  border: none;
+  border-bottom: 1px solid var(--t-line);
+  background: none;
+  color: var(--t-text);
+  font-size: 15px;
+  outline: none;
+}
+
+.nb-quick-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--t-text);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nb-quick-item.is-at {
+  background: color-mix(in srgb, var(--t-blue) 20%, transparent);
+}
+
+.nb-quick-item .icon {
+  color: var(--t-muted);
+}

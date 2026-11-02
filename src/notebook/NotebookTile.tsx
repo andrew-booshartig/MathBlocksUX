@@ -32,7 +32,7 @@ import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import { toggleTask, writingKey } from "./writing";
 import type { EditorView, KeyBinding } from "@codemirror/view";
-import Library from "./Library";
+import Library, { QuickOpen } from "./Library";
 import { LINKED_LANGS, appDataFor, canLink, closeLinked, codeFor, linkedApp, linkedId, openLinked, rescopeLinked, useLinkedApps, watchLinked } from "./linked";
 import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
@@ -529,6 +529,8 @@ export default function NotebookTile({
       /* only not remembered */
     }
   };
+  /** ⌘P: go to a note */
+  const [quickOpen, setQuickOpen] = useState(false);
   /** the words written (text blocks') */
   const wordCount = useMemo(() => (doc?.blocks ?? []).reduce((n, b) => n + (b.kind === "text" ? (b.text.replace(/[#*_`>$=[\]()-]/g, " ").match(/\S+/g)?.length ?? 0) : 0), 0), [doc]);
   /** the library (every note) beside the page — remembered */
@@ -1169,6 +1171,8 @@ export default function NotebookTile({
     const b = now.blocks.find((x) => x.id === id);
     setEditing(null);
     clickAt.current = null;
+    // (the next block opened sets this again, after this)
+    setTimeout(() => (fromTop.current = false), 50);
     if (!b) return;
     // it stays picked, so the keys go on from it (with nothing else taking them)
     setPicked(id);
@@ -1216,6 +1220,21 @@ export default function NotebookTile({
     const at = blocks.findIndex((x) => x.id === b.id);
     commit({ ...doc!, blocks: [...blocks.slice(0, at + 1), { id, kind: "cell", lang: b.lang, info: "", code: "" }, ...blocks.slice(at + 1)] });
     setTimeout(() => (setEditing(id), type("")), 80);
+  };
+  /** come into a block from the one above: its caret at the start */
+  const fromTop = useRef(false);
+  /** off a block's edge (↑ / ↓, vim's k / j): the next one — text written in, an object picked */
+  const onEdge = (b: Block) => (dir: "up" | "down") => {
+    const blocks = docRef.current?.blocks ?? [];
+    const at = blocks.findIndex((x) => x.id === b.id);
+    const next = blocks[dir === "down" ? at + 1 : at - 1];
+    if (!next) return false;
+    finishEditing();
+    if (next.kind === "text" || codeLanguage(next) || (next.kind === "cell" && next.lang === "python")) {
+      fromTop.current = dir === "down";
+      setTimeout(() => startEditing(next), 0);
+    } else pickBlock(next.id);
+    return true;
   };
   /** where a text block was clicked to write in it: the caret goes there */
   const clickAt = useRef<{ x: number; y: number } | null>(null);
@@ -2035,7 +2054,7 @@ export default function NotebookTile({
             <MathBlockLive text={draft} onChange={type} onDone={() => finishEditing()} />
           ) : isEditing ? (
             // written as it reads (live preview): the Markdown shows only where the caret is
-            <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys={vimKeys} prose markdown keys={proseKeys(b)} onPaste={pasteInto} at={clickAt.current ?? undefined} />
+            <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys={vimKeys} prose markdown keys={proseKeys(b)} onPaste={pasteInto} at={clickAt.current ?? undefined} fromTop={fromTop.current} onEdge={onEdge(b)} />
           ) : (
             <div
               className="nb-md"
@@ -2165,6 +2184,8 @@ export default function NotebookTile({
         onRunNext={runnable(b) ? () => runAndNext(b) : undefined}
         onRunInsert={runnable(b) ? () => runAndInsert(b) : undefined}
         complete={b.lang === "python" && name ? completePython : undefined}
+        fromTop={fromTop.current}
+        onEdge={onEdge(b)}
       />
     );
     // code on the page: a panel with its language, its count, Run
@@ -2345,6 +2366,12 @@ export default function NotebookTile({
           setNotice(e.shiftKey ? "Redone" : "Undone — ⌘⇧Z to redo");
           return;
         }
+        // ⌘P: go to any note
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "p") {
+          e.preventDefault();
+          setQuickOpen(true);
+          return;
+        }
         // ⌘F: find in this notebook (the editor's own search, in vim, is /)
         if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "f" && !(e.target as HTMLElement).closest?.(".cm-editor")) {
           e.preventDefault();
@@ -2359,6 +2386,7 @@ export default function NotebookTile({
       }}
     >
       {toolbar}
+      {quickOpen && <QuickOpen listing={listing} onClose={() => setQuickOpen(false)} onOpen={(n) => (setQuickOpen(false), setView("doc"), onOpen(n))} />}
       {finding && (
         <div className="nb-find">
           <input

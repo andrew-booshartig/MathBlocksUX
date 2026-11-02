@@ -111,3 +111,42 @@ export default function Library({ listing, current, onOpen, onNew }: { listing: 
     </aside>
   );
 }
+
+/** ⌘P: any note, by a few of its letters (in order, anywhere in its name), newest first — Enter opens it */
+export function QuickOpen({ listing, onOpen, onClose }: { listing: Listing; onOpen: (name: string) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const [at, setAt] = useState(0);
+  const fuzzy = (name: string) => {
+    const want = q.toLowerCase().replace(/\s+/g, "");
+    let k = 0;
+    for (const ch of name.toLowerCase()) if (ch === want[k]) k++;
+    return k === want.length;
+  };
+  const found = [...listing].sort((a, b) => b.modified - a.modified).filter((l) => fuzzy(l.name)).slice(0, 12);
+  return (
+    <div className="nb-quick-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="nb-quick">
+        <input
+          autoFocus
+          value={q}
+          placeholder="Go to a note"
+          spellCheck={false}
+          onChange={(e) => (setQ(e.target.value), setAt(0))}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onClose();
+            else if (e.key === "ArrowDown") (e.preventDefault(), setAt((at + 1) % Math.max(1, found.length)));
+            else if (e.key === "ArrowUp") (e.preventDefault(), setAt((at - 1 + found.length) % Math.max(1, found.length)));
+            else if (e.key === "Enter" && found[at]) onOpen(found[at].name);
+          }}
+        />
+        {found.map((l, k) => (
+          <button key={l.name} className={`nb-quick-item${k === at ? " is-at" : ""}`} onMouseEnter={() => setAt(k)} onClick={() => onOpen(l.name)}>
+            <Icon name="notebook" size={14} /> {l.name}
+            <span className="nb-lib-when">{when(l.modified)}</span>
+          </button>
+        ))}
+        {!found.length && <div className="nb-lib-empty">No note called that</div>}
+      </div>
+    </div>
+  );
+}

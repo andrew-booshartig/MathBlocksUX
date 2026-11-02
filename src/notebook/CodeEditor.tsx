@@ -175,6 +175,10 @@ export interface CodeEditorProps {
   onPaste?: (e: ClipboardEvent, view: EditorView) => boolean;
   /** where it was clicked, to put the caret there (else at the end) */
   at?: { x: number; y: number };
+  /** the caret at its start (come to from the block above) */
+  fromTop?: boolean;
+  /** off its top or bottom edge (↑ on the first line, ↓ on the last; vim's k and j): on to the next block — true when there was one */
+  onEdge?: (dir: "up" | "down") => boolean;
 }
 
 export default function CodeEditor(props: CodeEditorProps) {
@@ -293,7 +297,30 @@ export default function CodeEditor(props: CodeEditorProps) {
     v.focus();
     // the caret where it was clicked (the text reads the same as it did, so that's the same place)
     const clicked = p.at && v.posAtCoords(p.at);
-    v.dispatch({ selection: { anchor: clicked ?? v.state.doc.length } });
+    v.dispatch({ selection: { anchor: clicked ?? (p.fromTop ? 0 : v.state.doc.length) } });
+    // ↑ on the first line, ↓ on the last (vim: k and j in normal mode): on to the block beside it
+    const edge = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || !latest.current.onEdge || choicesRef.current) return;
+      const cm = latest.current.vimKeys ? getCM(v) : null;
+      const vimState = (cm?.state as { vim?: { insertMode?: boolean; visualMode?: boolean } } | undefined)?.vim;
+      const normal = !!cm && !vimState?.insertMode && !vimState?.visualMode;
+      const down = e.key === "ArrowDown" || (normal && e.key === "j");
+      const up = e.key === "ArrowUp" || (normal && e.key === "k");
+      if (!down && !up) return;
+      const head = v.state.selection.main.head;
+      const line = v.state.doc.lineAt(head).number;
+      // (a wrapped line: only off its last visual row)
+      const box = v.coordsAtPos(head);
+      const endBox = v.coordsAtPos(down ? v.state.doc.length : 0);
+      const lastRow = !box || !endBox || Math.abs(box.top - endBox.top) < 4;
+      if ((down && line === v.state.doc.lines && lastRow) || (up && line === 1 && lastRow)) {
+        if (latest.current.onEdge(down ? "down" : "up")) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    };
+    host.current.addEventListener("keydown", edge, true);
     // vim: numbers relative in normal mode, plain while inserting (init.lua's InsertEnter / InsertLeave)
     if (p.vimKeys && !p.prose) {
       const relative = lineNumbers({
