@@ -75,3 +75,14 @@ def test_a_timed_cell_keeps_its_answer():
 
 def test_names_read_through_magics():
     assert kernel.names_of("%time a = b + 1") == (["a"], ["b"])
+
+
+def test_each_section_keeps_its_own_names():
+    ch, p1, p2 = ["0:Chapter"], ["0:Chapter", "1:Problem 1"], ["0:Chapter", "2:Problem 2"]
+    kernel.run("s_x = 5", scope=ch)
+    kernel.run("s_x = 10\ns_y = 3", scope=p1)  # shadows the chapter's
+    assert kernel.run("s_x + s_y", scope=p1)["value"] == "13"
+    assert kernel.run("s_x", scope=ch)["value"] == "5"  # the chapter's, untouched
+    assert kernel.run("s_x", scope=p2)["value"] == "5"  # a sibling sees the chapter's
+    assert "NameError" in kernel.run("s_y", scope=p2)["error"]  # and not Problem 1's
+    assert "NameError" in kernel.run("s_x", scope=["3:Next"])["error"]  # the next # knows nothing of it

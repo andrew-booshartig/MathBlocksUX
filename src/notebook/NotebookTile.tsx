@@ -487,6 +487,12 @@ export default function NotebookTile({
   }, [doc]);
   const varsAtRef = useRef(varsAt);
   varsAtRef.current = varsAt;
+  /** a cell's section (by its code): the headers it's under — Python keeps each section's names apart */
+  const scopeFor = (lang: string, code: string) => {
+    const blocks = docRef.current?.blocks ?? [];
+    const at = blocks.findIndex((x) => x.kind === "cell" && x.lang === lang && x.code === code);
+    return at < 0 ? [] : (scopesOf(blocks)[at] ?? []);
+  };
   /** the variables a cell (by its code) can see */
   const varsFor = (lang: string, code: string) => {
     const b = docRef.current?.blocks.find((x) => x.kind === "cell" && x.lang === lang && x.code === code);
@@ -581,7 +587,7 @@ export default function NotebookTile({
         let out: PyOutput;
         try {
           const calc = Object.fromEntries(Object.entries(calcVarsRef.current ?? {}).filter(([, v]) => typeof v === "number"));
-          out = await invoke<PyOutput>("kernel_run", { notebook: name, code, calc, vars: varsFor("python", code) });
+          out = await invoke<PyOutput>("kernel_run", { notebook: name, code, calc, vars: varsFor("python", code), scope: scopeFor("python", code) });
         } catch (err) {
           out = { error: errorText(err) };
         }
