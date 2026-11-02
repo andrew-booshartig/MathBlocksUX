@@ -81,6 +81,7 @@ const PATHS: Record<string, string> = {
   wide: "M3 12h18M3 12l3.5-3.5M3 12l3.5 3.5M21 12l-3.5-3.5M21 12l-3.5 3.5",
   grip: "M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01",
   bolt: "M13 3 5 14h6l-1 7 8-11h-6z",
+  electrical: "M13 3 5 14h6l-1 7 8-11h-6z",
   check: "M5 12.5l4.5 4.5L19 7",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
   table: "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14",

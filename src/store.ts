@@ -605,6 +605,8 @@ export interface CalculatorBlockData extends BlockBase {
   smartNotebook?: string;
   /** its Work section: the same data as a Show-your-work block */
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
+  /** its Electrical tile: which tool, and what's typed in each (see electrical/ElectricalTile.tsx) */
+  smartElectrical?: import("./electrical/ElectricalTile").ElectricalState;
   ti?: TIState;
   /** the TI layout's extra-keys strip (fractions, powers…); on unless turned off */
   tiExtras?: boolean;
