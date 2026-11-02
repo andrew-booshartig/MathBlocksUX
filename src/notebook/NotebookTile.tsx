@@ -31,6 +31,7 @@ import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import { toggleTask, writingKey } from "./writing";
+import Library from "./Library";
 import { LINKED_LANGS, appDataFor, canLink, closeLinked, codeFor, linkedApp, linkedId, openLinked, rescopeLinked, useLinkedApps, watchLinked } from "./linked";
 import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
@@ -579,6 +580,24 @@ export default function NotebookTile({
     setOutlineOpenState(open);
     try {
       localStorage.setItem("nb-outline", open ? "1" : "0");
+    } catch {
+      /* only not remembered */
+    }
+  };
+  /** the words written (text blocks') */
+  const wordCount = useMemo(() => (doc?.blocks ?? []).reduce((n, b) => n + (b.kind === "text" ? (b.text.replace(/[#*_`>$=[\]()-]/g, " ").match(/\S+/g)?.length ?? 0) : 0), 0), [doc]);
+  /** the library (every note) beside the page — remembered */
+  const [libraryOpen, setLibraryOpenState] = useState(() => {
+    try {
+      return localStorage.getItem("nb-library") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const setLibraryOpen = (open: boolean) => {
+    setLibraryOpenState(open);
+    try {
+      localStorage.setItem("nb-library", open ? "1" : "0");
     } catch {
       /* only not remembered */
     }
@@ -1537,6 +1556,9 @@ export default function NotebookTile({
           </button>
           <button className={`nb-tool is-icon${finding ? " is-on" : ""}`} title="Find (and replace) in this notebook — ⌘F" onClick={() => (finding ? setFinding(null) : startFinding())}>
             <Icon name="zoom" size={14} />
+          </button>
+          <button className={`nb-tool is-icon${libraryOpen ? " is-on" : ""}`} title="Your notes — search, tags, what links here" onClick={() => setLibraryOpen(!libraryOpen)}>
+            <Icon name="panel" size={14} />
           </button>
           {outline.length > 0 && (
             <button className={`nb-tool${outlineOpen ? " is-on" : ""}`} title="Its headings, beside the page — click one to go there" onClick={() => setOutlineOpen(!outlineOpen)}>
@@ -2505,22 +2527,7 @@ export default function NotebookTile({
         </div>
       ) : (
         <div className="nb-main">
-        {outlineOpen && outline.length > 0 && (
-          <nav className="nb-outline-side">
-            <div className="nb-outline-title">Outline</div>
-            {outline.map((h, i) => (
-              <button
-                key={i}
-                className={`nb-outline-item${i === hereAt ? " is-here" : ""}`}
-                style={{ paddingLeft: 8 + (h.level - 1) * 12 }}
-                title={h.text}
-                onClick={() => page.current?.querySelector(`[data-block="${h.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
-              >
-                {h.text}
-              </button>
-            ))}
-          </nav>
-        )}
+        {libraryOpen && <Library listing={listing} current={name ?? null} onOpen={(n) => (setView("doc"), onOpen(n))} onNew={() => setView("new")} />}
         <div
           className="nb-page"
           ref={page}
@@ -2595,8 +2602,26 @@ export default function NotebookTile({
               )}
             </span>
           </div>
-          <div className="nb-foot">Saved as {name}.md · {todayLabel()}</div>
+          <div className="nb-foot">
+            Saved as {name}.md · {todayLabel()} · {wordCount} word{wordCount === 1 ? "" : "s"}
+          </div>
         </div>
+        {outlineOpen && outline.length > 0 && (
+          <nav className="nb-outline-side">
+            <div className="nb-outline-title">Outline</div>
+            {outline.map((h, i) => (
+              <button
+                key={i}
+                className={`nb-outline-item${i === hereAt ? " is-here" : ""}`}
+                style={{ paddingLeft: 8 + (h.level - 1) * 12 }}
+                title={h.text}
+                onClick={() => page.current?.querySelector(`[data-block="${h.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              >
+                {h.text}
+              </button>
+            ))}
+          </nav>
+        )}
         </div>
       )}
     </div>

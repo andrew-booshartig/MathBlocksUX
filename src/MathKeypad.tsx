@@ -14,8 +14,6 @@ const TEMPLATES: Key[] = [
   { label: "x^{2}", tex: true, title: "Squared", insert: "#@^{2}", kind: "template" },
   { label: "\\sqrt{\\square}", tex: true, title: "Square root — → to step out", insert: "\\sqrt{#?}", kind: "template" },
   { label: "\\sqrt[n]{\\square}", tex: true, title: "nth root — type the index, → for the inside", insert: "\\sqrt[#?]{#?}", kind: "template" },
-  { label: "(\\square)", tex: true, title: "Brackets", insert: "\\left(#?\\right)", kind: "template" },
-  { label: "|\\square|", tex: true, title: "Absolute value", insert: "\\left|#?\\right|", kind: "template" },
 ];
 
 const SYMBOLS: Key[] = [

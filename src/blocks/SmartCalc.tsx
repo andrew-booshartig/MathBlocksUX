@@ -2025,7 +2025,7 @@ export default function SmartCalc({
     )}
     {/* the keys: one slim strip on the line, in groups — what's typed most out front, the comparisons in one ▾ */}
     <div className="smart-strip">
-      {[KEYS.slice(1, 7), KEYS.slice(12, 15)].map((group, g) => (
+      {[KEYS.slice(1, 7).filter((k) => k.label !== "|\\square|"), KEYS.slice(12, 15)].map((group, g) => (
         <span key={g} className="smart-strip-group">
           {group.map((key) => (
             <button
