@@ -179,6 +179,8 @@ export interface CodeEditorProps {
   fromTop?: boolean;
   /** off its top or bottom edge (↑ on the first line, ↓ on the last; vim's k and j): on to the next block — true when there was one */
   onEdge?: (dir: "up" | "down") => boolean;
+  /** told of its editor while it's open (null when it closes): the formatting bar works on it */
+  onView?: (view: EditorView | null) => void;
 }
 
 export default function CodeEditor(props: CodeEditorProps) {
@@ -321,6 +323,7 @@ export default function CodeEditor(props: CodeEditorProps) {
       }
     };
     host.current.addEventListener("keydown", edge, true);
+    p.onView?.(v);
     // vim: numbers relative in normal mode, plain while inserting (init.lua's InsertEnter / InsertLeave)
     if (p.vimKeys && !p.prose) {
       const relative = lineNumbers({
@@ -336,6 +339,7 @@ export default function CodeEditor(props: CodeEditorProps) {
     }
     return () => {
       alive = false;
+      latest.current.onView?.(null);
       v.destroy();
       view.current = null;
     };

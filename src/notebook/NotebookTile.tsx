@@ -33,6 +33,7 @@ import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import { toggleTask, writingKey } from "./writing";
 import type { EditorView, KeyBinding } from "@codemirror/view";
 import Library, { QuickOpen } from "./Library";
+import FormatBar from "./FormatBar";
 import { LINKED_LANGS, appDataFor, canLink, closeLinked, codeFor, linkedApp, linkedId, openLinked, rescopeLinked, useLinkedApps, watchLinked } from "./linked";
 import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
@@ -527,6 +528,37 @@ export default function NotebookTile({
       localStorage.setItem("nb-outline", open ? "1" : "0");
     } catch {
       /* only not remembered */
+    }
+  };
+  /** the notebook's own undo and redo (blocks added, moved, deleted…) */
+  const notebookUndo = (again: boolean) => {
+    const from = again ? future : past;
+    const to = again ? past : future;
+    const step = from.current.pop();
+    if (!step || !docRef.current) return setNotice(again ? "Nothing to redo" : "Nothing to undo");
+    to.current.push(docRef.current);
+    restoring.current = true;
+    commit(step);
+    restoring.current = false;
+    setNotice(again ? "Redone" : "Undone — ⌘⇧Z to redo");
+  };
+  /** the text being written (its editor), for the formatting bar */
+  const [textView, setTextView] = useState<EditorView | null>(null);
+  /** a picture chosen from the formatting bar: kept with the notebook */
+  const keepPicture = async (f: File) => {
+    if (!name) return null;
+    const url = await new Promise<string>((ok) => {
+      const r = new FileReader();
+      r.onload = () => ok(String(r.result));
+      r.readAsDataURL(f);
+    });
+    try {
+      const path = await invoke<string>("flat_save", { notebook: name, dataUrl: url });
+      flatPictures.set(path, url);
+      return `![](${encodeURI(path)})`;
+    } catch (err) {
+      setNotice(`Couldn't keep that picture: ${errorText(err)}`);
+      return null;
     }
   };
   /** ⌘P: go to a note */
@@ -2132,7 +2164,7 @@ export default function NotebookTile({
             <MathBlockLive text={draft} onChange={type} onDone={() => finishEditing()} />
           ) : isEditing ? (
             // written as it reads (live preview): the Markdown shows only where the caret is
-            <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys={vimKeys} prose markdown keys={proseKeys(b)} onPaste={pasteInto} at={clickAt.current ?? undefined} fromTop={fromTop.current} onEdge={onEdge(b)} />
+            <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys={vimKeys} prose markdown keys={proseKeys(b)} onPaste={pasteInto} at={clickAt.current ?? undefined} fromTop={fromTop.current} onEdge={onEdge(b)} onView={setTextView} />
           ) : (
             <div
               className="nb-md"
@@ -2433,15 +2465,7 @@ export default function NotebookTile({
         const inField = (e.target as HTMLElement).closest?.("input, textarea, .cm-editor, math-field, [contenteditable]");
         if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "z" && !inField) {
           e.preventDefault();
-          const from = e.shiftKey ? future : past;
-          const to = e.shiftKey ? past : future;
-          const step = from.current.pop();
-          if (!step || !docRef.current) return setNotice(e.shiftKey ? "Nothing to redo" : "Nothing to undo");
-          to.current.push(docRef.current);
-          restoring.current = true;
-          commit(step);
-          restoring.current = false;
-          setNotice(e.shiftKey ? "Redone" : "Undone — ⌘⇧Z to redo");
+          notebookUndo(e.shiftKey);
           return;
         }
         // ⌘P: go to any note
@@ -2580,6 +2604,8 @@ export default function NotebookTile({
       ) : (
         <div className="nb-main">
         {libraryOpen && <Library listing={listing} current={name ?? null} onOpen={(n) => (setView("doc"), onOpen(n))} onNew={() => setView("new")} />}
+        <div className="nb-center">
+        <FormatBar view={textView} onUndo={() => notebookUndo(false)} onRedo={() => notebookUndo(true)} onNew={(start) => addBlock({ lang: "text", start })} onPicture={keepPicture} />
         <div
           className="nb-page"
           ref={page}
@@ -2666,6 +2692,7 @@ export default function NotebookTile({
           <div className="nb-foot">
             Saved as {name}.md · {todayLabel()} · {wordCount} word{wordCount === 1 ? "" : "s"}
           </div>
+        </div>
         </div>
         {outlineOpen && outline.length > 0 && (
           <nav className="nb-outline-side">

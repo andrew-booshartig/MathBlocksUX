@@ -1,0 +1,159 @@
+/** The formatting bar, as every text editor has one: undo, the paragraph's
+ * style, bold and its kin, links, lists, a table, a picture, math. It works
+ * on the text being written (its live preview); with nothing being written,
+ * a style or a list starts a new paragraph at the end. */
+import { useRef, useState } from "react";
+import { redo, undo } from "@codemirror/commands";
+import type { EditorView } from "@codemirror/view";
+import Icon from "../Icon";
+import { writingKey } from "./writing";
+
+/** what starts a line: a heading's #s, a quote's >, a list's marker */
+const LEAD = /^(\s*)(#{1,6}\s+|>\s?|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+)?/;
+
+const STYLES = [
+  { id: "text", label: "Text", lead: "" },
+  { id: "h1", label: "Heading 1", lead: "# " },
+  { id: "h2", label: "Heading 2", lead: "## " },
+  { id: "h3", label: "Heading 3", lead: "### " },
+  { id: "quote", label: "Quote", lead: "> " },
+];
+
+/** each selected line's lead made `lead` (or taken off, when it's that already) */
+function setLead(v: EditorView, lead: string, toggle = false) {
+  const { state } = v;
+  const sel = state.selection.main;
+  const first = state.doc.lineAt(sel.from).number;
+  const last = state.doc.lineAt(sel.to).number;
+  const changes = [];
+  const already = toggle && state.doc.line(first).text.match(LEAD)?.[2] === lead;
+  for (let n = first, k = 1; n <= last; n++, k++) {
+    const line = state.doc.line(n);
+    const m = line.text.match(LEAD)!;
+    const next = already ? "" : lead === "1. " ? `${k}. ` : lead;
+    changes.push({ from: line.from + m[1].length, to: line.from + m[0].length, insert: next });
+  }
+  v.dispatch({ changes });
+  v.focus();
+}
+
+function wrapWith(v: EditorView, key: string, shift = false) {
+  const sel = v.state.selection.main;
+  // (a selection from the line's start leaves its # or list marker outside: **inside** them)
+  const line = v.state.doc.lineAt(sel.from);
+  const lead = line.text.match(LEAD)![0].length;
+  const from = sel.from - line.from < lead && sel.to > line.from + lead ? line.from + lead : sel.from;
+  const edit = writingKey({ key, metaKey: true, ctrlKey: false, shiftKey: shift, altKey: false }, v.state.doc.toString(), from, sel.to);
+  if (edit) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: edit.value }, selection: { anchor: edit.start, head: edit.end } });
+  v.focus();
+}
+
+function insert(v: EditorView, text: string, caret = text.length) {
+  const at = v.state.selection.main;
+  v.dispatch({ changes: { from: at.from, to: at.to, insert: text }, selection: { anchor: at.from + caret } });
+  v.focus();
+}
+
+export default function FormatBar({
+  view,
+  onUndo,
+  onRedo,
+  onNew,
+  onPicture,
+}: {
+  /** the text being written, if any */
+  view: EditorView | null;
+  /** the notebook's own undo (blocks added, moved, deleted), when nothing's being written */
+  onUndo: () => void;
+  onRedo: () => void;
+  /** nothing being written: a new paragraph at the end, starting with this */
+  onNew: (start: string) => void;
+  /** a picture file chosen: kept with the notebook, its Markdown back */
+  onPicture: (file: File) => Promise<string | null>;
+}) {
+  const [styles, setStyles] = useState(false);
+  const file = useRef<HTMLInputElement>(null);
+  const line = view ? view.state.doc.lineAt(view.state.selection.main.head).text : "";
+  const current = STYLES.find((s) => s.lead && line.startsWith(s.lead) && !line.startsWith(`${s.lead.trim()}#`)) ?? STYLES[0];
+  const off = !view;
+  // (a press on the bar keeps the text's caret where it is)
+  const keep = (e: React.MouseEvent) => e.preventDefault();
+  const lead = (l: string, toggle = false) => (view ? setLead(view, l, toggle) : onNew(l));
+  return (
+    <div className="nb-format" onMouseDown={keep}>
+      <button title="Undo (⌘Z)" onClick={() => (view ? (undo(view), view.focus()) : onUndo())}>
+        <Icon name="undo" size={15} />
+      </button>
+      <button title="Redo (⌘⇧Z)" onClick={() => (view ? (redo(view), view.focus()) : onRedo())}>
+        <Icon name="redo" size={15} />
+      </button>
+      <span className="nb-format-sep" />
+      <span className="nb-format-anchor">
+        <button className="nb-format-style" title="The paragraph's style" onClick={() => setStyles(!styles)}>
+          {current.label} <Icon name="chevron" size={12} />
+        </button>
+        {styles && (
+          <span className="nb-format-menu" onMouseLeave={() => setStyles(false)}>
+            {STYLES.map((s) => (
+              <button key={s.id} className={`is-${s.id}`} onClick={() => (setStyles(false), lead(s.lead))}>
+                {s.label}
+              </button>
+            ))}
+          </span>
+        )}
+      </span>
+      <span className="nb-format-sep" />
+      <button disabled={off} title="Bold (⌘B)" onClick={() => view && wrapWith(view, "b")}>
+        <b>B</b>
+      </button>
+      <button disabled={off} title="Italic (⌘I)" onClick={() => view && wrapWith(view, "i")}>
+        <i>I</i>
+      </button>
+      <button disabled={off} title="Strikethrough (⌘⇧X)" onClick={() => view && wrapWith(view, "x", true)}>
+        <s>S</s>
+      </button>
+      <button disabled={off} title="Code (⌘E)" onClick={() => view && wrapWith(view, "e")}>
+        <Icon name="source" size={14} />
+      </button>
+      <button disabled={off} title="Highlight (⌘⇧H)" onClick={() => view && wrapWith(view, "h", true)}>
+        <span className="nb-format-mark">H</span>
+      </button>
+      <button disabled={off} title="Link (⌘K)" onClick={() => view && wrapWith(view, "k")}>
+        <Icon name="link" size={14} />
+      </button>
+      <span className="nb-format-sep" />
+      <button title="Bulleted list" onClick={() => lead("- ", true)}>
+        <Icon name="list" size={15} />
+      </button>
+      <button title="Numbered list" onClick={() => lead("1. ", true)}>
+        <span className="nb-format-num">1.</span>
+      </button>
+      <button title="Checklist" onClick={() => lead("- [ ] ", true)}>
+        <Icon name="check" size={15} />
+      </button>
+      <span className="nb-format-sep" />
+      <button title="A table" onClick={() => (view ? insert(view, "\n| Column | Column |\n| --- | --- |\n|  |  |\n", 3) : onNew("| Column | Column |\n| --- | --- |\n|  |  |"))}>
+        <Icon name="table" size={15} />
+      </button>
+      <button title="A picture" onClick={() => file.current?.click()}>
+        <Icon name="image" size={15} />
+      </button>
+      <button disabled={off} title="Math in the line ($x^2$)" onClick={() => view && insert(view, "$$", 1)}>
+        <span className="nb-format-num">∑</span>
+      </button>
+      <input
+        ref={file}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          const md = await onPicture(f);
+          if (md) view ? insert(view, md) : onNew(md);
+        }}
+      />
+    </div>
+  );
+}
