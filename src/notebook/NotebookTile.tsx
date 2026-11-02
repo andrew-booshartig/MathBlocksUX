@@ -1100,6 +1100,62 @@ export default function NotebookTile({
     window.addEventListener("pointerup", up);
   };
   const dropMark = (id: string) => (dropBlock?.id === id ? ` is-drop-${dropBlock.side}` : "") + (moving === id ? " is-moving" : "");
+  /** a block placed freely, being dragged: where it is, and the helper lines it's snapped to */
+  const [freeDrag, setFreeDrag] = useState<{ id: string; x: number; y: number; guides: number[] } | null>(null);
+  const beginFreeMove = (e: ReactPointerEvent, b: Block) => {
+    if (e.button !== 0 || !b.free) return;
+    const el = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-block]");
+    const col = columnBox();
+    const w = el?.offsetWidth ?? 200;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const from = b.free;
+    let now = { x: from.x, y: from.y };
+    let started = false;
+    // the other free blocks' edges, to line up with
+    const others = [...(page.current?.querySelectorAll<HTMLElement>(".nb-solo.is-free > .nb-block") ?? [])].filter((x) => x !== el).flatMap((x) => {
+      const r = x.getBoundingClientRect();
+      return [r.left - col.left, r.right - col.left];
+    });
+    const move = (ev: PointerEvent) => {
+      if (!started && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+      if (!started) {
+        started = true;
+        movedRef.current = true;
+        document.body.classList.add("nb-is-moving");
+      }
+      let x = from.x + ev.clientX - x0;
+      const y = Math.round(from.y + ev.clientY - y0);
+      // helper lines: the column's edges and middle, and the other free blocks' edges (Alt: none)
+      const guides: number[] = [];
+      if (!ev.altKey) {
+        const targets = [0, col.width / 2, col.width, ...others];
+        for (const [edge, off] of [
+          [x, 0],
+          [x + w / 2, w / 2],
+          [x + w, w],
+        ] as const) {
+          const hit = targets.find((t) => Math.abs(t - edge) < 7);
+          if (hit !== undefined) {
+            x = hit - off;
+            guides.push(hit);
+            break;
+          }
+        }
+      }
+      now = { x: Math.round(x), y };
+      setFreeDrag({ id: b.id, ...now, guides });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.classList.remove("nb-is-moving");
+      setFreeDrag(null);
+      if (started) updateBlock(b.id, { free: now });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
   /** where a block sits, changed (its bar): left, centered, right, text around it, wide… */
   const place = (b: Block, patch: Partial<Block>) => updateBlock(b.id, patch);
   /** sizing a block alone on its line by an edge: its width, live, kept on letting go */
@@ -1849,6 +1905,11 @@ export default function NotebookTile({
     if (t.closest("button, a, input, textarea, select, math-field, .cm-editor, [contenteditable], .nb-obj-bar, .nb-gutter, .nb-size, .nb-insert, .nb-folded")) return;
     press.current = { id: b.id, already: picked === b.id };
     pickBlock(b.id);
+    // placed freely: dragged anywhere (a graph's plot and an output's text excepted — the grip moves those)
+    if (b.free) {
+      if (!t.closest(".js-plotly-plot, pre, .nb-py-out, .nb-code")) beginFreeMove(e, b);
+      return;
+    }
     // a graph pans under the pointer, and an output's text is there to select: those move by the grip
     if (!t.closest(".nb-graph, .js-plotly-plot, pre, .nb-py-out, .nb-code")) beginMove(e, b.id, false);
   };
@@ -1950,6 +2011,13 @@ export default function NotebookTile({
                 <button className={spot === "wrap-right" ? "is-on" : ""} title="On the right, the text after it flowing around it" onClick={() => set({ wrap: "right", align: undefined, wide: undefined, width: b.width && b.width <= 70 ? b.width : 45 })}>
                   <Icon name="wrapRight" size={15} />
                 </button>
+                <button
+                  className={b.free ? "is-on" : ""}
+                  title={b.free ? "Back into the text" : "Free — drag it anywhere on the page, in front of the text (helper lines line it up)"}
+                  onClick={() => set(b.free ? { free: undefined } : { free: { x: 0, y: 0 }, wrap: undefined, wide: undefined, align: undefined, width: b.width && b.width < 90 ? b.width : 50 })}
+                >
+                  <Icon name="move" size={15} />
+                </button>
                 <button className={spot === "wide" ? "is-on" : ""} title={b.wide ? "Back to the text's width" : "Wide — out past the text, toward the page's edges"} onClick={() => set(b.wide ? { wide: undefined } : { wide: true, width: undefined, align: undefined, wrap: undefined })}>
                   <Icon name="wide" size={15} />
                 </button>
@@ -2010,7 +2078,17 @@ export default function NotebookTile({
   useEffect(() => {
     const el = page.current;
     if (!el) return;
-    const fit = () => el.style.setProperty("--nb-room", `${Math.max(0, Math.min(240, parseFloat(getComputedStyle(el).paddingLeft) - 30))}px`);
+    const fit = () => {
+      el.style.setProperty("--nb-room", `${Math.max(0, Math.min(240, parseFloat(getComputedStyle(el).paddingLeft) - 30))}px`);
+      // the page's own color (a free block in front of the text is filled with it)
+      for (let up: HTMLElement | null = el; up; up = up.parentElement) {
+        const c = getComputedStyle(up).backgroundColor;
+        if (c && c !== "transparent" && c !== "rgba(0, 0, 0, 0)") {
+          el.style.setProperty("--nb-paper", c);
+          break;
+        }
+      }
+    };
     const watch = new ResizeObserver(fit);
     watch.observe(el);
     return () => watch.disconnect();
@@ -2514,10 +2592,19 @@ export default function NotebookTile({
             if (row.length === 1) {
               const b = row[0];
               const width = sizing?.id === b.id ? sizing.width : (b.width ?? 100);
-              const spot = b.wide ? " is-wide" : b.wrap ? ` is-wrap-${b.wrap}` : b.kind === "cell" && b.align && b.align !== "left" ? ` is-align-${b.align}` : "";
+              const spot = b.free ? " is-free" : b.wide ? " is-wide" : b.wrap ? ` is-wrap-${b.wrap}` : b.kind === "cell" && b.align && b.align !== "left" ? ` is-align-${b.align}` : "";
+              const at = freeDrag?.id === b.id ? freeDrag : b.free;
               return (
                 <div key={`solo-${b.id}`} className={`nb-solo is-${b.kind}${spot}${sizing?.id === b.id ? " is-sizing" : ""}`} style={width < 100 && !b.wide ? { width: `${width}%` } : undefined}>
-                  {blockView(b, isCalcLike(b) ? calcAt++ : -1)}
+                  {at ? (
+                    // placed freely: in front of the text, where it was put (its place in the text is its anchor)
+                    <div className="nb-free" style={{ left: at.x, top: at.y }}>
+                      {blockView(b, isCalcLike(b) ? calcAt++ : -1)}
+                    </div>
+                  ) : (
+                    blockView(b, isCalcLike(b) ? calcAt++ : -1)
+                  )}
+                  {freeDrag?.id === b.id && freeDrag.guides.map((g) => <div key={g} className="nb-guide" style={{ left: g }} />)}
                 </div>
               );
             }

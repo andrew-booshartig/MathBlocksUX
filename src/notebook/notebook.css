@@ -3625,3 +3625,46 @@ body.nb-is-moving * {
 .nb-quick-item .icon {
   color: var(--t-muted);
 }
+
+/* placed freely: in front of the text, anchored where it sits in it */
+.nb-solo.is-free {
+  position: relative;
+  height: 0;
+  z-index: 6;
+}
+
+.nb-free {
+  position: absolute;
+  width: 100%;
+}
+
+.nb-free > .nb-block.is-obj,
+.nb-free > .nb-block.is-obj:hover:not(.is-editing) {
+  margin: 0;
+  background: var(--nb-paper, var(--t-bg2));
+  box-shadow: 0 8px 26px rgb(0 0 0 / 0.3);
+}
+
+.nb-free > .nb-block.is-obj.is-picked {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--t-blue) 80%, transparent),
+    0 8px 26px rgb(0 0 0 / 0.3);
+}
+
+/* a helper line, while a free block is dragged */
+.nb-guide {
+  position: absolute;
+  top: -500px;
+  height: 1400px;
+  width: 1px;
+  background: var(--t-pink);
+  pointer-events: none;
+  z-index: 7;
+}
+
+/* the bar floats just above its block (over the page, never over the block it's for) */
+.nb-obj-bar {
+  top: auto;
+  bottom: calc(100% + 4px);
+  right: 0;
+}

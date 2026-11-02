@@ -28,6 +28,8 @@ export interface Placement {
   wide?: boolean;
   /** its own height, in pixels (a graph) */
   height?: number;
+  /** placed freely over the page (Word's "in front of text"): its offset in pixels from where it sits in the text */
+  free?: { x: number; y: number };
 }
 
 export type Block = ({ id: string; kind: "text"; text: string } | { id: string; kind: "cell"; lang: string; info: string; code: string }) & Placement;
@@ -49,6 +51,8 @@ function readPlacement(words: string): Placement {
     if (part === "wide") out.wide = true;
     const h = part.match(/^height\s+(\d+)(?:px)?$/);
     if (h) out.height = Math.max(80, Math.min(2400, Number(h[1])));
+    const f = part.match(/^free\s+(-?\d+)\s+(-?\d+)$/);
+    if (f) out.free = { x: Number(f[1]), y: Number(f[2]) };
   }
   return out;
 }
@@ -61,6 +65,7 @@ const placementLine = (b: Placement) => {
     b.wrap ? `wrap ${b.wrap}` : "",
     b.wide ? "wide" : "",
     b.height ? `height ${Math.round(b.height)}` : "",
+    b.free ? `free ${Math.round(b.free.x)} ${Math.round(b.free.y)}` : "",
   ].filter(Boolean);
   return parts.length ? `<!-- matrixlab: ${parts.join(", ")} -->\n` : "";
 };
