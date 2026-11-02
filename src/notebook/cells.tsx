@@ -11,6 +11,7 @@
  *   python      code, run on ▶ (with every Python cell above it), its
  *               printout, plots and last line's answer under it */
 import { matlabOutput } from "./languages";
+import { scopeChain } from "./format";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import GraphView, { DEFAULT_WINDOW, type PlotDiv, useAppGraphColors } from "../GraphView";
 import { mathRequest } from "../mathSidecar";
@@ -29,27 +30,40 @@ export interface CalcLine {
   error?: string;
 }
 
-/** every calc cell's lines worked out, top to bottom — a value saved in one
- * (r = 4) is there for every line after it */
-export async function runCalcCells(cells: string[]): Promise<CalcLine[][]> {
-  const vars: Record<string, string> = {};
-  // every value saved so far, worked out together — so F = m·g has one too (from m and g)
-  const defs: { name: string; latex: string }[] = [];
+/** every calc cell's lines worked out, top to bottom, each in its scope
+ * (the headers it's under — see scopesOf): a value saved in one (r = 4) is
+ * there for every line after it in that section and the sections inside it
+ * — a ## section's r = 5 shadows it there, and leaves the #'s r alone */
+export async function runCalcCells(cells: (string | { code: string; scope: string[] })[]): Promise<CalcLine[][]> {
+  // each scope's own saved values, and how they were written (worked out together, so F = m·g has one)
+  const own = new Map<string, { vars: Record<string, string>; defs: { name: string; latex: string }[] }>();
+  const scopeOf = (key: string) => own.get(key) ?? (own.set(key, { vars: {}, defs: [] }), own.get(key)!);
   let ans: string | undefined;
   const out: CalcLine[][] = [];
-  for (const code of cells) {
+  for (const cell of cells) {
+    const { code, scope } = typeof cell === "string" ? { code: cell, scope: [] as string[] } : cell;
+    const chain = scopeChain(scope);
+    const here = scopeOf(chain[chain.length - 1]);
     const lines: CalcLine[] = [];
     for (const raw of code.split("\n")) {
       const latex = raw.trim();
       if (!latex) continue;
+      // what it can see: the page's, then each header's, the inner shadowing the outer
+      const vars: Record<string, string> = Object.assign({}, ...chain.map((k) => own.get(k)?.vars ?? {}));
       try {
         const result = await mathRequest<SmartResult>({ op: "smart", latex, angle: "deg", ans, vars });
         if (result.kind === "assign" && result.name && result.value_latex && !result.params?.length) {
-          const at = defs.findIndex((d) => d.name === result.name);
-          if (at >= 0) defs.splice(at, 1);
-          defs.push({ name: result.name, latex: result.value_latex });
-          const resolved = await mathRequest<{ values: Record<string, { plain?: string }> }>({ op: "smartvars", vars: defs });
-          for (const [name, v] of Object.entries(resolved.values)) if (v?.plain !== undefined && v.plain !== null) vars[name] = v.plain;
+          const at = here.defs.findIndex((d) => d.name === result.name);
+          if (at >= 0) here.defs.splice(at, 1);
+          here.defs.push({ name: result.name, latex: result.value_latex });
+          // worked out with what it can see; kept in its own section
+          const seen = new Map<string, { name: string; latex: string }>();
+          for (const k of chain) for (const d of own.get(k)?.defs ?? []) seen.set(d.name, d);
+          const resolved = await mathRequest<{ values: Record<string, { plain?: string }> }>({ op: "smartvars", vars: [...seen.values()] });
+          for (const d of here.defs) {
+            const v = resolved.values[d.name];
+            if (v?.plain !== undefined && v.plain !== null) here.vars[d.name] = v.plain;
+          }
         }
         if (result.ans) ans = result.ans;
         lines.push({ latex, result });

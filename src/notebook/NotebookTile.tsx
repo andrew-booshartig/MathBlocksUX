@@ -16,7 +16,7 @@ import Icon from "../Icon";
 import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
 import { type CalcLine, CalcCell, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, WhenSeen, WorkCell, WorkCellEditor, drawEverything, numberOf, parseVars, plots, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
-import { type Block, type CellLang, type NotebookDoc, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, rowsOf, setMeta, widthsOf, writeNotebook } from "./format";
+import { type Block, type CellLang, type NotebookDoc, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
 import { setNotebookInbox } from "./inbox";
 import { notebookLatex } from "./latex";
 import { renderMarkdown } from "./markdown";
@@ -432,33 +432,55 @@ export default function NotebookTile({
   }, [name, doc, commit]);
 
   // ---- calc cells: worked out top to bottom whenever one changes
-  const calcCodes = useMemo(() => (doc?.blocks ?? []).filter(isCalcLike).map((b) => (b.kind === "cell" && b.lang === "vars" ? varsAsCalc(b.code) : (b as { code: string }).code)), [doc]);
-  /** the variables blocks' values, as numbers (in the units given) — for Python and code cells */
-  const notebookVars = useMemo(() => {
-    const out: Record<string, number> = {};
+  /** each block's scope: the headers it sits under (headers are scope, as Python's indentation is) */
+  const scopes = useMemo(() => scopesOf(doc?.blocks ?? []), [doc]);
+  const calcCells = useMemo(
+    () =>
+      (doc?.blocks ?? []).flatMap((b, k) =>
+        isCalcLike(b) && b.kind === "cell" ? [{ code: b.lang === "vars" ? varsAsCalc(b.code) : b.code, scope: scopes[k] }] : [],
+      ),
+    [doc, scopes],
+  );
+  /** what each block can see of the variables blocks' values, as numbers (in the units given) —
+   * its section's and the sections it's inside, up to it; for Python and code cells */
+  const varsAt = useMemo(() => {
+    const own = new Map<string, Record<string, number>>();
+    const at = new Map<string, Record<string, number>>();
     let k = 0;
-    for (const b of doc?.blocks ?? []) {
-      if (!isCalcLike(b)) continue;
-      const lines = calc?.[k++];
-      if (b.kind !== "cell" || b.lang !== "vars" || !lines) continue;
-      const named = parseVars(b.code).filter((r) => r.name && r.value);
-      named.forEach((r, j) => {
-        const n = numberOf(lines[j]);
-        if (n !== null && /^[A-Za-z_]\w*$/.test(r.name)) out[r.name] = n;
-      });
-    }
-    return out;
-  }, [doc, calc]);
-  const notebookVarsRef = useRef(notebookVars);
-  notebookVarsRef.current = notebookVars;
-  const calcKey = calcCodes.join("\u0001");
+    (doc?.blocks ?? []).forEach((b, i) => {
+      const chain = scopeChain(scopes[i] ?? []);
+      if (isCalcLike(b)) {
+        const lines = calc?.[k++];
+        if (b.kind === "cell" && b.lang === "vars" && lines) {
+          const mine = own.get(chain[chain.length - 1]) ?? {};
+          parseVars(b.code)
+            .filter((r) => r.name && r.value)
+            .forEach((r, j) => {
+              const n = numberOf(lines[j]);
+              if (n !== null && /^[A-Za-z_]\w*$/.test(r.name)) mine[r.name] = n;
+            });
+          own.set(chain[chain.length - 1], mine);
+        }
+      }
+      at.set(b.id, Object.assign({}, ...chain.map((c) => own.get(c) ?? {})));
+    });
+    return at;
+  }, [doc, calc, scopes]);
+  const varsAtRef = useRef(varsAt);
+  varsAtRef.current = varsAt;
+  /** the variables a cell (by its code) can see */
+  const varsFor = (lang: string, code: string) => {
+    const b = docRef.current?.blocks.find((x) => x.kind === "cell" && x.lang === lang && x.code === code);
+    return (b && varsAtRef.current.get(b.id)) ?? {};
+  };
+  const calcKey = JSON.stringify(calcCells);
   useEffect(() => {
     let live = true;
-    if (!calcCodes.length) {
+    if (!calcCells.length) {
       setCalc([]);
       return;
     }
-    const timer = setTimeout(() => runCalcCells(calcCodes).then((out) => live && setCalc(out)), 200);
+    const timer = setTimeout(() => runCalcCells(calcCells).then((out) => live && setCalc(out)), 200);
     return () => {
       live = false;
       clearTimeout(timer);
@@ -540,7 +562,7 @@ export default function NotebookTile({
         let out: PyOutput;
         try {
           const calc = Object.fromEntries(Object.entries(calcVarsRef.current ?? {}).filter(([, v]) => typeof v === "number"));
-          out = await invoke<PyOutput>("kernel_run", { notebook: name, code, calc, vars: notebookVarsRef.current });
+          out = await invoke<PyOutput>("kernel_run", { notebook: name, code, calc, vars: varsFor("python", code) });
         } catch (err) {
           out = { error: errorText(err) };
         }
@@ -587,7 +609,7 @@ export default function NotebookTile({
             notebook: name,
             lang: lang.id,
             spec: { once: way.once, session: way.session, init: way.init, done: way.done, timeout: way.timeout, extension: lang.extension },
-            code: lang.assign ? [...Object.entries(notebookVarsRef.current).map(([n, v]) => lang.assign!.split("{name}").join(n).split("{value}").join(String(v))), code].join("\n") : code,
+            code: lang.assign ? [...Object.entries(varsFor(lang.id, code)).map(([n, v]) => lang.assign!.split("{name}").join(n).split("{value}").join(String(v))), code].join("\n") : code,
           });
           // a library's chatter (a graphics driver's notes…) left out
           const quiet = (way.quiet ?? []).map((q) => new RegExp(q));

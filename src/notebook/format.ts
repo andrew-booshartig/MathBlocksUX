@@ -176,3 +176,27 @@ export function printSwitches(doc: NotebookDoc) {
 
 /** a cell as Markdown, to drop into a notebook (from Calculate, Work, Graph) */
 export const cellText = (lang: CellLang, code: string) => writeNotebook({ meta: [], blocks: [{ id: "", kind: "cell", lang, info: "", code }] }).trim();
+
+/** Headers are scope, as Python's indentation is: each block's scope is the
+ * path of headers it sits under, outermost first (each header an id of its
+ * own, so two "Problem 1"s are two scopes). A ## section sees its #'s
+ * variables and can shadow them; sections side by side, and the next #,
+ * know nothing of each other's. Blocks before any header share the page's. */
+export function scopesOf(blocks: Block[]): string[][] {
+  const out: string[][] = [];
+  let stack: { level: number; id: string }[] = [];
+  let n = 0;
+  for (const b of blocks) {
+    if (b.kind === "text")
+      for (const m of b.text.matchAll(/^(#{1,6})\s+(.+)$/gm)) {
+        const level = m[1].length;
+        stack = [...stack.filter((s) => s.level < level), { level, id: `${n++}:${m[2].trim()}` }];
+      }
+    out.push(stack.map((s) => s.id));
+  }
+  return out;
+}
+
+/** a scope's key, and the keys it can see — the page's, then each header out to in */
+export const scopeKey = (path: string[]) => path.join("\u0002");
+export const scopeChain = (path: string[]) => [scopeKey([]), ...path.map((_, k) => scopeKey(path.slice(0, k + 1)))];
