@@ -1,0 +1,12 @@
+{
+  "name": "tables",
+  "displayName": "Tables",
+  "version": "1.0.0",
+  "description": "CSV cells shown as tables — with each column's total and mean, if you like",
+  "contributes": {
+    "settings": [
+      { "key": "totals", "label": "Each column's total and mean", "type": "boolean", "default": true },
+      { "key": "header", "label": "The first row is the headings", "type": "boolean", "default": true }
+    ]
+  }
+}

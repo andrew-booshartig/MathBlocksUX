@@ -1,0 +1,24 @@
+{
+  "name": "julia",
+  "displayName": "Julia",
+  "version": "1.0.0",
+  "description": "Julia code cells (needs Julia installed — julialang.org/downloads, or brew install julia)",
+  "contributes": {
+    "languages": [
+      {
+        "id": "julia",
+        "label": "Julia",
+        "extension": "jl",
+        "starter": "println(\"hello from Julia\")",
+        "install": "brew install julia",
+        "highlight": {
+          "lineComment": ["#"],
+          "strings": ["\""],
+          "keywords": ["function", "end", "for", "in", "if", "elseif", "else", "while", "return", "let", "struct", "mutable", "module", "using", "import", "begin", "do", "local", "global", "const"],
+          "builtins": ["println", "print", "length", "sum", "map", "filter", "collect", "zeros", "ones", "range"]
+        },
+        "run": [{ "needs": "julia", "once": ["julia", "--startup-file=no", "{file}"] }]
+      }
+    ]
+  }
+}

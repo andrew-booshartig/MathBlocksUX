@@ -1741,3 +1741,61 @@ body {
   font-size: 11px;
   white-space: pre-wrap;
 }
+
+/* a plugin's settings, opened under it; and the gallery's rows */
+.ext-link.is-on {
+  color: var(--t-text);
+}
+
+.ext-settings {
+  margin: 0 6px 8px 34px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--t-line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ext-setting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.ext-setting input,
+.ext-setting select {
+  width: 150px;
+  padding: 4px 8px;
+  border: 1px solid var(--t-line);
+  border-radius: 6px;
+  background: var(--t-bg1, #14141a);
+  color: var(--t-text);
+  font-size: 12.5px;
+}
+
+.ext-kind {
+  flex: 0 0 64px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--t-muted);
+}
+
+.ext-add {
+  padding: 4px 14px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: none;
+  color: var(--t-text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.ext-add:hover {
+  border-color: var(--t-pink);
+}
+
+.ext-added {
+  padding: 0 8px;
+}

@@ -1,0 +1,24 @@
+{
+  "name": "r-lang",
+  "displayName": "R",
+  "version": "1.0.0",
+  "description": "R code cells, for statistics (needs R installed — brew install r)",
+  "contributes": {
+    "languages": [
+      {
+        "id": "r",
+        "label": "R",
+        "extension": "R",
+        "starter": "x <- c(2, 4, 4, 5)\nsummary(x)",
+        "install": "brew install r",
+        "highlight": {
+          "lineComment": ["#"],
+          "strings": ["\"", "'"],
+          "keywords": ["function", "if", "else", "for", "in", "while", "repeat", "return", "next", "break", "TRUE", "FALSE", "NULL", "NA", "library"],
+          "builtins": ["c", "print", "summary", "mean", "sd", "lm", "plot", "data.frame", "length", "seq"]
+        },
+        "run": [{ "needs": "Rscript", "once": ["Rscript", "{file}"] }]
+      }
+    ]
+  }
+}

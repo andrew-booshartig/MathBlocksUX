@@ -8,7 +8,8 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import Icon from "../Icon";
 import { TILES } from "./CalcDock";
 import { languages } from "../notebook/languages";
-import { type LoadedPlugin, loadPlugins, usePlugins } from "../plugins";
+import { type LoadedPlugin, loadPlugins, pluginSetting, setPluginSetting, usePlugins } from "../plugins";
+import { GALLERY } from "../pluginGallery";
 import { toggleCell, toggleTile, togglePlugin, useParts } from "../parts";
 import { NEW_CELLS } from "../notebook/NotebookTile";
 
@@ -17,6 +18,42 @@ function Switch({ on, onChange, label }: { on: boolean; onChange: () => void; la
     <button className={`ext-switch${on ? " is-on" : ""}`} role="switch" aria-checked={on} aria-label={label} title={on ? `On — turn ${label} off` : `Off — turn ${label} on`} onClick={onChange}>
       <span className="ext-knob" />
     </button>
+  );
+}
+
+/** a plugin's settings (its plugin.json's contributes.settings), changed as you go */
+function PluginSettings({ plugin }: { plugin: LoadedPlugin }) {
+  return (
+    <div className="ext-settings">
+      {(plugin.settings ?? []).map((s) => {
+        const value = pluginSetting(plugin, s.key);
+        const set = (v: unknown) => setPluginSetting(plugin, s.key, v);
+        return (
+          <label key={s.key} className="ext-setting">
+            <span className="ext-text">
+              <span className="ext-name">{s.label}</span>
+              {s.description && <span className="ext-dim">{s.description}</span>}
+            </span>
+            {s.type === "boolean" ? (
+              <Switch on={Boolean(value)} onChange={() => set(!value)} label={s.label} />
+            ) : s.type === "select" ? (
+              <select value={String(value)} onChange={(e) => set(e.target.value)}>
+                {(s.options ?? []).map((o) => (
+                  <option key={o}>{o}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type={s.type === "number" ? "number" : "text"}
+                defaultValue={String(value)}
+                spellCheck={false}
+                onChange={(e) => set(s.type === "number" ? Number(e.target.value) : e.target.value)}
+              />
+            )}
+          </label>
+        );
+      })}
+    </div>
   );
 }
 
@@ -39,6 +76,20 @@ export default function Extensions({ onClose, onNewPlugin }: { onClose: () => vo
   }, [onClose]);
   const folder = async (sub?: string) => revealItemInDir(`${await invoke<string>("plugins_folder")}${sub ? `/${sub}` : ""}`).catch(() => {});
   const replacedBy = (id: string) => plugins.tiles.find((t) => t.replaces === id && !parts.offTiles.includes(t.id));
+  const [settingsOf, setSettingsOf] = useState<string | null>(null);
+  const [adding, setAdding] = useState<string | null>(null);
+  /** a plugin from the gallery, into the plugins folder (and loaded) */
+  const addFromGallery = async (g: (typeof GALLERY)[number]) => {
+    setAdding(g.folder);
+    try {
+      await invoke("plugins_create", { folder: g.folder, files: g.files });
+      await loadPlugins();
+      window.dispatchEvent(new CustomEvent("matrixlab-notice", { detail: `${g.name} added` }));
+    } catch (err) {
+      window.dispatchEvent(new CustomEvent("matrixlab-notice", { detail: String(err) }));
+    }
+    setAdding(null);
+  };
   const pluginState = (p: LoadedPlugin) => (p.off ? "off" : p.error ? `didn't load: ${p.error}` : p.adds.join(" · ") || "adds nothing yet");
 
   return (
@@ -123,7 +174,8 @@ export default function Extensions({ onClose, onNewPlugin }: { onClose: () => vo
             <h3>Plugins</h3>
             {plugins.loaded.length === 0 && <div className="ext-empty">None yet. A plugin is a folder with a plugin.json — start from the sample.</div>}
             {plugins.loaded.map((p) => (
-              <div key={p.folder} className={`ext-row${p.error ? " is-broken" : ""}`}>
+              <div key={p.folder}>
+              <div className={`ext-row${p.error ? " is-broken" : ""}`}>
                 <span className="ext-icon">
                   <Icon name="source" size={16} />
                 </span>
@@ -134,10 +186,17 @@ export default function Extensions({ onClose, onNewPlugin }: { onClose: () => vo
                   {p.description && <span className="ext-dim">{p.description}</span>}
                   <span className={`ext-dim${p.error ? " is-error" : ""}`}>{pluginState(p)}</span>
                 </span>
+                {(p.settings?.length ?? 0) > 0 && !p.off && (
+                  <button className={`ext-link${settingsOf === p.folder ? " is-on" : ""}`} title="Its settings" onClick={() => setSettingsOf(settingsOf === p.folder ? null : p.folder)}>
+                    <Icon name="gear" size={13} />
+                  </button>
+                )}
                 <button className="ext-link" title="Show it in Finder" onClick={() => folder(p.folder)}>
                   <Icon name="folder" size={13} />
                 </button>
                 <Switch on={!p.off} onChange={() => (togglePlugin(p.folder), loadPlugins())} label={p.name} />
+              </div>
+              {settingsOf === p.folder && <PluginSettings plugin={p} />}
               </div>
             ))}
             <div className="ext-actions">
@@ -151,6 +210,30 @@ export default function Extensions({ onClose, onNewPlugin }: { onClose: () => vo
                 <Icon name="folder" size={13} /> Open the plugins folder
               </button>
             </div>
+          </section>
+
+          <section>
+            <h3>Gallery</h3>
+            <div className="ext-dim ext-note">Plugins that come with the app — adding one copies it into your plugins folder, to use as it is or change</div>
+            {GALLERY.map((g) => {
+              const added = plugins.loaded.some((p) => p.folder === g.folder);
+              return (
+                <div key={g.folder} className="ext-row">
+                  <span className="ext-kind">{g.kind}</span>
+                  <span className="ext-text">
+                    <span className="ext-name">{g.name}</span>
+                    <span className="ext-dim">{g.description}</span>
+                  </span>
+                  {added ? (
+                    <span className="ext-dim ext-added">Added</span>
+                  ) : (
+                    <button className="ext-add" disabled={adding === g.folder} onClick={() => addFromGallery(g)}>
+                      {adding === g.folder ? "Adding…" : "Add"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </section>
         </div>
       </div>

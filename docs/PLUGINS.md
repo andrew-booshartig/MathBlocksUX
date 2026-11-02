@@ -68,6 +68,22 @@ export function activate(matrixlab) {
 }
 ```
 
+### Settings
+
+A plugin's settings are listed in `contributes.settings`. Extensions shows
+them under the plugin (the gear), and its script reads them with
+`matrixlab.settings.get(key)`:
+
+```json
+"settings": [
+  { "key": "minutes", "label": "Work, in minutes", "type": "number", "default": 25 },
+  { "key": "sound", "label": "Play a sound", "type": "boolean", "default": true },
+  { "key": "show", "label": "Show", "type": "select", "options": ["all", "some"], "default": "all" }
+]
+```
+
+A setting's `type` is `text`, `number`, `boolean` or `select`.
+
 ### A language
 
 - `id`: what a fence says (```` ```fortran ````). `aliases` are other names that work too.
@@ -136,10 +152,20 @@ export function activate(matrixlab) {
 | `commands.run(id)` | run any command: the app's (⌘K's: `tile:graph`, `vim`, `extensions`…) or a plugin's |
 | `keys.map(keys, commandIdOrFunction)` | a key of your own: `"Mod+Shift+G"` (Mod is ⌘), `"Ctrl+Alt+P"` |
 | `vim.map(lhs, rhs, mode)`, `vim.noremap`, `vim.defineEx(name, prefix, fn)` | vim mappings and `:commands` in code cells; `vim.raw` is the whole of @replit/codemirror-vim's Vim |
-| `storage.get(key, fallback)`, `storage.set(key, value)` | this plugin's own settings, kept on this computer |
+| `storage.get(key, fallback)`, `storage.set(key, value)` | anything this plugin keeps, on this computer |
+| `settings.get(key)`, `settings.onChange((key, value) => …)` | its settings, as set in Extensions (or their defaults) |
+| `tex(latex, display)` | math as HTML, drawn as the app draws it (for a cell's `render`) |
 | `math(request)` | the math engine (the same requests the app makes) |
 | `notify(text)` | a few words at the top of the window |
 | `version` | 1 |
+
+## The gallery
+
+Extensions → Gallery has plugins that come with the app: a focus timer
+tile, chemistry cells (molar mass, balancing), matrix cells, CSV tables,
+and Julia and R as languages. Adding one copies it into your plugins
+folder, so each is also an example to read or change. They're kept in
+`src/gallery/`.
 
 A plugin runs as you do, with what your account can do, as VS Code
 extensions and Neovim plugins do. Only install plugins you trust.

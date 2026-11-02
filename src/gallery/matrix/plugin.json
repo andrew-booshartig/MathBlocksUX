@@ -1,0 +1,12 @@
+{
+  "name": "matrix",
+  "displayName": "Matrices",
+  "version": "1.0.0",
+  "description": "Matrix cells: type a matrix a row a line — see its determinant, rank, inverse and transpose",
+  "contributes": {
+    "settings": [
+      { "key": "show", "label": "Show", "type": "select", "options": ["everything", "determinant and rank", "inverse only"], "default": "everything" },
+      { "key": "fractions", "label": "Fractions, not decimals", "type": "boolean", "default": true }
+    ]
+  }
+}

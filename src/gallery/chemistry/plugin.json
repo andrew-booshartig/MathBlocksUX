@@ -1,0 +1,12 @@
+{
+  "name": "chemistry",
+  "displayName": "Chemistry",
+  "version": "1.0.0",
+  "description": "Chemistry cells: a formula a line for its molar mass (CuSO4·5H2O), or a reaction to check it's balanced (2H2 + O2 -> 2H2O)",
+  "contributes": {
+    "settings": [
+      { "key": "places", "label": "Decimal places", "type": "number", "default": 3 },
+      { "key": "breakdown", "label": "Show what each element adds", "type": "boolean", "default": true }
+    ]
+  }
+}

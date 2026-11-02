@@ -1,0 +1,13 @@
+{
+  "name": "focus-timer",
+  "displayName": "Focus timer",
+  "version": "1.0.0",
+  "description": "A tile that times work and breaks in turns (25 and 5 minutes, or what you set)",
+  "contributes": {
+    "settings": [
+      { "key": "focus", "label": "Work, in minutes", "type": "number", "default": 25 },
+      { "key": "break", "label": "Break, in minutes", "type": "number", "default": 5 },
+      { "key": "tell", "label": "Say so when time's up", "type": "boolean", "default": true }
+    ]
+  }
+}

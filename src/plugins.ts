@@ -17,6 +17,7 @@
  * docs/PLUGINS.md. */
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import katex from "katex";
 import { Vim } from "@replit/codemirror-vim";
 import { type Language, forgetPluginLanguages, registerLanguage } from "./notebook/languages";
 import { partsNow, pluginOn, setParts } from "./parts";
@@ -50,6 +51,17 @@ export interface TileDef {
   plugin: string;
 }
 
+/** a setting a plugin asks for in its plugin.json (contributes.settings): shown in Extensions, read with matrixlab.settings.get */
+export interface PluginSetting {
+  key: string;
+  label: string;
+  type: "text" | "number" | "boolean" | "select";
+  default?: string | number | boolean;
+  /** for a select: what it can be */
+  options?: string[];
+  description?: string;
+}
+
 export interface LoadedPlugin {
   folder: string;
   name: string;
@@ -60,6 +72,38 @@ export interface LoadedPlugin {
   error?: string;
   /** turned off: not loaded */
   off?: boolean;
+  /** what can be set for it, in Extensions */
+  settings?: PluginSetting[];
+}
+
+const settingKey = (folder: string, key: string) => `mlx-plugin:${folder}:setting:${key}`;
+/** a plugin's setting, as set (or its default) */
+export function pluginSetting(p: LoadedPlugin, key: string): unknown {
+  const def = p.settings?.find((s) => s.key === key);
+  try {
+    const v = localStorage.getItem(settingKey(p.folder, key));
+    if (v !== null) return JSON.parse(v);
+  } catch {
+    /* its default */
+  }
+  return def?.default ?? (def?.type === "boolean" ? false : def?.type === "number" ? 0 : "");
+}
+/** those listening for a plugin's settings to change (by its folder) */
+const settingListeners = new Map<string, Set<(key: string, value: unknown) => void>>();
+/** a setting changed in Extensions: kept, and the plugin told */
+export function setPluginSetting(p: LoadedPlugin, key: string, value: unknown) {
+  try {
+    localStorage.setItem(settingKey(p.folder, key), JSON.stringify(value));
+  } catch {
+    /* for this session only */
+  }
+  for (const f of settingListeners.get(p.folder) ?? [])
+    try {
+      f(key, value);
+    } catch (err) {
+      console.error(`${p.folder}: its settings listener failed`, err);
+    }
+  changed({ loaded: [...state.loaded] });
 }
 
 /** a key (or chord) a plugin or init.js gave something to do: "Mod+Shift+G" */
@@ -201,6 +245,19 @@ function apiFor(plugin: LoadedPlugin) {
         }
       },
     },
+    /** what's set for it in Extensions (its plugin.json's contributes.settings): settings.get("minutes") */
+    settings: {
+      get: (key: string) => pluginSetting(plugin, key),
+      /** told when one is changed: settings.onChange((key, value) => …) */
+      onChange(f: (key: string, value: unknown) => void) {
+        const set = settingListeners.get(plugin.folder) ?? new Set();
+        set.add(f);
+        settingListeners.set(plugin.folder, set);
+        return () => set.delete(f);
+      },
+    },
+    /** math as HTML, the way the app draws it: tex("\\frac{1}{2}"), tex(latex, true) for a display line */
+    tex: (latex: string, display = false) => katex.renderToString(String(latex), { displayMode: display, throwOnError: false, strict: "ignore" }),
     /** the math engine: matrixlab.math({ op: "smart", latex: "x^2 = 4" }) */
     math: (request: object) => invoke("math_eval", { request }),
     /** a few words shown at the top of the window for a moment */
@@ -228,6 +285,7 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       /* gone already */
     }
   vimMaps = [];
+  settingListeners.clear();
   changed({ cells: [], commands: [], tiles: [], loaded: [] });
   let found: { folder: string; manifest: string; main: string | null }[] = [];
   try {
@@ -247,6 +305,8 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       plugin.name = manifest.displayName ?? manifest.name ?? f.folder;
       plugin.version = manifest.version;
       plugin.description = manifest.description;
+      const settings = manifest.contributes?.settings;
+      if (Array.isArray(settings)) plugin.settings = settings.filter((x) => x?.key && x?.label).map((x) => ({ type: "text", ...x }));
       if (!pluginOn(f.folder)) {
         plugin.off = true;
         continue;
