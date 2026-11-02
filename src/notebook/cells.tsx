@@ -124,7 +124,8 @@ export function readGraphCell(code: string): { exprs: string[]; vars: Record<str
   let window: GraphWindow | undefined;
   for (const raw of code.split("\n")) {
     const line = raw.trim();
-    if (!line) continue;
+    // (a graph block's settings line is the graph's, not something to graph)
+    if (!line || line.startsWith("--- graph ")) continue;
     const w = line.match(/^window:\s*(-?[\d.]+)\s*,?\s+(-?[\d.]+)\s*,?\s+(-?[\d.]+)\s*,?\s+(-?[\d.]+)$/i);
     const letter = line.match(/^([a-wzA-Z])\s*=\s*(-?[\d.]+(?:\s*\/\s*-?[\d.]+)?)$/);
     if (w) {

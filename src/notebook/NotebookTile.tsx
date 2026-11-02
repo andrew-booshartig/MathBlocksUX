@@ -29,6 +29,7 @@ import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord } from "./apps";
+import { GraphLive, GraphRecord } from "./graphBlock";
 import { setVimKeys, useVimKeys } from "./editorSettings";
 import { useParts } from "../parts";
 import "./notebook.css";
@@ -92,6 +93,9 @@ const codeLanguage = (b: Block) => (b.kind === "cell" && !OWN_CELLS.has(b.lang) 
 /** a flattened cell's picture (its path from the Notebooks folder), from its fence: ```graph flat=… */
 const flatOf = (b: Block) => (b.kind === "cell" ? decodeURIComponent(b.info.match(/(?:^|\s)flat=(\S+)/)?.[1] ?? "") || null : null);
 const withFlat = (info: string, path: string | null) => [info.replace(/(?:^|\s)flat=\S+/, "").trim(), path ? `flat=${encodeURIComponent(path)}` : ""].filter(Boolean).join(" ");
+/** an app block's record picture, taken when it was last done (a graph): ```graph shot=… — click to work in it again */
+const shotOf = (b: Block) => (b.kind === "cell" ? decodeURIComponent(b.info.match(/(?:^|\s)shot=(\S+)/)?.[1] ?? "") || null : null);
+const withShot = (info: string, path: string | null) => [info.replace(/(?:^|\s)shot=\S+/, "").trim(), path ? `shot=${encodeURIComponent(path)}` : ""].filter(Boolean).join(" ");
 /** a word on a cell's fence that changes how it shows: hide-code (on the page and the printed one), fold-output */
 const hasFlag = (b: Block, flag: string) => b.kind === "cell" && b.info.split(/\s+/).includes(flag);
 const withFlag = (info: string, flag: string, on: boolean) => [...info.split(/\s+/).filter((w) => w && w !== flag), ...(on ? [flag] : [])].join(" ");
@@ -213,7 +217,14 @@ export default function NotebookTile({
   }, [undo]);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing, setEditingState] = useState<string | null>(null);
+  /** the block being edited, as of now — an app block finishing a moment later (a graph taking its
+   * picture) mustn't finish whichever block is being edited by then */
+  const editingRef = useRef<string | null>(null);
+  const setEditing = (id: string | null) => {
+    editingRef.current = id;
+    setEditingState(id);
+  };
   const [draft, setDraft] = useState("");
   const [headerOpen, setHeaderOpen] = useState(false);
   const [elsewhere, setElsewhere] = useState(false);
@@ -758,6 +769,21 @@ export default function NotebookTile({
     drawEverything(true);
     for (let t = 0; t < 40 && !ids.every((id) => plots.get(id)); t++) await new Promise((r) => setTimeout(r, 150));
   };
+  /** a graph block done: kept as its picture (the last one's put away), so the page doesn't keep it live */
+  const graphDone = async (b: Block, picture: string | null) => {
+    finishEditing(b.id);
+    if (!picture || !name || b.kind !== "cell") return;
+    try {
+      const path = await invoke<string>("flat_save", { notebook: name, dataUrl: picture });
+      flatPictures.set(path, picture);
+      const now = docRef.current?.blocks.find((x) => x.id === b.id);
+      const old = now && shotOf(now);
+      if (old) invoke("flat_remove", { path: old }).catch(() => {});
+      if (now && now.kind === "cell") updateBlock(b.id, { info: withShot(now.info, path) });
+    } catch {
+      /* no picture: the record draws it live */
+    }
+  };
   /** flatten: the cell as it shows, kept as a picture (PNG or JPEG) in its place — so it isn't worked out
    * or drawn again (thirty graphs, thirty pictures); its code stays, to unflatten */
   const [flatMenu, setFlatMenu] = useState<string | null>(null);
@@ -890,9 +916,13 @@ export default function NotebookTile({
     setDraft(b.kind === "text" ? b.text : b.code);
   };
   /** done editing a block: kept (an empty text block goes) */
-  const finishEditing = () => {
-    if (!editing || !doc) return setEditing(null);
-    const b = doc.blocks.find((x) => x.id === editing);
+  const finishEditing = (only?: string) => {
+    const id = editingRef.current;
+    // (done with one block in particular: only if it's still the one being edited)
+    if (only !== undefined && id !== only) return;
+    const now = docRef.current;
+    if (!id || !now) return setEditing(null);
+    const b = now.blocks.find((x) => x.id === id);
     setEditing(null);
     if (!b) return;
     const draft = draftRef.current;
@@ -1447,9 +1477,9 @@ export default function NotebookTile({
         <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}`}>
           {isEditing ? (
             vimKeys ? (
-              <CodeEditor value={draft} onChange={type} onDone={finishEditing} vimKeys prose placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
+              <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys prose placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
             ) : (
-              <AutoText value={draft} onChange={type} onBlur={finishEditing} onKeyDown={(e) => editKeys(e, b)} placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
+              <AutoText value={draft} onChange={type} onBlur={() => finishEditing()} onKeyDown={(e) => editKeys(e, b)} placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
             )
           ) : (
             <div className="nb-md" onClick={(e) => followLinks(e) || startEditing(b)} dangerouslySetInnerHTML={{ __html: renderMarkdown(b.text) }} />
@@ -1471,7 +1501,7 @@ export default function NotebookTile({
       ) : b.lang === "vars" ? (
         // being worked in: the table; done: the values as they read
         isEditing ? (
-          <VarsCell code={b.code} lines={calc?.[calcAt]} onCommit={(code) => updateBlock(b.id, { code })} onDone={finishEditing} />
+          <VarsCell code={b.code} lines={calc?.[calcAt]} onCommit={(code) => updateBlock(b.id, { code })} onDone={() => finishEditing()} />
         ) : (
           <VarsRecord code={b.code} lines={calc?.[calcAt]} />
         )
@@ -1490,15 +1520,37 @@ export default function NotebookTile({
               type(c);
               updateBlock(b.id, { code: c });
             }}
-            onDone={finishEditing}
+            onDone={() => finishEditing()}
           />
         ) : (
           <CalcRecord code={b.code} lines={calc?.[calcAt]} onChange={(c) => updateBlock(b.id, { code: c })} />
         )
       ) : b.lang === "graph" ? (
-        <WhenSeen height={360}>
-          <GraphCell id={b.id} code={isEditing ? draft : b.code} />
-        </WhenSeen>
+        isEditing ? (
+          // being worked in: the graphing tool itself
+          <GraphLive
+            code={draft}
+            vars={varsAt.get(b.id) ?? {}}
+            onChange={(c) => {
+              type(c);
+              updateBlock(b.id, { code: c });
+            }}
+            onDone={(picture) => graphDone(b, picture)}
+          />
+        ) : (
+          <GraphRecord
+            code={b.code}
+            picture={
+              shotOf(b) ? (
+                <FlatPicture path={shotOf(b)!} />
+              ) : (
+                <WhenSeen height={360}>
+                  <GraphCell id={b.id} code={b.code} />
+                </WhenSeen>
+              )
+            }
+          />
+        )
       ) : b.lang === "numberline" ? (
         <NumberLineCell code={isEditing ? draft : b.code} />
       ) : b.lang === "work" ? (
@@ -1509,7 +1561,7 @@ export default function NotebookTile({
     const codeHidden = !isEditing && hasFlag(b, "hide-code");
     const outFolded = hasFlag(b, "fold-output");
     // an app block being worked in is the app itself, not its code
-    const showCode = (isEditing && b.lang !== "calc" && b.lang !== "vars") || (!isEditing && !flat && !codeHidden && (b.lang === "python" || !!language || !result));
+    const showCode = (isEditing && b.lang !== "calc" && b.lang !== "vars" && b.lang !== "graph") || (!isEditing && !flat && !codeHidden && (b.lang === "python" || !!language || !result));
     const foldLine = (what: string, flag: string, lines?: number) => (
       <button className="nb-folded" title={`Show its ${what} again`} onClick={() => updateBlock(b.id, { info: withFlag(b.info, flag, false) })}>
         {what} hidden{lines ? ` · ${lines} line${lines === 1 ? "" : "s"}` : ""} — show
@@ -1580,12 +1632,12 @@ export default function NotebookTile({
         </div>
         {showCode &&
           (isEditing && b.lang === "work" ? (
-            <WorkCellEditor code={draft} onChange={setDraft} onDone={finishEditing} />
+            <WorkCellEditor code={draft} onChange={setDraft} onDone={() => finishEditing()} />
           ) : isEditing ? (
             <CodeEditor
               value={draft}
               onChange={type}
-              onDone={finishEditing}
+              onDone={() => finishEditing()}
               vimKeys={vimKeys}
               python={b.lang === "python"}
               spec={b.lang === "python" ? PYTHON_SPEC : language?.highlight}
@@ -1612,7 +1664,7 @@ export default function NotebookTile({
         {codeHidden && !flat && (b.lang === "python" || !!language || !result) && foldLine("code", "hide-code", b.code.split("\n").length)}
         {result && outFolded && foldLine("output", "fold-output")}
         {result && !outFolded && (
-          <div className="nb-cell-result" onClick={() => !isEditing && !flat && b.lang !== "python" && !language && b.lang !== "graph" && startEditing(b)}>
+          <div className="nb-cell-result" onClick={() => !isEditing && !flat && b.lang !== "python" && !language && startEditing(b)}>
             {result}
           </div>
         )}

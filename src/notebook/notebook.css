@@ -2024,3 +2024,46 @@
   opacity: 1;
   color: var(--t-green, #98c379);
 }
+
+/* the graph block: the graphing tool inline, and its record */
+.app-graph {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 420px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--t-bg1, #14141a);
+}
+
+.app-graph .xy-graph {
+  height: 460px;
+}
+
+.app-graph-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 4px;
+}
+
+.app-graph-record {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.app-graph-what {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.app-graph-chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t-blue, #6fa8dc) 14%, transparent);
+  font-size: 14px;
+}

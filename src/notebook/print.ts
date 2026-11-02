@@ -89,7 +89,8 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
       continue;
     }
     // flattened: its picture, as it was kept
-    const flat = decodeURIComponent(b.info.match(/(?:^|\s)flat=(\S+)/)?.[1] ?? "");
+    // (an app block's record picture, too: a graph's, from when it was last done)
+    const flat = decodeURIComponent(b.info.match(/(?:^|\s)(?:flat|shot)=(\S+)/)?.[1] ?? "");
     if (flat) {
       if (b.lang === "calc" || b.lang === "vars") calcAt++;
       const src = await invoke<string>("flat_read", { path: flat }).catch(() => "");
