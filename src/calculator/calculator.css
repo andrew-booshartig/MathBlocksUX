@@ -1864,3 +1864,24 @@ body {
   margin-left: auto;
   margin-right: auto;
 }
+
+/* Calculate's answers: the actions under one (Expand, Steps, Copy, → Work…) small, and only there
+   when you point at it — the latest answer keeps them, so they're found */
+.dock-tile .smart-more .chip {
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  line-height: 18px;
+}
+
+.dock-tile .smart-entry:not(:last-child):not(:hover):not(:focus-within) .smart-more {
+  visibility: hidden;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.dock-tile .smart-out {
+  font-size: 16px;
+}
