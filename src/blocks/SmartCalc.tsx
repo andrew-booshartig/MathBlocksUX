@@ -32,6 +32,7 @@ import { snapshot, withCarriedNotes } from "../workHistory";
 import { sendToNotebook } from "../notebook/inbox";
 import { cellText } from "../notebook/format";
 import { type Equation, type EquationSpaces, spaceName } from "../equations";
+import { linkedApp, setLinkedDock, useLinkedApps } from "../notebook/linked";
 
 type Key = { label: string; tex?: boolean; title: string; wide?: boolean } & (
   | { insert: string }
@@ -154,6 +155,15 @@ const GRAPH_MODES: { value: "numberline" | "xy" | "xyz"; label: string; soon?: b
 type VarValue = { plain?: string; latex?: string; decimal?: string | null; error?: string; params?: string[] };
 
 
+/** a notebook block, in its app: this same calculator, holding the block's data (see notebook/linked.ts) */
+function LinkedApp({ id, equations, onEquations }: { id: string; equations?: Equation[]; onEquations?: (next: Equation[]) => void }) {
+  useLinkedApps();
+  const app = linkedApp(id);
+  const data = useStore((state) => state.blocks[id]) as CalculatorBlockData | undefined;
+  if (!app || !data) return <div className="dock-plugin-missing">This block's app was closed — open the block again from the notebook</div>;
+  return <SmartCalc data={data} only={app.view} scope={app.scope} equations={equations} onEquations={onEquations} />;
+}
+
 export default function SmartCalc({
   data,
   equations,
@@ -162,8 +172,14 @@ export default function SmartCalc({
   tiled,
   layoutKey,
   dockRef,
+  only,
+  scope,
 }: {
   data: CalculatorBlockData;
+  /** one of its parts, alone — a notebook block opened in its app (see notebook/linked.ts) */
+  only?: "calc" | "graph" | "work";
+  /** the variables it sees besides its own (a notebook section's), in place of the canvas's Variables blocks */
+  scope?: Record<string, string>;
   /** as tiles in zones you arrange (the calculator app), not tabs */
   tiled?: boolean;
   /** the workspace open: each keeps its own arrangement of tiles */
@@ -239,6 +255,19 @@ export default function SmartCalc({
   const focusOn = useRef<Tab | null>(null);
   /** the tiles (the calculator app): which are open, and a hand on them */
   const dock = useRef<CalcDockHandle>(null);
+  // the calculator app's dock: where a notebook block opens in its app (one app, wherever it's used)
+  useEffect(() => {
+    if (!tiled) return;
+    setLinkedDock(
+      (_app, near) => {
+        if (!dock.current) return false;
+        dock.current.float(_app.id, near);
+        return true;
+      },
+      (id) => dock.current?.closePanel(id),
+    );
+    return () => setLinkedDock(null, null);
+  }, [tiled]);
   const [openTiles, setOpenTiles] = useState<string[]>([]);
   /** a tile clicked into (in the app): it's the tab now, without a glow */
   const fromDock = useRef<string | null>(null);
@@ -259,7 +288,8 @@ export default function SmartCalc({
   // ---- variables: this calculator's own scratch ones ("r = 4" on the
   // line — nobody else sees them, AC and Next problem wipe them), plus
   // every Variables block's on the canvas (its own win on a clash)
-  const pool = useVariables();
+  const canvasPool = useVariables();
+  const pool = scope ?? canvasPool;
   const localItems = variables.map(({ name, latex, params }) => ({ name, latex, ...(params?.length ? { params } : {}) }));
   const globalItems = Object.entries(pool)
     .map(([key, value]) => ({ ...splitKey(key), value }))
@@ -2007,6 +2037,22 @@ export default function SmartCalc({
     </div>
   );
 
+  // one part alone (a notebook block in its app): Calculate with its variables beside it, the Graph, or Work
+  if (only)
+    return (
+      <div className={`smart-calc nodrag is-only is-${only}`} ref={root}>
+        {only === "calc" && (
+          <div className="smart-calc-split">
+            {sideOpen && sidebar}
+            {quickCard}
+            {calcMain}
+          </div>
+        )}
+        {only === "graph" && graphBody}
+        {only === "work" && workBody}
+      </div>
+    );
+
   // the calculator app: every part a tile, docked wherever you put it
   if (tiled)
     return (
@@ -2033,6 +2079,7 @@ export default function SmartCalc({
             graph: graphMode === "xy" ? (data.smartPlot?.xy?.lines ?? []).filter((l) => l.latex.trim()).length : data.smartPlot?.drawn ? 1 : 0,
             notebook: data.smartWork?.history?.length ?? 0,
           }}
+          linked={(id) => <LinkedApp id={id} equations={equations} onEquations={onEquations} />}
           tiles={{
             calc: calcMain,
             work: workBody,

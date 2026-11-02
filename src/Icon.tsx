@@ -72,6 +72,16 @@ const PATHS: Record<string, string> = {
   dock: "M4 5h16v14H4zM4 9h16M12 13v4M10 15l2 2 2-2",
   layout: "M4 5h16v14H4zM10 5v14M10 12h10",
   more: "M6 12h.01M12 12h.01M18 12h.01",
+  // a picture (an object) in a page: where it sits, how text goes around it
+  alignLeft: "M4 6h16M4 10h9M4 14h16M4 18h9",
+  alignCenter: "M4 6h16M7.5 10h9M4 14h16M7.5 18h9",
+  alignRight: "M4 6h16M11 10h9M4 14h16M11 18h9",
+  wrapLeft: "M4 5h7v7H4zM14 6h6M14 10h6M4 15.5h16M4 19.5h11",
+  wrapRight: "M13 5h7v7h-7zM4 6h6M4 10h6M4 15.5h16M4 19.5h11",
+  wide: "M3 12h18M3 12l3.5-3.5M3 12l3.5 3.5M21 12l-3.5-3.5M21 12l-3.5 3.5",
+  grip: "M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01",
+  bolt: "M13 3 5 14h6l-1 7 8-11h-6z",
+  check: "M5 12.5l4.5 4.5L19 7",
 };
 
 export default function Icon({ name, size = 17 }: { name: keyof typeof PATHS | string; size?: number }) {

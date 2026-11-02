@@ -23,6 +23,7 @@ import "dockview-react/dist/styles/dockview.css";
 import Icon from "../Icon";
 import { pluginTile, pluginTiles, pluginsReady, usePlugins } from "../plugins";
 import { partsNow, tileOn, useParts } from "../parts";
+import { forgetLinked, isLinkedId, linkedApp, useLinkedApps } from "../notebook/linked";
 
 export const TILES = [
   { id: "calc", title: "Calculate", hue: "teal", blurb: "Type math, get answers — steps, units and decimals" },
@@ -40,6 +41,11 @@ type TileMeta = { id: string; title: string; hue: string; blurb: string };
 const tileOf = (id: string): TileMeta => {
   const own = TILES.find((t) => t.id === id);
   if (own) return own;
+  if (isLinkedId(id)) {
+    const app = linkedApp(id);
+    const as = TILES.find((t) => t.id === (app?.view ?? "calc"))!;
+    return { id, title: app?.title ?? as.title, hue: as.hue, blurb: "A notebook block, in its app — what you do here is the block's, on the page as you go" };
+  }
   const plugin = pluginTile(id);
   return { id, title: plugin?.title ?? "Plugin", hue: "blue", blurb: plugin?.blurb ?? `From the plugin ${plugin?.plugin ?? "(not loaded)"}` };
 };
@@ -48,6 +54,8 @@ const isOwnTile = (id: string) => TILES.some((t) => t.id === id);
 /** what stands in a layout for a tile: itself, a plugin's tile that takes
  * its place, or nothing (turned off) */
 export function standIn(id: string): string | null {
+  // a notebook block's app: there while it's open
+  if (isLinkedId(id)) return linkedApp(id) ? id : null;
   if (!isOwnTile(id)) {
     // a plugin's tile: itself while it's there (or before the plugins are read); gone, what it took the place of
     if (!pluginsReady() || (pluginTile(id) && tileOn(id))) return id;
@@ -131,13 +139,15 @@ const THEME = { ...themeDark, name: "matrix", className: "dockview-theme-dark do
 
 /** what each tile shows (fresh every render of the calculator), and the
  * little count on its tab */
-const Dock = createContext<{ tiles: Partial<Record<TileId, ReactNode>>; badges: Partial<Record<TileId, number>> }>({ tiles: {}, badges: {} });
+const Dock = createContext<{ tiles: Partial<Record<TileId, ReactNode>>; badges: Partial<Record<TileId, number>>; linked?: (id: string) => ReactNode }>({ tiles: {}, badges: {} });
 
 function Tile({ api }: IDockviewPanelProps) {
-  const { tiles } = useContext(Dock);
+  const { tiles, linked } = useContext(Dock);
+  useLinkedApps();
+  const view = isLinkedId(api.id) ? linkedApp(api.id)?.view : undefined;
   return (
-    <div className={`dock-tile is-${api.id}`} style={hueStyle(api.id)}>
-      {isOwnTile(api.id) ? tiles[api.id as TileId] : <PluginTile id={api.id} />}
+    <div className={`dock-tile is-${view ? `linked is-${view}` : api.id}`} style={hueStyle(api.id)}>
+      {isOwnTile(api.id) ? tiles[api.id as TileId] : isLinkedId(api.id) ? linked?.(api.id) : <PluginTile id={api.id} />}
     </div>
   );
 }
@@ -162,7 +172,7 @@ function Tab({ api, containerApi }: IDockviewPanelHeaderProps) {
       }}
     >
       <span className="dock-tab-icon">
-        <Icon name={isOwnTile(tile.id) ? tile.id : "source"} size={14} />
+        <Icon name={isOwnTile(tile.id) ? tile.id : isLinkedId(tile.id) ? (linkedApp(tile.id)?.view ?? "calc") : "source"} size={14} />
       </span>
       <span className="dock-tab-title">{tile.title}</span>
       {!!badge && <span className="dock-tab-badge">{badge}</span>}
@@ -522,11 +532,16 @@ export interface CalcDockHandle {
   layout: () => object | null;
   /** the zone in use fills the window (or everything comes back) */
   fill: () => void;
+  /** a notebook block's app, in a window of its own beside `near` (the block, on the screen) */
+  float: (id: string, near?: DOMRect) => void;
+  /** a tile closed by id, whatever it is */
+  closePanel: (id: string) => void;
 }
 
 export default function CalcDock({
   tiles,
   badges,
+  linked,
   layout,
   onLayout,
   onOpen,
@@ -536,6 +551,8 @@ export default function CalcDock({
 }: {
   tiles: Partial<Record<TileId, ReactNode>>;
   badges: Partial<Record<TileId, number>>;
+  /** a notebook block's app (its id starts nbapp:) */
+  linked?: (id: string) => ReactNode;
   layout?: object;
   onLayout: (layout: object) => void;
   /** the tiles open right now */
@@ -596,6 +613,33 @@ export default function CalcDock({
       const group = api.current?.activeGroup;
       if (group && group.api.location.type === "grid") toggleMaximize(group.api);
     },
+    float: (id, near) => {
+      const a = api.current;
+      if (!a) return;
+      const open = a.getPanel(id);
+      if (open) {
+        open.api.setActive();
+        glow(open.group);
+        return;
+      }
+      // beside the block: to its right if there's room, else its left, else over the page's right side
+      const box = (document.querySelector(".calc-dock") as HTMLElement | null)?.getBoundingClientRect();
+      const view = linkedApp(id)?.view ?? "calc";
+      const width = Math.min(view === "graph" ? 620 : view === "work" ? 560 : 480, (box?.width ?? 900) - 40);
+      const height = Math.min(view === "graph" ? 560 : 540, (box?.height ?? 700) - 40);
+      let x = (box?.width ?? 900) - width - 20;
+      let y = 60;
+      if (box && near) {
+        const right = near.right + 14 - box.left;
+        const left = near.left - 14 - width - box.left;
+        x = right + width <= box.width - 10 ? right : left >= 10 ? left : Math.max(10, box.width - width - 20);
+        y = Math.max(10, Math.min(near.top - box.top, box.height - height - 10));
+      }
+      a.addPanel({ id, component: "tile", title: tileOf(id).title, floating: { x, y, width, height } });
+      const panel = a.getPanel(id);
+      if (panel) glow(panel.group);
+    },
+    closePanel: (id) => api.current?.getPanel(id)?.api.close(),
   }));
 
   // a part turned on or off, a plugin's tile loaded: the open tiles follow
@@ -626,7 +670,7 @@ export default function CalcDock({
   }, []);
 
   return (
-    <Dock.Provider value={{ tiles, badges }}>
+    <Dock.Provider value={{ tiles, badges, linked }}>
       <DockviewReact
         className="calc-dock"
         theme={THEME}
@@ -636,6 +680,8 @@ export default function CalcDock({
         watermarkComponent={EmptyZone}
         floatingGroupBounds="boundedWithinViewport"
         floatingGroupDragHandle="tabbar"
+        // floating windows line up as they're dragged: helper lines, and a snap, at each other's and the zones' edges
+        smartGuides={{ snapTargets: { floats: true, container: true, splitters: true } }}
         getTabContextMenuItems={() => ["maximize", "float", "separator", "close", "closeOthers"]}
         onReady={({ api: a }) => {
           api.current = a;
@@ -654,6 +700,11 @@ export default function CalcDock({
           let saving: ReturnType<typeof setTimeout> | undefined;
           a.onDidAddPanel(open);
           a.onDidRemovePanel(open);
+          // a notebook block's app closed by its ×: let go of it (the block has its work)
+          a.onDidRemovePanel((panel) => {
+            // (a tile moved to another zone is taken out and put back: only one gone for good counts)
+            if (isLinkedId(panel.id)) setTimeout(() => !a.getPanel(panel.id) && forgetLinked(panel.id), 0);
+          });
           a.onDidActivePanelChange((e) => e.panel && on.current.onActive(e.panel.id));
           a.onDidLayoutChange(() => {
             clearTimeout(saving);

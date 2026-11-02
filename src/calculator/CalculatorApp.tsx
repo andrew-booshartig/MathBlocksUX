@@ -24,6 +24,7 @@ import Extensions from "./Extensions";
 import About from "./About";
 import { tilesOn } from "./CalcDock";
 import { useParts } from "../parts";
+import { closeAllLinked, isLinkedId } from "../notebook/linked";
 
 const SAVE = "__calculator__";
 const SETTINGS = "__settings__";
@@ -179,12 +180,14 @@ export default function CalculatorApp() {
   }, []);
   const snapshot = () => {
     const { blocks, order, edges } = useStore.getState();
-    return { blocks, order, edges };
+    // (a notebook block's app keeps its work in the notebook, not the workspace)
+    return { blocks: Object.fromEntries(Object.entries(blocks).filter(([id]) => !isLinkedId(id))), order, edges };
   };
   /** switch: what's open is saved, then the other one comes in */
   const openWorkspace = async (name: string | null) => {
     setWsOpen(false);
     await invoke("save_workspace", { name: wsFile(activeRef.current), data: snapshot() }).catch(() => {});
+    closeAllLinked();
     // the tiles as you have them: a new workspace (an equation's) keeps them
     const layout = (useStore.getState().blocks[CALC_ID] as CalculatorBlockData | undefined)?.smartLayout;
     let next: WorkspaceSnapshot;

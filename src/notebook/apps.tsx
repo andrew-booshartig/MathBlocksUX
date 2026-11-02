@@ -231,14 +231,11 @@ export function CalcRecord({ code, lines, onChange }: { code: string; lines?: Ca
                 <Tex math={line.result?.input_latex ?? line.latex} />
               </span>
             )}
+            {/* (always a second cell: the record is a grid, a line and its answer a row) */}
             {line.error ? (
               <span className="nb-cell-error">{line.error}</span>
-            ) : saved ? null : (
-              answer && (
-                <span className="nb-calc-out">
-                  <Tex math={answer} />
-                </span>
-              )
+            ) : (
+              <span className="nb-calc-out">{!saved && answer && <Tex math={answer} />}</span>
             )}
           </div>
         );

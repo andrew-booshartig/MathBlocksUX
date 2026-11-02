@@ -9,6 +9,7 @@
  * New notebooks start from a template: Blank, Assignment (filled with the
  * problems finished in Work — what the Assignment tab did), Lab report,
  * Study notes, Script, and your own (any notebook → Save as template). */
+import { toJpeg, toPng } from "html-to-image";
 import { type CSSProperties, Fragment, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -16,7 +17,7 @@ import Icon from "../Icon";
 import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
 import { type CalcLine, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, VarsRecord, WhenSeen, WorkCell, WorkCellEditor, drawEverything, numberOf, parseVars, plots, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
-import { type Block, type CellLang, type NotebookDoc, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
+import { type Block, type CellLang, type NotebookDoc, type Placement, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
 import { setNotebookInbox } from "./inbox";
 import { notebookLatex } from "./latex";
 import { renderMarkdown } from "./markdown";
@@ -29,6 +30,7 @@ import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
+import { LINKED_LANGS, appDataFor, canLink, closeLinked, codeFor, linkedApp, linkedId, openLinked, rescopeLinked, useLinkedApps, watchLinked } from "./linked";
 import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
 import { setVimKeys, useVimKeys } from "./editorSettings";
@@ -77,14 +79,14 @@ export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon:
   { lang: "text", label: "Text", icon: "text", start: "" },
   { lang: "math", label: "Math", icon: "equations", start: "$$\n\n$$" },
   { lang: "vars", label: "Variables", icon: "variables", start: "m = 2.5 kg  # the cart's mass\ng = 9.81  # gravity, m/s²" },
-  { lang: "calc", label: "Calc", icon: "calc", start: "" },
+  { lang: "calc", label: "Calculate", icon: "calc", start: "" },
   { lang: "graph", label: "Graph", icon: "graph", start: "y = 2x + 1" },
   { lang: "numberline", label: "Number line", icon: "segment", start: "x < 3" },
   { lang: "work", label: "Work", icon: "work", start: "problem: 2x + 3 = 11\n" },
   { lang: "python", label: "Python", icon: "source", start: "" },
 ];
 
-const LANG_LABEL: Record<string, string> = { vars: "Variables", calc: "Calc", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
+const LANG_LABEL: Record<string, string> = { vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
 const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python"]);
 /** cells worked out by the calculator, in order: calc lines, and variables blocks (as name = value) */
@@ -102,8 +104,9 @@ const hasFlag = (b: Block, flag: string) => b.kind === "cell" && b.info.split(/\
 const withFlag = (info: string, flag: string, on: boolean) => [...info.split(/\s+/).filter((w) => w && w !== flag), ...(on ? [flag] : [])].join(" ");
 /** pictures read once, kept while the app runs */
 const flatPictures = new Map<string, string>();
-function FlatPicture({ path }: { path: string }) {
+function FlatPicture({ path, fill = false }: { path: string; fill?: boolean }) {
   const [src, setSrc] = useState(flatPictures.get(path) ?? null);
+  const [natural, setNatural] = useState(0);
   const [gone, setGone] = useState<string | null>(null);
   useEffect(() => {
     if (flatPictures.has(path)) return setSrc(flatPictures.get(path)!);
@@ -112,7 +115,12 @@ function FlatPicture({ path }: { path: string }) {
       .catch((err) => setGone(String(err)));
   }, [path]);
   if (gone) return <div className="nb-cell-wait">{gone} — Unflatten to work it out again</div>;
-  return src ? <img className="nb-flat" src={src} alt="the cell, flattened to a picture" draggable={false} /> : <div className="nb-cell-wait">…</div>;
+  // (pictures are taken at twice their size on the page, for sharpness)
+  return src ? (
+    <img className="nb-flat" src={src} alt="the cell, flattened to a picture" draggable={false} style={fill ? { width: "100%" } : natural ? { width: natural / 2 } : undefined} onLoad={(e) => setNatural(e.currentTarget.naturalWidth)} />
+  ) : (
+    <div className="nb-cell-wait">…</div>
+  );
 }
 /** where a cell's output is kept: Python's by its code, any other language's by both */
 const outKey = (lang: string, code: string) => (lang === "python" ? code : `${lang}\u0001${code}`);
@@ -859,7 +867,6 @@ export default function NotebookTile({
   /** a calc or variables block rendered down to text: its lines and answers as math (⌘Z brings the block back) */
   const toLatex = (b: Block, calcAt: number) => {
     if (b.kind !== "cell") return;
-    setFlatMenu(null);
     const lines = calc?.[calcAt] ?? [];
     const rows = lines.map((l) => {
       const said = l.result?.input_latex ?? l.latex;
@@ -887,18 +894,39 @@ export default function NotebookTile({
   };
   /** flatten: the cell as it shows, kept as a picture (PNG or JPEG) in its place — so it isn't worked out
    * or drawn again (thirty graphs, thirty pictures); its code stays, to unflatten */
-  const [flatMenu, setFlatMenu] = useState<string | null>(null);
   const flatten = async (b: Block, kind: "png" | "jpeg") => {
-    setFlatMenu(null);
     if (!name || !doc || b.kind !== "cell") return;
     const block = document.querySelector<HTMLElement>(`[data-block="${b.id}"]`);
-    const shown = block?.querySelector<HTMLElement>(".nb-cell-result") ?? block?.querySelector<HTMLElement>(".nb-code");
-    if (!shown) return setNotice("Nothing to flatten yet — run it first");
+    const shown = block?.querySelector<HTMLElement>(".nb-obj-body") ?? block?.querySelector<HTMLElement>(".nb-code");
+    // (an output with nothing in it — a cell not run yet — would be a blank picture)
+    if (!shown || (!shown.innerText.trim() && !shown.querySelector("img, svg, canvas"))) return setNotice("Nothing to flatten yet — run it first");
     try {
-      const { toJpeg, toPng } = await import("html-to-image");
-      const background = getComputedStyle(block!).backgroundColor;
-      const paper = background && background !== "rgba(0, 0, 0, 0)" ? background : getComputedStyle(document.body).backgroundColor;
-      const url = await (kind === "png" ? toPng : toJpeg)(shown, { pixelRatio: 2, backgroundColor: paper, quality: 0.92, cacheBust: true });
+      // the page's own color under it (not the tint of it being pointed at)
+      const solid = (c: string) => !!c && c !== "transparent" && !/(?:,\s*|\/\s*)(0(?:\.\d+)?|\.\d+)\s*\)$/.test(c);
+      let paper = getComputedStyle(document.body).backgroundColor;
+      for (let el: HTMLElement | null = block!.parentElement; el; el = el.parentElement) {
+        const c = getComputedStyle(el).backgroundColor;
+        if (solid(c)) {
+          paper = c;
+          break;
+        }
+      }
+      // what it shows, cropped to it (a graph or code keeps its width), with a little room around
+      const fit = b.lang !== "graph" && b.lang !== "work" && b.lang !== "python" && !codeLanguage(b);
+      const was = shown.style.width;
+      if (fit) shown.style.width = "fit-content";
+      const width = Math.ceil(shown.scrollWidth) + 12;
+      const height = Math.ceil(shown.scrollHeight) + 12;
+      shown.style.width = was;
+      const url = await (kind === "png" ? toPng : toJpeg)(shown, {
+        pixelRatio: 2,
+        backgroundColor: paper,
+        quality: 0.92,
+        cacheBust: true,
+        width,
+        height,
+        style: { width: `${width}px`, height: `${height}px`, padding: "6px", margin: "0", overflow: "visible", boxSizing: "border-box" },
+      });
       const path = await invoke<string>("flat_save", { notebook: name, dataUrl: url });
       flatPictures.set(path, url);
       updateBlock(b.id, { info: withFlat(b.info, path) });
@@ -912,26 +940,6 @@ export default function NotebookTile({
     invoke("flat_remove", { path }).catch(() => {});
     flatPictures.delete(path);
     updateBlock(b.id, { info: withFlat(b.info, null) });
-  };
-  /** a block alone on its line: how wide (percent of the page), dragged by its right edge */
-  const [sizing, setSizing] = useState<{ id: string; width: number } | null>(null);
-  const startSizing = (e: ReactPointerEvent<HTMLDivElement>, b: Block) => {
-    e.preventDefault();
-    const page = e.currentTarget.closest(".nb-solo")!.parentElement!.getBoundingClientRect();
-    const left = e.currentTarget.closest(".nb-solo")!.getBoundingClientRect().left;
-    let width = b.width ?? 100;
-    const move = (ev: PointerEvent) => {
-      width = Math.max(20, Math.min(100, Math.round((((ev.clientX - left) / page.width) * 100) / 5) * 5));
-      setSizing({ id: b.id, width });
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      setSizing(null);
-      updateBlock(b.id, { width: width >= 100 ? undefined : width });
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
   };
   /** side by side: a block put beside the one above it (sharing the row evenly), or back on its own */
   const toggleBeside = (id: string) => {
@@ -977,6 +985,7 @@ export default function NotebookTile({
   };
   const removeBlock = (id: string, quiet = false) => {
     if (!doc) return;
+    if (name) closeLinked(linkedId(name, id));
     const at = doc.blocks.findIndex((b) => b.id === id);
     if (at < 0) return;
     const gone = doc.blocks[at];
@@ -1003,63 +1012,179 @@ export default function NotebookTile({
     [blocks[at], blocks[to]] = [blocks[to], blocks[at]];
     commit({ ...doc, blocks });
   };
-  // dragging a block (by its grip) to another place on the page
-  const [dragBlock, setDragBlock] = useState<string | null>(null);
-  const [dropBlock, setDropBlock] = useState<{ id: string; after: boolean } | null>(null);
-  const placeBlock = (id: string, target: string, after: boolean) => {
+  // ---- the page's objects: picked, moved and sized the way pictures are in a document
+
+  /** the text column: where a block alone on its line can sit */
+  const columnBox = () => {
+    const el = page.current!;
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    const left = r.left + parseFloat(cs.paddingLeft);
+    const width = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    return { left, width, right: left + width, center: left + width / 2 };
+  };
+  /** a block picked (its bar and its handles); the notebook takes the keys */
+  const pickBlock = (id: string | null) => {
+    setPicked(id);
+    if (id) root.current?.focus({ preventScroll: true });
+  };
+  /** the block out of the page, its row closing up behind it */
+  const detach = (blocks: Block[], id: string) => {
+    const at = blocks.findIndex((b) => b.id === id);
+    if (at < 0) return blocks;
+    const gone = blocks[at];
+    const out = blocks.filter((b) => b.id !== id);
+    // it started a row: the next in the row starts it now
+    if (!gone.beside && out[at]?.beside) out[at] = { ...out[at], beside: undefined };
+    return out;
+  };
+  type Side = "before" | "after" | "left" | "right";
+  /** moved: above or below a block (on a line of its own), or beside it (sharing its row) */
+  const placeBlock = (id: string, target: string, side: Side) => {
     const now = docRef.current;
     if (!now || id === target) return;
     const moving = now.blocks.find((b) => b.id === id);
     if (!moving) return;
-    // it lands on a line of its own
-    const rest = now.blocks.filter((b) => b.id !== id);
-    let at = rest.findIndex((b) => b.id === target);
-    if (at < 0) return;
-    if (after) at += 1;
-    commit({ ...now, blocks: [...rest.slice(0, at), { ...moving, beside: undefined, width: undefined } as Block, ...rest.slice(at)] });
+    const wasInRow = !!moving.beside || !!now.blocks[now.blocks.findIndex((b) => b.id === id) + 1]?.beside;
+    let rest = detach(now.blocks, id);
+    const row = rowsOf(rest).find((r) => r.some((b) => b.id === target));
+    if (!row) return;
+    let item = { ...moving } as Block;
+    if (side === "before" || side === "after") {
+      // a line of its own, over or under the target's row (a row's share of the line isn't a page's)
+      item = { ...item, beside: undefined, ...(wasInRow ? { width: undefined } : {}) } as Block;
+      let at = rest.findIndex((b) => b.id === (side === "before" ? row[0].id : row[row.length - 1].id));
+      if (side === "after") at += 1;
+      rest = [...rest.slice(0, at), item, ...rest.slice(at)];
+    } else {
+      // beside it: the row shares its line evenly again
+      const inRow = new Set(row.map((b) => b.id));
+      rest = rest.map((b) => (inRow.has(b.id) ? ({ ...b, width: undefined, wrap: undefined, wide: undefined } as Block) : b));
+      const at = rest.findIndex((b) => b.id === target);
+      const loose = { width: undefined, wrap: undefined, wide: undefined, align: undefined };
+      if (side === "right") {
+        rest.splice(at + 1, 0, { ...item, ...loose, beside: true } as Block);
+      } else {
+        rest.splice(at, 1, { ...item, ...loose, beside: rest[at].beside } as Block, { ...rest[at], beside: true } as Block);
+      }
+    }
+    commit({ ...now, blocks: rest });
   };
-  const dropOn = (id: string) => ({
-    onDragOver: (e: React.DragEvent) => {
-      if (!dragBlock || dragBlock === id) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const box = e.currentTarget.getBoundingClientRect();
-      const after = e.clientY > box.top + box.height / 2;
-      if (dropBlock?.id !== id || dropBlock.after !== after) setDropBlock({ id, after });
-    },
-    onDrop: (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (dragBlock && dropBlock) placeBlock(dragBlock, dropBlock.id, dropBlock.after);
-      setDragBlock(null);
+  /** moving a block: where it would land */
+  const [moving, setMoving] = useState<string | null>(null);
+  const [dropBlock, setDropBlock] = useState<{ id: string; side: Side } | null>(null);
+  /** a block taken by its grip (or picked, by itself) and dragged: it follows to where it's let go */
+  const movedRef = useRef(false);
+  const beginMove = (e: ReactPointerEvent, id: string, grip: boolean) => {
+    if (e.button !== 0) return;
+    movedRef.current = false;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let started = false;
+    let target: { id: string; side: Side } | null = null;
+    let scroll = 0;
+    const ticker = window.setInterval(() => scroll && page.current?.scrollBy({ top: scroll }), 16);
+    const move = (ev: PointerEvent) => {
+      if (!started) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+        started = true;
+        movedRef.current = true;
+        setMoving(id);
+        document.body.classList.add("nb-is-moving");
+        window.getSelection()?.removeAllRanges();
+      }
+      // near the page's top or bottom: it scrolls
+      const box = page.current?.getBoundingClientRect();
+      scroll = box ? (ev.clientY < box.top + 50 ? -12 : ev.clientY > box.bottom - 50 ? 12 : 0) : 0;
+      const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>("[data-block]");
+      const over = el?.dataset.block;
+      if (!el || !over || over === id) {
+        target = null;
+        setDropBlock(null);
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      const edge = Math.min(110, r.width * 0.22);
+      const side: Side = ev.clientX < r.left + edge ? "left" : ev.clientX > r.right - edge ? "right" : ev.clientY < r.top + r.height / 2 ? "before" : "after";
+      if (target?.id !== over || target.side !== side) {
+        target = { id: over, side };
+        setDropBlock(target);
+      }
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.clearInterval(ticker);
+      document.body.classList.remove("nb-is-moving");
+      setMoving(null);
       setDropBlock(null);
-    },
-  });
-  const dropMark = (id: string) => (dropBlock?.id === id ? (dropBlock.after ? " is-drop-after" : " is-drop-before") : "") + (dragBlock === id ? " is-dragging" : "");
-  const blockGrip = (id: string) => (
-    <span
-      className="nb-grip"
-      aria-hidden
-      draggable
-      title="Drag to move it"
-      onDragStart={(e) => {
-        e.dataTransfer.setData("application/x-matrixlab-block", id);
-        e.dataTransfer.effectAllowed = "move";
-        setDragBlock(id);
-      }}
-      onDragEnd={() => (setDragBlock(null), setDropBlock(null))}
-    >
-      ⋮⋮
-    </span>
-  );
-  const addBlock = (kind: { lang: string; start: string }) => {
-    if (!doc) return;
+      if (!started) {
+        // a click on the grip: picked
+        if (grip) pickBlock(id);
+        return;
+      }
+      if (target) placeBlock(id, target.id, target.side);
+      pickBlock(id);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const dropMark = (id: string) => (dropBlock?.id === id ? ` is-drop-${dropBlock.side}` : "") + (moving === id ? " is-moving" : "");
+  /** where a block sits, changed (its bar): left, centered, right, text around it, wide… */
+  const place = (b: Block, patch: Partial<Block>) => updateBlock(b.id, patch);
+  /** sizing a block alone on its line by an edge: its width, live, kept on letting go */
+  const [sizing, setSizing] = useState<{ id: string; width: number } | null>(null);
+  const startSizing = (e: ReactPointerEvent, b: Block, edge: "left" | "right") => {
+    e.preventDefault();
+    e.stopPropagation();
+    const col = columnBox();
+    const side = b.wrap ?? b.align ?? "left";
+    let width = b.width ?? 100;
+    const move = (ev: PointerEvent) => {
+      const px = side === "center" ? Math.abs(ev.clientX - col.center) * 2 : edge === "right" ? ev.clientX - col.left : col.right - ev.clientX;
+      let pct = (px / col.width) * 100;
+      // close to a third, a half…: that
+      for (const snap of [25, 100 / 3, 50, 200 / 3, 75, 100]) if (Math.abs(pct - snap) < 1.6) pct = snap;
+      width = Math.round(Math.max(15, Math.min(100, pct)));
+      setSizing({ id: b.id, width });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.classList.remove("nb-is-sizing");
+      setSizing(null);
+      updateBlock(b.id, { width: width >= 100 ? undefined : width });
+    };
+    document.body.classList.add("nb-is-sizing");
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  /** the + menu: what to add, and where (under a block; at the end; in place of an empty one) */
+  const [inserting, setInserting] = useState<{ after: string | null; replace?: string } | null>(null);
+  const insertBlock = (kind: { lang: string; start: string }, after: string | null, replace?: string) => {
+    const now = docRef.current;
+    if (!now) return;
+    setInserting(null);
     const id = blockId();
     const block: Block = kind.lang === "text" || kind.lang === "math" ? { id, kind: "text", text: kind.start } : { id, kind: "cell", lang: kind.lang, info: "", code: kind.start };
-    commit({ ...doc, blocks: [...doc.blocks, block] });
+    let blocks: Block[];
+    if (replace && now.blocks.some((b) => b.id === replace)) {
+      const old = now.blocks.find((b) => b.id === replace)!;
+      blocks = now.blocks.map((b) => (b.id === replace ? ({ ...block, beside: old.beside, width: old.width } as Block) : b));
+    } else {
+      // under the block (after its row, when it's in one)
+      let at = after ? now.blocks.findIndex((b) => b.id === after) : -1;
+      if (at < 0) at = now.blocks.length - 1;
+      while (now.blocks[at + 1]?.beside) at++;
+      blocks = [...now.blocks.slice(0, at + 1), block, ...now.blocks.slice(at + 1)];
+    }
+    editingRef.current = null;
+    commit({ ...now, blocks });
     setEditing(id);
+    setPicked(id);
     setDraft(kind.start);
   };
+  const addBlock = (kind: { lang: string; start: string }) => insertBlock(kind, null);
   const startEditing = (b: Block) => {
     if (editing && editing !== b.id) finishEditing();
     setEditing(b.id);
@@ -1125,6 +1250,16 @@ export default function NotebookTile({
   };
   /** a text block's keys (the plain editor): Esc or ⌘⏎ is done */
   const editKeys = (e: KeyboardEvent<HTMLTextAreaElement>, b: Block) => {
+    // "/calc" and Enter: a Calculate block in its place
+    const slash = draftRef.current.match(/^\/([\w ]*)$/);
+    if (slash && (e.key === "Enter" || e.key === "Tab")) {
+      const first = insertItems().find((i) => i.label.toLowerCase().includes(slash[1].trim().toLowerCase()));
+      if (first) {
+        e.preventDefault();
+        insertBlock(first.kind, null, b.id);
+        return;
+      }
+    }
     if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) {
       e.preventDefault();
       runEdited(b);
@@ -1568,70 +1703,330 @@ export default function NotebookTile({
     </div>
   );
 
-  const blockView = (b: Block, calcAt: number): ReactNode => {
-    const isEditing = editing === b.id;
-    const tools = (
-      <span className="nb-block-tools">
-        <button title="Move up" onClick={() => moveBlock(b.id, -1)}>
-          <Icon name="up" size={13} />
-        </button>
-        <button title="Move down" onClick={() => moveBlock(b.id, 1)}>
-          <Icon name="down" size={13} />
-        </button>
-        {b.kind === "cell" && (
-          <button className={hasFlag(b, "hide-code") ? "is-on" : ""} title={hasFlag(b, "hide-code") ? "Show its code again" : "Hide its code — the answer shows, on the page and the printed one (a report)"} onClick={() => updateBlock(b.id, { info: withFlag(b.info, "hide-code", !hasFlag(b, "hide-code")) })}>
-            <Icon name="eye" size={13} />
+  /** what a block is, in a word and an icon (its bar, the + menu) */
+  const kindOf = (b: Block): { label: string; icon: string } => {
+    if (b.kind === "text") return mathRowsOf(b.text) !== null ? { label: "Math", icon: "equations" } : /^#{1,6}\s/.test(b.text) ? { label: "Heading", icon: "text" } : { label: "Text", icon: "text" };
+    const language = codeLanguage(b);
+    const pluginCell = !language && !OWN_CELLS.has(b.lang) ? (plugins.cells.find((c) => c.id === b.lang.toLowerCase()) ?? cellKindOf(b.lang)) : undefined;
+    return { label: language?.label ?? pluginCell?.label ?? LANG_LABEL[b.lang] ?? b.lang, icon: NEW_CELLS.find((c) => c.lang === b.lang)?.icon ?? "source" };
+  };
+  /** everything the + menu (and / in a new line) can add */
+  const insertItems = () => [
+    ...NEW_CELLS.filter((c) => !offCells.includes(c.lang)).flatMap((c) => [
+      { key: c.lang, label: c.label, icon: c.icon, group: c.lang === "text" || c.lang === "math" ? "Write" : c.lang === "python" ? "Code" : "Apps", kind: c as { lang: string; start: string } },
+      ...(c.lang === "text" ? [{ key: "heading", label: "Heading", icon: "text", group: "Write", kind: { lang: "text", start: "## " } }] : []),
+    ]),
+    ...plugins.cells.filter((c) => !offCells.includes(c.id)).map((c) => ({ key: `cell:${c.id}`, label: c.label, icon: "source", group: "From plugins", kind: { lang: c.id, start: c.starter ?? "" } })),
+    ...allLanguages.map((l) => ({ key: `lang:${l.id}`, label: l.label, icon: "source", group: "Code", kind: { lang: l.id, start: l.starter ?? "" } })),
+  ];
+  const insertMenu = (after: string | null, replace?: string, filter = "") => {
+    const items = insertItems().filter((i) => !filter || i.label.toLowerCase().includes(filter.trim()));
+    const groups = [...new Set(items.map((i) => i.group))];
+    return (
+      // (a press here keeps the line being typed in: picking from it isn't leaving it)
+      <div className="nb-insert" onMouseDown={(e) => e.preventDefault()} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+        {!items.length && <div className="nb-insert-empty">Nothing called “{filter}”</div>}
+        {groups.map((g) => (
+          <div key={g} className="nb-insert-group">
+            <div className="nb-insert-title">{g}</div>
+            {items
+              .filter((i) => i.group === g)
+              .map((i) => (
+                <button key={i.key} className="nb-insert-item" onClick={() => insertBlock(i.kind, after, replace)}>
+                  <Icon name={i.icon} size={15} /> {i.label}
+                </button>
+              ))}
+          </div>
+        ))}
+      </div>
+    );
+  };
+  /** a copy, under it (a copy is live: its picture, if it has one, stays the original's) */
+  const duplicateBlock = (b: Block) => {
+    const now = docRef.current;
+    if (!now) return;
+    const at = now.blocks.findIndex((x) => x.id === b.id);
+    const copy = { ...b, id: blockId(), beside: undefined, ...(b.kind === "cell" ? { info: withShot(withFlat(b.info, null), null) } : {}) } as Block;
+    let end = at;
+    while (now.blocks[end + 1]?.beside) end++;
+    commit({ ...now, blocks: [...now.blocks.slice(0, end + 1), copy, ...now.blocks.slice(end + 1)] });
+    pickBlock(copy.id);
+  };
+  /** open it: work in the app (a picture made live first) */
+  const openBlock = (b: Block) => {
+    if (b.kind === "cell" && flatOf(b)) unflatten(b);
+    if (openInApp(b)) return;
+    startEditing(b);
+  };
+  // ---- linked apps: an app block opens in its real app (its tile, floating beside the page), not a copy of it here
+
+  const linkedApps = useLinkedApps();
+  /** what a block's section knows (x → "5"), for its app */
+  const scopeOfBlock = (b: Block) => Object.fromEntries(Object.entries(varsAt.get(b.id) ?? {}).map(([k, v]) => [k, String(v)]));
+  /** the heading a block is under, for its app's tab ("Calculate · Problem 1") */
+  const headingOver = (b: Block) => {
+    const blocks = docRef.current?.blocks ?? [];
+    for (let k = blocks.findIndex((x) => x.id === b.id) - 1; k >= 0; k--) {
+      const x = blocks[k];
+      const h = x.kind === "text" ? [...x.text.matchAll(/^#{1,6}\s+(.+)$/gm)].pop() : null;
+      if (h) return h[1].replace(/[*_`$]/g, "").trim();
+    }
+    return metaValue(docRef.current!, "title") || name || "";
+  };
+  /** the block in its app (true when it opened there) */
+  const openInApp = (b: Block) => {
+    const view = b.kind === "cell" ? LINKED_LANGS[b.lang] : undefined;
+    if (b.kind !== "cell" || !view || !name || !canLink()) return false;
+    finishEditing();
+    const id = linkedId(name, b.id);
+    const lines = isCalcLike(b) ? calc?.[calcIndex.get(b.id) ?? -1] : undefined;
+    const near = document.querySelector(`[data-block="${b.id}"]`)?.getBoundingClientRect();
+    const title = `${kindOf(b).label} · ${headingOver(b)}`.replace(/ · $/, "");
+    pickBlock(b.id);
+    return openLinked({ id, notebook: name, block: b.id, lang: b.lang, view, title, scope: scopeOfBlock(b) }, appDataFor(id, b.lang, b.code, lines), near);
+  };
+  // what's done in a block's app is the block's: written into it as it happens (its old picture, a graph's, let go)
+  useEffect(
+    () =>
+      watchLinked((app, data) => {
+        const now = docRef.current;
+        const b = now?.blocks.find((x) => x.id === app.block);
+        if (app.notebook !== name || !b || b.kind !== "cell") return;
+        const code = codeFor(app.lang, data, b.code);
+        if (code === b.code) return;
+        const shot = shotOf(b);
+        if (shot) invoke("flat_remove", { path: shot }).catch(() => {});
+        updateBlock(b.id, { code, ...(shot ? { info: withShot(b.info, null) } : {}) });
+      }),
+    [name], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  // a section's values changed (a Variables block above): the apps open on blocks under it see the new ones
+  useEffect(() => {
+    if (!name) return;
+    for (const app of linkedApps.values()) {
+      if (app.notebook !== name) continue;
+      const b = doc?.blocks.find((x) => x.id === app.block);
+      if (b) rescopeLinked(app.id, scopeOfBlock(b));
+      else closeLinked(app.id);
+    }
+  }, [varsAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  // another notebook opened: this one's apps close (their work is in their blocks)
+  useEffect(
+    () => () => {
+      for (const app of [...linkedApps.values()]) if (app.notebook === name) closeLinked(app.id);
+    },
+    [name], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const openInAppNow = (b: Block) => !!name && !!linkedApp(linkedId(name, b.id));
+  /** pressing an object: it's picked (and can be dragged); pressing it again opens it */
+  const press = useRef<{ id: string; already: boolean } | null>(null);
+  const objectDown = (e: ReactPointerEvent, b: Block) => {
+    if (e.button !== 0 || editing === b.id) return;
+    const t = e.target as HTMLElement;
+    if (t.closest("button, a, input, textarea, select, math-field, .cm-editor, [contenteditable], .nb-obj-bar, .nb-gutter, .nb-size, .nb-insert, .nb-folded")) return;
+    press.current = { id: b.id, already: picked === b.id };
+    pickBlock(b.id);
+    // a graph pans under the pointer, and an output's text is there to select: those move by the grip
+    if (!t.closest(".nb-graph, .js-plotly-plot, pre, .nb-py-out, .nb-code")) beginMove(e, b.id, false);
+  };
+  const objectClick = (b: Block) => {
+    const p = press.current;
+    press.current = null;
+    if (p?.id === b.id && p.already && !movedRef.current && editing !== b.id) openBlock(b);
+  };
+  /** + to add under it, and the grip: drag it anywhere, or click it to pick it */
+  const gutter = (b: Block) => (
+    <span className="nb-gutter" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+      <button className={`nb-gutter-btn${inserting?.after === b.id && !inserting.replace ? " is-on" : ""}`} title="Add something under it — text, math, an app, code (or type / on a new line)" onClick={() => setInserting(inserting?.after === b.id && !inserting.replace ? null : { after: b.id })}>
+        <Icon name="plus" size={15} />
+      </button>
+      <span
+        className="nb-gutter-btn is-grip"
+        title="Drag to move it — between blocks, or to a side of one to sit beside it · click to pick it"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          beginMove(e, b.id, true);
+        }}
+      >
+        <Icon name="grip" size={15} />
+      </span>
+      {inserting?.after === b.id && !inserting.replace && insertMenu(b.id)}
+    </span>
+  );
+  const [barMenu, setBarMenu] = useState<{ id: string; which: "flat" | "more" } | null>(null);
+  // a menu open (a bar's, or +): a press anywhere else puts it away
+  useEffect(() => {
+    if (!barMenu && !(inserting && !inserting.replace)) return;
+    const away = (e: PointerEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest?.(".nb-obj-menu, .nb-obj-bar, .nb-insert, .nb-gutter, .nb-end-add")) return;
+      setBarMenu(null);
+      setInserting((now) => (now?.replace ? now : null));
+    };
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [barMenu, inserting]);
+  /** a picked (or pointed-at) block's bar: what it is, open it, where it sits, flatten, more */
+  const objectBar = (b: Block, inRow: boolean) => {
+    const { label, icon } = kindOf(b);
+    const cell = b.kind === "cell" ? b : null;
+    const flat = cell ? flatOf(cell) : null;
+    const code = !!cell && (cell.lang === "python" || !!codeLanguage(cell));
+    const menu = barMenu?.id === b.id ? barMenu.which : null;
+    const at = doc!.blocks.findIndex((x) => x.id === b.id);
+    const set = (patch: Partial<Placement>) => {
+      setBarMenu(null);
+      place(b, patch);
+    };
+    // where it sits: text aligns its lines; a picture or an app its box (narrowed, if it took the whole line)
+    const spot = b.wide ? "wide" : b.wrap ? `wrap-${b.wrap}` : (b.align ?? "left");
+    const narrow = (to: number) => (b.width && b.width < 100 ? b.width : to);
+    const toggleMenu = (which: "flat" | "more") => setBarMenu(menu === which ? null : { id: b.id, which });
+    return (
+      <div className={`nb-obj-bar${menu ? " is-open" : ""}`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+        <span className="nb-obj-name">
+          <Icon name={icon} size={13} /> {label}
+          {flat && <span className="nb-obj-tag" title="Kept as a picture — not worked out or drawn again">picture</span>}
+        </span>
+        {cell && !flat && (LINKED_LANGS[cell.lang] && canLink() ? (
+          <button className={`is-text${openInAppNow(b) ? " is-on" : ""}`} title={openInAppNow(b) ? "It's open in its app — bring it forward" : `Open it in ${label} — the app itself, beside the page (or double-click it)`} onClick={() => openBlock(b)}>
+            <Icon name="arrow" size={13} /> {openInAppNow(b) ? "Open" : "Open"}
+          </button>
+        ) : (
+          <button title={code ? "Edit its code (click the code, or Enter)" : "Work in it (double-click it, or Enter)"} onClick={() => startEditing(b)}>
+            <Icon name="pen" size={14} />
+          </button>
+        ))}
+        {cell && runnable(cell) && !flat && (
+          <button title="Run it (⇧⏎ when it's picked)" onClick={() => runBlock(cell, cell.code)}>
+            <Icon name="run" size={13} />
           </button>
         )}
-        {b.kind === "cell" && (b.lang === "python" || !!codeLanguage(b)) && (
-          <button className={hasFlag(b, "fold-output") ? "is-on" : ""} title={hasFlag(b, "fold-output") ? "Show its output again" : "Fold its output away (on the page — the printed one keeps it)"} onClick={() => updateBlock(b.id, { info: withFlag(b.info, "fold-output", !hasFlag(b, "fold-output")) })}>
-            <Icon name="down" size={13} />
+        {cell && flat && (
+          <button className="is-text" title="Live again — worked out and drawn as it is now (or double-click it)" onClick={() => unflatten(cell)}>
+            <Icon name="bolt" size={13} /> Live
           </button>
         )}
-        {b.kind === "cell" && !flatOf(b) && (
-          <span className="nb-flat-anchor">
-            <button title="Flatten to a picture — kept as it shows, not worked out or drawn again (its code stays, to unflatten)" onClick={() => setFlatMenu(flatMenu === b.id ? null : b.id)}>
-              <Icon name="frame" size={13} />
+        {!inRow && (
+          <>
+            <span className="nb-obj-sep" />
+            <button className={spot === "left" ? "is-on" : ""} title={cell ? "On the left" : "Lines on the left"} onClick={() => set({ align: undefined, wrap: undefined, wide: undefined })}>
+              <Icon name="alignLeft" size={15} />
             </button>
-            {flatMenu === b.id && (
-              <span className="nb-flat-menu" onMouseLeave={() => setFlatMenu(null)}>
-                <button onClick={() => flatten(b, "png")}>PNG</button>
-                <button onClick={() => flatten(b, "jpeg")}>JPEG</button>
-                {(b.lang === "calc" || b.lang === "vars") && (
-                  <button title="As math text — its lines and answers (⌘Z brings the block back)" onClick={() => toLatex(b, calcIndex.get(b.id) ?? -1)}>
-                    LaTeX
-                  </button>
-                )}
+            <button className={spot === "center" ? "is-on" : ""} title={cell ? "Centered" : "Lines centered"} onClick={() => set({ align: "center", wrap: undefined, wide: undefined, ...(cell ? { width: narrow(70) } : {}) })}>
+              <Icon name="alignCenter" size={15} />
+            </button>
+            <button className={spot === "right" ? "is-on" : ""} title={cell ? "On the right" : "Lines on the right"} onClick={() => set({ align: "right", wrap: undefined, wide: undefined, ...(cell ? { width: narrow(70) } : {}) })}>
+              <Icon name="alignRight" size={15} />
+            </button>
+            {cell && (
+              <>
+                <button className={spot === "wrap-left" ? "is-on" : ""} title="On the left, the text after it flowing around it" onClick={() => set({ wrap: "left", align: undefined, wide: undefined, width: b.width && b.width <= 70 ? b.width : 45 })}>
+                  <Icon name="wrapLeft" size={15} />
+                </button>
+                <button className={spot === "wrap-right" ? "is-on" : ""} title="On the right, the text after it flowing around it" onClick={() => set({ wrap: "right", align: undefined, wide: undefined, width: b.width && b.width <= 70 ? b.width : 45 })}>
+                  <Icon name="wrapRight" size={15} />
+                </button>
+                <button className={spot === "wide" ? "is-on" : ""} title={b.wide ? "Back to the text's width" : "Wide — out past the text, toward the page's edges"} onClick={() => set(b.wide ? { wide: undefined } : { wide: true, width: undefined, align: undefined, wrap: undefined })}>
+                  <Icon name="wide" size={15} />
+                </button>
+              </>
+            )}
+          </>
+        )}
+        {cell && !flat && (
+          <span className="nb-obj-anchor">
+            <button className={`is-text${menu === "flat" ? " is-on" : ""}`} title="Flatten — kept as it shows (a picture, or math text), not worked out or drawn again" onClick={() => toggleMenu("flat")}>
+              <Icon name="frame" size={13} /> Flatten
+            </button>
+            {menu === "flat" && (
+              <span className="nb-obj-menu">
+                <button onClick={() => (setBarMenu(null), flatten(cell, "png"))}>A picture (PNG)</button>
+                <button onClick={() => (setBarMenu(null), flatten(cell, "jpeg"))}>A smaller picture (JPEG)</button>
+                {(cell.lang === "calc" || cell.lang === "vars") && <button onClick={() => (setBarMenu(null), toLatex(cell, calcIndex.get(cell.id) ?? -1))}>Math text (LaTeX)</button>}
               </span>
             )}
           </span>
         )}
-        {doc!.blocks[0]?.id !== b.id && (
-          <button className={b.beside ? "is-on" : ""} title={b.beside ? "Back on its own line, full width" : "Beside the block above — side by side (drag the line between to resize)"} onClick={() => toggleBeside(b.id)}>
-            <Icon name="layout" size={13} />
+        <span className="nb-obj-anchor">
+          <button className={menu === "more" ? "is-on" : ""} title="More" onClick={() => toggleMenu("more")}>
+            <Icon name="more" size={15} />
           </button>
-        )}
-        <button title="Delete this block" onClick={() => removeBlock(b.id)}>
-          <Icon name="trash" size={13} />
-        </button>
-      </span>
+          {menu === "more" && (
+            <span className="nb-obj-menu is-right">
+              {!inRow && !b.wide && (
+                <span className="nb-obj-sizes">
+                  {[33, 50, 75, 100].map((w) => (
+                    <button key={w} className={(b.width ?? 100) === w ? "is-on" : ""} onClick={() => set({ width: w === 100 ? undefined : w })}>
+                      {w === 100 ? "Full" : `${w}%`}
+                    </button>
+                  ))}
+                </span>
+              )}
+              {code && (
+                <button onClick={() => (setBarMenu(null), updateBlock(b.id, { info: withFlag(cell!.info, "hide-code", !hasFlag(b, "hide-code")) }))}>{hasFlag(b, "hide-code") ? "Show its code" : "Hide its code (a report shows the answer)"}</button>
+              )}
+              {code && (
+                <button onClick={() => (setBarMenu(null), updateBlock(b.id, { info: withFlag(cell!.info, "fold-output", !hasFlag(b, "fold-output")) }))}>{hasFlag(b, "fold-output") ? "Show its output" : "Fold its output away"}</button>
+              )}
+              {cell?.lang === "work" && <button onClick={() => (setBarMenu(null), reopen(cell.code))}>Open it in the Work tile</button>}
+              {at > 0 && <button onClick={() => (setBarMenu(null), toggleBeside(b.id))}>{b.beside ? "On a line of its own" : "Beside the one above"}</button>}
+              <button onClick={() => (setBarMenu(null), duplicateBlock(b))}>Duplicate</button>
+              <button onClick={() => (setBarMenu(null), moveBlock(b.id, -1))}>Move up</button>
+              <button onClick={() => (setBarMenu(null), moveBlock(b.id, 1))}>Move down</button>
+              <button className="is-danger" onClick={() => (setBarMenu(null), removeBlock(b.id))}>
+                Delete
+              </button>
+            </span>
+          )}
+        </span>
+      </div>
     );
+  };
+  // how far a wide block reaches past the text: the page's margin, less a little
+  useEffect(() => {
+    const el = page.current;
+    if (!el) return;
+    const fit = () => el.style.setProperty("--nb-room", `${Math.max(0, Math.min(240, parseFloat(getComputedStyle(el).paddingLeft) - 30))}px`);
+    const watch = new ResizeObserver(fit);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [view, !!doc]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** a picked block alone on its line: its edges, to drag */
+  const sizeHandles = (b: Block) => {
+    const side = b.wrap ?? b.align ?? "left";
+    return (
+      <>
+        {side !== "right" && <div className="nb-size is-right" title="Drag to size it · double-click: the whole line" onPointerDown={(e) => startSizing(e, b, "right")} onDoubleClick={() => place(b, { width: undefined })} />}
+        {side !== "left" && <div className="nb-size is-left" title="Drag to size it · double-click: the whole line" onPointerDown={(e) => startSizing(e, b, "left")} onDoubleClick={() => place(b, { width: undefined })} />}
+        {sizing?.id === b.id && <span className="nb-size-label">{sizing.width}%</span>}
+      </>
+    );
+  };
+
+  const blockView = (b: Block, calcAt: number, inRow = false): ReactNode => {
+    const isEditing = editing === b.id;
+    const isPicked = picked === b.id && !isEditing;
+    const marks = `${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}${isPicked ? " is-picked" : ""}`;
     if (b.kind === "text") {
+      // / at the start of a new line: what to put here instead
+      const slash = isEditing && /^\/[\w ]*$/.test(draft) ? draft.slice(1).toLowerCase() : null;
       return (
-        <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}${picked === b.id && !isEditing ? " is-picked" : ""}`} {...dropOn(b.id)}>
-          {!isEditing && blockGrip(b.id)}
+        <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}${b.align && b.align !== "left" ? ` is-lines-${b.align}` : ""}${marks}`}>
+          {!isEditing && gutter(b)}
           {isEditing && mathRowsOf(b.text) !== null ? (
             // a Math block: math typed as math, drawn as it's typed
             <MathBlockLive text={draft} onChange={type} onDone={() => finishEditing()} />
           ) : isEditing ? (
             vimKeys ? (
-              <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys prose placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
+              <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys prose />
             ) : (
-              <AutoText value={draft} onChange={type} onBlur={() => finishEditing()} onKeyDown={(e) => editKeys(e, b)} placeholder="Write — **bold**, *italic*, # heading, - list, $x^2$, $$math$$, [[another notebook]]" />
+              <AutoText value={draft} onChange={type} onBlur={() => finishEditing()} onKeyDown={(e) => editKeys(e, b)} />
             )
           ) : (
             <div className="nb-md" onClick={(e) => followLinks(e) || startEditing(b)} dangerouslySetInnerHTML={{ __html: renderMarkdown(b.text) }} />
           )}
+          {slash !== null && insertMenu(null, b.id, slash)}
           {!isEditing && /^#{1,6}\s/m.test(b.text) && sectionOf(b).length > 0 && (
             <span className="nb-section-tools">
               <button title="Bounce this section in place — every block under this header kept as a picture, so nothing in it is drawn or worked out again" onClick={() => bounceSection(b)}>
@@ -1644,7 +2039,8 @@ export default function NotebookTile({
               )}
             </span>
           )}
-          {!isEditing && tools}
+          {isPicked && objectBar(b, inRow)}
+          {isPicked && !inRow && sizeHandles(b)}
         </div>
       );
     }
@@ -1652,12 +2048,14 @@ export default function NotebookTile({
     const language = codeLanguage(b);
     // a kind of cell a plugin adds (```csv): what its render makes of it
     const pluginCell = !language && b.kind === "cell" && !OWN_CELLS.has(b.lang) ? (plugins.cells.find((c) => c.id === b.lang.toLowerCase()) ?? cellKindOf(b.lang)) : undefined;
-    const label = language?.label ?? pluginCell?.label ?? LANG_LABEL[b.lang] ?? b.lang;
+    const { label, icon } = kindOf(b);
+    // code: Python, a language's, or one no plugin knows — its code is what's on the page
+    const isCode = b.lang === "python" || !!language || (!OWN_CELLS.has(b.lang) && !pluginCell);
     // a cell that runs (Python, or a plugin's language): its output's key
     const runKey = b.lang === "python" || language ? outKey(b.lang, b.code) : null;
     const result =
       flat && !isEditing ? (
-        <FlatPicture path={flat} />
+        <FlatPicture path={flat} fill={(!!b.width && !inRow) || !!b.wide} />
       ) : b.lang === "vars" ? (
         // being worked in: the table; done: the values as they read
         isEditing ? (
@@ -1669,8 +2067,7 @@ export default function NotebookTile({
         <PythonOutput output={py[runKey!]} running={running.has(runKey!)} live={live?.code === runKey ? live.text : undefined} matlab={language.output === "matlab"} />
       ) : pluginCell ? (
         <PluginCell kind={pluginCell} code={isEditing ? draft : b.code} />
-      ) :
-      b.lang === "calc" ? (
+      ) : b.lang === "calc" ? (
         isEditing ? (
           // being worked in: the calculator itself
           <CalcLive
@@ -1722,122 +2119,124 @@ export default function NotebookTile({
       ) : null;
     const codeHidden = !isEditing && hasFlag(b, "hide-code");
     const outFolded = hasFlag(b, "fold-output");
-    // an app block being worked in is the app itself, not its code
-    const showCode = (isEditing && b.lang !== "calc" && b.lang !== "vars" && b.lang !== "graph") || (!isEditing && !flat && !codeHidden && (b.lang === "python" || !!language || !result));
     const foldLine = (what: string, flag: string, lines?: number) => (
       <button className="nb-folded" title={`Show its ${what} again`} onClick={() => updateBlock(b.id, { info: withFlag(b.info, flag, false) })}>
         {what} hidden{lines ? ` · ${lines} line${lines === 1 ? "" : "s"}` : ""} — show
       </button>
     );
-    // a work cell being edited: its fields, with the checked work under them
-    return (
-      <div key={b.id} data-block={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}${flat ? " is-flat" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}${picked === b.id && !isEditing ? " is-picked" : ""}`} {...dropOn(b.id)}>
-        {!isEditing && blockGrip(b.id)}
-        <div className="nb-cell-head">
-          <span className="nb-cell-lang">{label}</span>
-          {flat && (
-            <>
-              <span className="nb-flat-tag" title="Kept as a picture — not worked out or drawn again">flattened</span>
-              <button className="nb-cell-edit" title="Work it out (and draw it) again, live" onClick={() => unflatten(b)}>
-                unflatten
-              </button>
-            </>
+    const codeEditor = (
+      <CodeEditor
+        value={draft}
+        onChange={type}
+        onDone={() => finishEditing()}
+        vimKeys={vimKeys}
+        python={b.lang === "python"}
+        spec={b.lang === "python" ? PYTHON_SPEC : language?.highlight}
+        onRun={() => runEdited(b)}
+        onRunNext={runnable(b) ? () => runAndNext(b) : undefined}
+        onRunInsert={runnable(b) ? () => runAndInsert(b) : undefined}
+        complete={b.lang === "python" && name ? completePython : undefined}
+      />
+    );
+    // code on the page: a panel with its language, its count, Run
+    const codePanel = isCode && !flat && (
+      <div className="nb-code-panel">
+        <div className="nb-code-head">
+          <span className="nb-code-lang">{label}</span>
+          {b.lang === "python" && (
+            <span className="nb-count" title={py[b.code]?.count ? `Run ${py[b.code]!.count} in this Python` : "Not run yet"}>
+              [{running.has(b.code) ? "*" : (py[b.code]?.count ?? " ")}]
+            </span>
           )}
-          {b.lang !== "python" && b.kind === "cell" && !OWN_CELLS.has(b.lang) && !language && !pluginCell && (
-            <span className="nb-cell-note" title="Add a plugin for this language to color and run it">no plugin runs {b.lang}</span>
+          {b.lang !== "python" && !language && <span className="nb-cell-note" title="Add a plugin for this language to color and run it">no plugin runs {b.lang}</span>}
+          <span className="nb-code-space" />
+          {runKey && running.has(runKey) && started.current[runKey] !== undefined && <span className="nb-time is-running">{((performance.now() - started.current[runKey]) / 1000).toFixed(1)} s</span>}
+          {runKey && py[runKey]?.seconds !== undefined && !running.has(runKey) && <span className="nb-time">{py[runKey]!.seconds! < 1 ? `${Math.round(py[runKey]!.seconds! * 1000)} ms` : `${py[runKey]!.seconds!.toFixed(1)} s`}</span>}
+          {language && runKey && running.has(runKey) && (
+            <button className="nb-run is-stop" title="Stop it" onClick={() => name && invoke("lang_stop", { notebook: name, lang: language.id }).catch(() => {})}>
+              Stop
+            </button>
           )}
-          {language?.run?.length && !flat ? (
-            <>
-              <button className="nb-run" title={`Run this cell — ⌘⏎ (⇧⏎ runs it and goes on, ⌥⏎ runs it and adds a cell under it)`} onClick={() => runLanguage(language, b.code)}>
-                <Icon name="run" size={12} /> Run
-              </button>
-              {running.has(runKey!) && (
-                <button className="nb-run is-stop" title="Stop it" onClick={() => name && invoke("lang_stop", { notebook: name, lang: language.id }).catch(() => {})}>
-                  Stop
-                </button>
-              )}
-              {running.has(runKey!) && started.current[runKey!] !== undefined && <span className="nb-time is-running">{((performance.now() - started.current[runKey!]) / 1000).toFixed(1)} s</span>}
-              {py[runKey!]?.seconds !== undefined && !running.has(runKey!) && <span className="nb-time">{py[runKey!]!.seconds! < 1 ? `${Math.round(py[runKey!]!.seconds! * 1000)} ms` : `${py[runKey!]!.seconds!.toFixed(1)} s`}</span>}
-            </>
+          {b.lang === "python" ? (
+            <button
+              className="nb-run"
+              title="Run this cell — ⌘⏎ (⇧⏎ runs it and goes on to the next, ⌥⏎ runs it and adds a cell under it) · ⇧-click: this and every cell below · ⌥-click: every cell above, then this"
+              onClick={(e) => {
+                const all = codesOf(docRef.current);
+                const at = all.indexOf(b.code);
+                if (e.shiftKey) runCells(all.slice(at));
+                else if (e.altKey) runCells(all.slice(0, at + 1));
+                else runCell(b.code);
+              }}
+            >
+              <Icon name="run" size={12} /> Run
+            </button>
+          ) : language?.run?.length ? (
+            <button className="nb-run" title="Run this cell — ⌘⏎ (⇧⏎ runs it and goes on, ⌥⏎ runs it and adds a cell under it)" onClick={() => runLanguage(language, b.code)}>
+              <Icon name="run" size={12} /> Run
+            </button>
           ) : null}
-          {b.lang === "python" && !flat && (
-            <>
-              <span className="nb-count" title={py[b.code]?.count ? `Run ${py[b.code]!.count} in this Python` : "Not run yet"}>
-                [{running.has(b.code) ? "*" : (py[b.code]?.count ?? " ")}]
-              </span>
-              <button
-                className="nb-run"
-                title="Run this cell — ⌘⏎ (⇧⏎ runs it and goes on to the next, ⌥⏎ runs it and adds a cell under it) · ⇧-click: this and every cell below · ⌥-click: every cell above, then this"
-                onClick={(e) => {
-                  const all = codesOf(docRef.current);
-                  const at = all.indexOf(b.code);
-                  if (e.shiftKey) runCells(all.slice(at));
-                  else if (e.altKey) runCells(all.slice(0, at + 1));
-                  else runCell(b.code);
-                }}
-              >
-                <Icon name="run" size={12} /> Run
-              </button>
-              {running.has(b.code) && started.current[b.code] !== undefined && <span className="nb-time is-running">{((performance.now() - started.current[b.code]) / 1000).toFixed(1)} s</span>}
-              {py[b.code]?.seconds !== undefined && !running.has(b.code) && <span className="nb-time">{py[b.code]!.seconds! < 1 ? `${Math.round(py[b.code]!.seconds! * 1000)} ms` : `${py[b.code]!.seconds!.toFixed(1)} s`}</span>}
-            </>
-          )}
-          {!isEditing && !flat && b.lang !== "python" && !language && result && (
-            <button className="nb-cell-edit" onClick={() => startEditing(b)}>
-              edit
-            </button>
-          )}
-          {!isEditing && b.lang === "work" && (
-            <button className="nb-cell-edit" title="Put it back in Work, to fix it there" onClick={() => reopen(b.code)}>
-              open in Work
-            </button>
-          )}
         </div>
-        {showCode &&
-          (isEditing && b.lang === "work" ? (
-            <WorkCellEditor code={draft} onChange={setDraft} onDone={() => finishEditing()} />
-          ) : isEditing ? (
-            <CodeEditor
-              value={draft}
-              onChange={type}
-              onDone={() => finishEditing()}
-              vimKeys={vimKeys}
-              python={b.lang === "python"}
-              spec={b.lang === "python" ? PYTHON_SPEC : language?.highlight}
-              onRun={() => runEdited(b)}
-              onRunNext={runnable(b) ? () => runAndNext(b) : undefined}
-              onRunInsert={runnable(b) ? () => runAndInsert(b) : undefined}
-              complete={b.lang === "python" && name ? completePython : undefined}
-            />
-          ) : (
-            b.lang === "python" ? (
-              <pre
-                className="nb-code"
-                onClick={() => startEditing(b)}
-                dangerouslySetInnerHTML={{ __html: highlightWithError(b.code || " ", Number(py[b.code]?.error?.match(/^line (\d+):/)?.[1]) || undefined) }}
-              />
-            ) : language ? (
-              <pre className="nb-code" onClick={() => startEditing(b)} dangerouslySetInnerHTML={{ __html: highlightCode(b.code || " ", language.highlight) }} />
-            ) : (
-              <pre className="nb-code" onClick={() => startEditing(b)}>
-                {b.code || " "}
-              </pre>
-            )
-          ))}
-        {codeHidden && !flat && (b.lang === "python" || !!language || !result) && foldLine("code", "hide-code", b.code.split("\n").length)}
-        {result && outFolded && foldLine("output", "fold-output")}
-        {result && !outFolded && (
-          <div className="nb-cell-result" onClick={() => !isEditing && !flat && b.lang !== "python" && !language && startEditing(b)}>
-            {result}
+        {codeHidden ? (
+          foldLine("code", "hide-code", b.code.split("\n").length)
+        ) : isEditing ? (
+          codeEditor
+        ) : b.lang === "python" ? (
+          <pre className="nb-code" onClick={() => startEditing(b)} dangerouslySetInnerHTML={{ __html: highlightWithError(b.code || " ", Number(py[b.code]?.error?.match(/^line (\d+):/)?.[1]) || undefined) }} />
+        ) : language ? (
+          <pre className="nb-code" onClick={() => startEditing(b)} dangerouslySetInnerHTML={{ __html: highlightCode(b.code || " ", language.highlight) }} />
+        ) : (
+          <pre className="nb-code" onClick={() => startEditing(b)}>
+            {b.code || " "}
+          </pre>
+        )}
+      </div>
+    );
+    // an app being worked in: it, with what it is and a way out above it
+    const appEditor = !isCode && isEditing && (b.lang === "work" ? <WorkCellEditor code={draft} onChange={setDraft} onDone={() => finishEditing()} /> : b.lang === "numberline" || pluginCell ? codeEditor : null);
+    return (
+      <div
+        key={b.id}
+        data-block={b.id}
+        className={`nb-block is-cell is-obj is-${b.lang}${isCode ? " is-code" : " is-app"}${isEditing ? " is-editing" : ""}${flat ? " is-flat" : ""}${openInAppNow(b) ? " is-in-app" : ""}${marks}`}
+        onPointerDown={(e) => objectDown(e, b)}
+        onClick={() => objectClick(b)}
+        onDoubleClick={(e) => !isEditing && !(e.target as HTMLElement).closest("button, a, input, textarea, math-field, .cm-editor, .nb-obj-bar, .nb-gutter, .nb-code") && openBlock(b)}
+      >
+        {!isEditing && gutter(b)}
+        {openInAppNow(b) && (
+          <span className="nb-in-app" title="It's open in its app — what you do there shows here as you go">
+            <Icon name={icon} size={12} /> open in {label}
+          </span>
+        )}
+        {isEditing && !isCode && b.lang !== "graph" && (
+          <div className="nb-obj-live">
+            <span className="nb-obj-name">
+              <Icon name={icon} size={13} /> {label}
+            </span>
+            <span className="nb-obj-live-hint">Esc, or click outside it, when you're done</span>
+            <button className="nb-obj-done" onClick={() => finishEditing()}>
+              <Icon name="check" size={13} /> Done
+            </button>
           </div>
         )}
-        {!isEditing && tools}
+        {codePanel}
+        {appEditor}
+        {result && outFolded && foldLine("output", "fold-output")}
+        {result && !outFolded && <div className="nb-obj-body nb-cell-result">{result}</div>}
+        {!isEditing && objectBar(b, inRow)}
+        {isPicked && !inRow && !b.wide && sizeHandles(b)}
       </div>
     );
   };
 
   /** a key in the notebook, nothing being edited: j/k pick, Enter edits, a/b add, dd deletes… */
   const commandKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && (barMenu || (inserting && !inserting.replace))) {
+      setBarMenu(null);
+      setInserting(null);
+      return true;
+    }
     if (!doc || editing || e.metaKey || e.ctrlKey || e.altKey) return false;
     const blocks = doc.blocks;
     const at = picked ? blocks.findIndex((b) => b.id === picked) : -1;
@@ -1862,8 +2261,14 @@ export default function NotebookTile({
       if (runnable(b)) runBlock(b, b.kind === "cell" ? b.code : b.text);
       return pick(at + 1), true;
     }
-    if (key === "Enter") return startEditing(b), true;
-    if (key === "Escape") return setPicked(null), true;
+    if (key === "Enter") return openBlock(b), true;
+    if (key === "Backspace" || key === "Delete") {
+      removeBlock(b.id);
+      const next = blocks[at + 1] ?? blocks[at - 1];
+      setPicked(next?.id ?? null);
+      return true;
+    }
+    if (key === "Escape") return setPicked(null), setBarMenu(null), true;
     if (key === "J" || key === "K") {
       moveBlock(b.id, key === "J" ? 1 : -1);
       setTimeout(() => page.current?.querySelector(`[data-block="${b.id}"]`)?.scrollIntoView({ block: "nearest" }), 0);
@@ -2055,16 +2460,22 @@ export default function NotebookTile({
             ))}
           </nav>
         )}
-        <div className="nb-page" ref={page} onScroll={spy}>
+        <div
+          className="nb-page"
+          ref={page}
+          onScroll={spy}
+          // a press on the page around the blocks: nothing picked
+          onPointerDown={(e) => !(e.target as HTMLElement).closest("[data-block], .nb-insert, .nb-end, .nb-add") && setPicked(null)}
+        >
           {header}
           {rowsOf(doc.blocks).map((row) => {
             if (row.length === 1) {
               const b = row[0];
               const width = sizing?.id === b.id ? sizing.width : (b.width ?? 100);
+              const spot = b.wide ? " is-wide" : b.wrap ? ` is-wrap-${b.wrap}` : b.kind === "cell" && b.align && b.align !== "left" ? ` is-align-${b.align}` : "";
               return (
-                <div key={`solo-${b.id}`} className={`nb-solo${sizing?.id === b.id ? " is-sizing" : ""}`} style={width < 100 ? { width: `${width}%` } : undefined}>
+                <div key={`solo-${b.id}`} className={`nb-solo is-${b.kind}${spot}${sizing?.id === b.id ? " is-sizing" : ""}`} style={width < 100 && !b.wide ? { width: `${width}%` } : undefined}>
                   {blockView(b, isCalcLike(b) ? calcAt++ : -1)}
-                  <div className="nb-solo-handle" title={`Drag to make it narrower or wider${width < 100 ? ` (${width}%)` : ""}`} onPointerDown={(e) => startSizing(e, b)} onDoubleClick={() => updateBlock(b.id, { width: undefined })} />
                 </div>
               );
             }
@@ -2076,17 +2487,27 @@ export default function NotebookTile({
                   <Fragment key={b.id}>
                     {k > 0 && <div className="nb-col-handle" title="Drag to resize" onPointerDown={(e) => startResize(e, row, k)} />}
                     <div className="nb-col" style={{ flexBasis: `${widths[k]}%` }}>
-                      {blockView(b, isCalcLike(b) ? calcAt++ : -1)}
+                      {blockView(b, isCalcLike(b) ? calcAt++ : -1, true)}
                     </div>
                   </Fragment>
                 ))}
               </div>
             );
           })}
-          {!doc.blocks.length && <div className="nb-empty">An empty page — add something below, or open the file in another editor.</div>}
+          {!doc.blocks.length && <div className="nb-empty">An empty page — click below to write, or + for an app.</div>}
+          {/* the end of the page: click to write on; + for anything else */}
+          <div className="nb-end">
+            <button className={`nb-gutter-btn nb-end-add${inserting?.after === null && !inserting.replace ? " is-on" : ""}`} title="Add something — text, math, an app, code" onClick={() => setInserting(inserting?.after === null && !inserting.replace ? null : { after: null })}>
+              <Icon name="plus" size={15} />
+            </button>
+            <button className="nb-end-write" onClick={() => addBlock({ lang: "text", start: "" })}>
+              Click to write
+            </button>
+            {inserting?.after === null && !inserting.replace && insertMenu(null)}
+          </div>
           <div className="nb-add">
-            {NEW_CELLS.filter((c) => !offCells.includes(c.lang)).map((c) => (
-              <button key={c.lang} className="nb-add-btn" onClick={() => addBlock(c)}>
+            {NEW_CELLS.filter((c) => c.lang !== "text" && !offCells.includes(c.lang)).map((c) => (
+              <button key={c.lang} className="nb-add-btn" title={`Add ${c.label === "Math" ? "math" : `a ${c.label} block`} at the end`} onClick={() => addBlock(c)}>
                 <Icon name={c.icon} size={13} /> {c.label}
               </button>
             ))}

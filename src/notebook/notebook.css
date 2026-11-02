@@ -263,9 +263,11 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 26px max(20px, calc((100% - 760px) / 2)) 90px;
-  font: 15.5px/1.65 -apple-system, "Inter", "Helvetica Neue", sans-serif;
+  /* room at the left for each block's + and grip */
+  padding: 34px max(58px, calc((100% - 740px) / 2)) 120px;
+  font: 16px/1.7 -apple-system, "Inter", "Helvetica Neue", sans-serif;
   color: var(--t-text);
+  -webkit-font-smoothing: antialiased;
 }
 
 .nb-header {
@@ -360,8 +362,7 @@
   transition: background 0.12s;
 }
 
-.nb-block.is-text:hover:not(.is-editing) {
-  background: color-mix(in srgb, var(--t-bg4) 45%, transparent);
+.nb-block.is-text:not(.is-editing) {
   cursor: text;
 }
 
@@ -551,15 +552,9 @@
   font: 13.5px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-/* ---- cells: a card each, in its kind's color */
+/* ---- cells: objects in the page (see "the page's objects" below), each in its kind's color */
 .nb-block.is-cell {
-  margin: 10px -10px 12px;
-  padding: 0;
-  border: 1px solid var(--t-line);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--t-bg1) 70%, var(--t-bg2));
   --cell-hue: var(--t-teal);
-  overflow: hidden;
 }
 
 .nb-block.is-graph {
@@ -578,9 +573,7 @@
   --cell-hue: var(--t-purple);
 }
 
-.nb-block.is-cell.is-editing {
-  border-color: color-mix(in srgb, var(--cell-hue) 55%, var(--t-line));
-}
+
 
 .nb-cell-head {
   display: flex;
@@ -661,7 +654,6 @@
 }
 
 .nb-cell-result {
-  padding: 6px 14px 12px;
   overflow-x: auto;
 }
 
@@ -777,31 +769,30 @@
 }
 
 /* ---- adding: every kind of block, under the last one */
+/* the apps, a click away at the end of the page (quiet: + and / are the way in) */
 .nb-add {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 22px;
-  padding-top: 14px;
-  border-top: 1px dashed var(--t-line);
+  gap: 2px;
+  margin: 2px 0 0 -9px;
 }
 
 .nb-add-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 11px;
-  border: 1px solid var(--t-line);
-  border-radius: 999px;
+  height: 27px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 7px;
   background: none;
-  color: var(--t-subtle);
+  color: var(--t-faint);
   font-size: 12.5px;
   cursor: pointer;
 }
 
 .nb-add-btn:hover {
-  border-color: var(--t-faint);
+  background: color-mix(in srgb, var(--t-text) 7%, transparent);
   color: var(--t-text);
   background: var(--t-bg1);
 }
@@ -2163,6 +2154,294 @@
   background: var(--t-bg4);
 }
 
+.nb:focus {
+  outline: none;
+}
+
+/* a cell's code or output folded away: a line to bring it back */
+.nb-folded {
+  display: block;
+  width: 100%;
+  margin: 4px 0;
+  padding: 5px 10px;
+  border: 1px dashed var(--t-line);
+  border-radius: 8px;
+  background: none;
+  color: var(--t-muted);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nb-folded:hover {
+  color: var(--t-text);
+  border-color: color-mix(in srgb, var(--t-text) 30%, transparent);
+}
+
+/* app blocks — the calculator, worked in inline */
+.app-calc {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--t-bg1, #14141a);
+}
+
+.app-calc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.app-calc-row.is-at {
+  background: color-mix(in srgb, var(--t-text) 5%, transparent);
+}
+
+.app-calc-in {
+  flex: 1;
+  min-width: 0;
+  font-size: 18px;
+}
+
+.app-calc-out {
+  flex: 0 1 auto;
+  max-width: 45%;
+  overflow-x: auto;
+  color: var(--t-teal, #56b6c2);
+  font-size: 17px;
+}
+
+.app-calc-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px 2px;
+  border-top: 1px solid var(--t-line);
+}
+
+.app-calc-keys button {
+  min-width: 34px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--t-line);
+  border-radius: 7px;
+  background: var(--t-bg3);
+  color: var(--t-text);
+  cursor: pointer;
+}
+
+.app-calc-keys button:hover {
+  background: var(--t-bg4);
+}
+
+.app-calc-hint {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--t-muted);
+}
+
+/* a saved value in the record: change it right there */
+.app-calc-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.app-calc-change {
+  padding: 0 6px;
+  border: 1px dashed color-mix(in srgb, var(--t-teal, #56b6c2) 50%, transparent);
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  cursor: text;
+}
+
+.app-calc-change:hover {
+  border-style: solid;
+}
+
+.app-calc-value {
+  min-width: 80px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--t-bg1, #14141a);
+}
+
+/* a variables block's record */
+.nb-varrec {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+  cursor: text;
+}
+
+.nb-varrec-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  font-size: 16px;
+}
+
+.nb-varrec-note {
+  font-size: 13px;
+  color: var(--t-muted);
+}
+
+.nb-vim-toggle {
+  font-family: var(--t-mono, "SF Mono", Menlo, monospace);
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.nb-vim-toggle.is-on {
+  opacity: 1;
+  color: var(--t-green, #98c379);
+}
+
+/* the graph block: the graphing tool inline, and its record */
+.app-graph {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 420px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--t-bg1, #14141a);
+}
+
+.app-graph .xy-graph {
+  height: 460px;
+}
+
+.app-graph-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 4px;
+}
+
+.app-graph-record {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.app-graph-what {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.app-graph-chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t-blue, #6fa8dc) 14%, transparent);
+  font-size: 14px;
+}
+
+/* a header's section: bounce it in place */
+.nb-section-tools {
+  position: absolute;
+  top: 6px;
+  right: 120px;
+  display: none;
+  gap: 4px;
+}
+
+.nb-block.is-text:hover .nb-section-tools {
+  display: inline-flex;
+}
+
+.nb-section-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--t-line);
+  border-radius: 7px;
+  background: var(--t-bg3);
+  color: var(--t-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.nb-section-tools button:hover {
+  color: var(--t-text);
+}
+
+/* the calc block: its section's values, and formulas */
+.app-calc-known {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+}
+
+.app-calc-known button {
+  padding: 2px 8px;
+  border: 1px solid var(--t-line);
+  border-radius: 999px;
+  background: none;
+  color: var(--t-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.app-calc-formulas {
+  position: relative;
+}
+
+.app-calc-formula-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  width: 320px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  background: var(--t-bg3);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--t-bg0, #000) 50%, transparent);
+}
+
+.app-calc-formula-group {
+  padding: 6px 6px 2px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-muted);
+}
+
+.app-calc-keys .app-calc-formula {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: auto;
+  padding: 5px 8px;
+  border: none;
+  background: none;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.app-calc-keys .app-calc-formula:hover {
+  background: var(--t-bg4);
+}
+
 /* moving a block: its grip (on hover, at its left), and where it'll land */
 .nb-grip {
   position: absolute;
@@ -2311,4 +2590,616 @@
 .app-math-preview .katex-display {
   margin: 6px 0;
   text-align: center;
+}
+
+
+/* ==== the page's objects: apps, code and pictures sit in the text the way
+   pictures do in a document — quiet until pointed at; picked, they show
+   their bar and their edges to drag ==== */
+
+/* a block's + and grip, out in the margin */
+.nb-gutter {
+  position: absolute;
+  top: 3px;
+  left: -50px;
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 4;
+}
+
+.nb-block:hover > .nb-gutter,
+.nb-gutter:has(.nb-insert),
+.nb-block.is-picked > .nb-gutter {
+  opacity: 1;
+}
+
+.nb-block.is-obj > .nb-gutter {
+  top: 10px;
+}
+
+.nb-gutter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-faint);
+  cursor: pointer;
+}
+
+.nb-gutter-btn:hover,
+.nb-gutter-btn.is-on {
+  color: var(--t-text);
+  background: color-mix(in srgb, var(--t-text) 8%, transparent);
+}
+
+.nb-gutter-btn.is-grip {
+  cursor: grab;
+  touch-action: none;
+}
+
+/* in a row there's no margin: they sit just inside, over the block */
+.nb-col .nb-gutter {
+  left: 2px;
+  top: 2px;
+  border-radius: 7px;
+  background: var(--t-bg2);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+}
+
+/* an object: no box until it's pointed at */
+.nb-block.is-obj {
+  margin: 14px -12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  transition:
+    background 0.12s,
+    box-shadow 0.12s;
+}
+
+.nb-block.is-obj:hover:not(.is-editing) {
+  background: color-mix(in srgb, var(--t-text) 3.5%, transparent);
+}
+
+.nb-block.is-obj.is-app:not(.is-editing) {
+  cursor: default;
+}
+
+/* picked: its outline (its bar and edges show) */
+.nb-block.is-picked {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-blue) 80%, transparent);
+}
+
+.nb-block.is-text.is-picked {
+  background: color-mix(in srgb, var(--t-blue) 7%, transparent);
+}
+
+/* an app being worked in: lifted off the page, the app itself */
+.nb-block.is-obj.is-editing {
+  background: var(--t-bg1);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--cell-hue) 45%, var(--t-line)),
+    0 10px 30px rgb(0 0 0 / 0.28);
+}
+
+.nb-obj-live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 8px;
+}
+
+.nb-obj-live-hint {
+  flex: 1;
+  font-size: 12px;
+  color: var(--t-faint);
+}
+
+.nb-obj-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 11px;
+  border: none;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cell-hue) 22%, var(--t-bg3));
+  color: var(--t-text);
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.nb-obj-done:hover {
+  background: color-mix(in srgb, var(--cell-hue) 35%, var(--t-bg3));
+}
+
+.nb-obj-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--cell-hue, var(--t-muted)) 80%, var(--t-text));
+  white-space: nowrap;
+}
+
+.nb-block.is-text .nb-obj-name {
+  color: var(--t-muted);
+}
+
+.nb-obj-tag {
+  margin-left: 2px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--t-blue) 18%, transparent);
+  color: var(--t-blue);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+/* its bar: floating at its top right */
+.nb-obj-bar {
+  position: absolute;
+  top: -15px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px;
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--t-bg2) 92%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.3);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(3px);
+  transition:
+    opacity 0.12s,
+    transform 0.12s;
+  z-index: 6;
+}
+
+.nb-block:hover > .nb-obj-bar,
+.nb-block.is-picked > .nb-obj-bar,
+.nb-obj-bar.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.nb-obj-bar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 27px;
+  height: 27px;
+  padding: 0 5px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--t-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nb-obj-bar button.is-text {
+  padding: 0 8px;
+}
+
+.nb-obj-bar button:hover {
+  color: var(--t-text);
+  background: color-mix(in srgb, var(--t-text) 8%, transparent);
+}
+
+.nb-obj-bar button.is-on {
+  color: var(--t-text);
+  background: color-mix(in srgb, var(--t-blue) 22%, transparent);
+}
+
+.nb-obj-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--t-line);
+}
+
+.nb-obj-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.nb-obj-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 210px;
+  padding: 5px;
+  border: 1px solid var(--t-line);
+  border-radius: 11px;
+  background: var(--t-bg2);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.38);
+  z-index: 8;
+}
+
+.nb-obj-menu.is-right {
+  left: auto;
+  right: 0;
+}
+
+.nb-obj-bar .nb-obj-menu button {
+  justify-content: flex-start;
+  height: 30px;
+  padding: 0 10px;
+  color: var(--t-text);
+  font-size: 13px;
+}
+
+.nb-obj-bar .nb-obj-menu button.is-danger {
+  color: var(--t-red);
+}
+
+.nb-obj-sizes {
+  display: flex;
+  gap: 2px;
+  padding: 2px 2px 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--t-line);
+}
+
+.nb-obj-bar .nb-obj-sizes button {
+  flex: 1;
+  justify-content: center;
+  padding: 0;
+  color: var(--t-muted);
+  font-size: 12px;
+}
+
+.nb-obj-bar .nb-obj-sizes button.is-on {
+  color: var(--t-text);
+}
+
+/* a picked block's edges: drag one to size it */
+.nb-size {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 44px;
+  margin-top: -22px;
+  border: 2px solid var(--t-bg);
+  border-radius: 6px;
+  background: var(--t-blue);
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 5;
+}
+
+.nb-size.is-right {
+  right: -5px;
+}
+
+.nb-size.is-left {
+  left: -5px;
+}
+
+.nb-size-label {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  background: rgb(0 0 0 / 0.65);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 6;
+}
+
+body.nb-is-sizing,
+body.nb-is-sizing * {
+  cursor: ew-resize !important;
+  user-select: none !important;
+}
+
+/* where a block alone on its line sits, and text flowing around one */
+.nb-solo.is-align-center {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.nb-solo.is-align-right {
+  margin-left: auto;
+}
+
+.nb-solo.is-wrap-left {
+  float: left;
+  margin: 0 26px 6px 0;
+}
+
+.nb-solo.is-wrap-right {
+  float: right;
+  margin: 0 0 6px 26px;
+}
+
+.nb-solo.is-cell:not(.is-wrap-left):not(.is-wrap-right),
+.nb-row,
+.nb-end,
+.nb-add {
+  clear: both;
+}
+
+.nb-solo.is-wrap-left > .nb-block.is-obj,
+.nb-solo.is-wrap-right > .nb-block.is-obj {
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.nb-solo.is-wide {
+  margin-left: calc(-1 * var(--nb-room, 0px));
+  margin-right: calc(-1 * var(--nb-room, 0px));
+}
+
+.nb-block.is-lines-center .nb-md {
+  text-align: center;
+}
+
+.nb-block.is-lines-right .nb-md {
+  text-align: right;
+}
+
+/* moving one: it fades, and a line shows where it'll land */
+.nb-block.is-moving {
+  opacity: 0.35;
+}
+
+body.nb-is-moving,
+body.nb-is-moving * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.nb-block[class*="is-drop-"]::after {
+  content: "";
+  position: absolute;
+  border-radius: 3px;
+  background: var(--t-blue);
+  pointer-events: none;
+  z-index: 7;
+}
+
+.nb-block.is-drop-before::after {
+  top: -6px;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.nb-block.is-drop-after::after {
+  bottom: -6px;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.nb-block.is-drop-left::after {
+  top: 0;
+  bottom: 0;
+  left: -7px;
+  width: 3px;
+}
+
+.nb-block.is-drop-right::after {
+  top: 0;
+  bottom: 0;
+  right: -7px;
+  width: 3px;
+}
+
+/* code on the page: a panel, its language and Run in a slim line on top */
+.nb-code-panel {
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  background: var(--t-bg1);
+  overflow: hidden;
+}
+
+.nb-code-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 3px 6px 0 12px;
+}
+
+.nb-code-lang {
+  font: 600 11px/1 var(--t-mono, "SF Mono", Menlo, monospace);
+  color: color-mix(in srgb, var(--cell-hue) 80%, var(--t-muted));
+  letter-spacing: 0.02em;
+}
+
+.nb-code-space {
+  flex: 1;
+}
+
+.nb-code-panel .nb-code {
+  margin: 0;
+  padding: 4px 14px 12px;
+  border-radius: 0;
+  background: none;
+}
+
+.nb-code-panel .nb-cm {
+  border-radius: 0;
+  background: none;
+}
+
+.nb-code-panel .nb-folded {
+  margin: 2px 12px 10px;
+}
+
+.nb-block.is-code .nb-obj-body {
+  padding: 8px 4px 0;
+}
+
+/* the + menu (and / in a new line) */
+.nb-insert {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  width: 250px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--t-line);
+  border-radius: 12px;
+  background: var(--t-bg2);
+  box-shadow: 0 14px 40px rgb(0 0 0 / 0.4);
+  z-index: 9;
+  cursor: default;
+}
+
+.nb-block.is-text > .nb-insert {
+  top: calc(100% + 2px);
+  left: 10px;
+}
+
+.nb-end .nb-insert {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.nb-insert-group + .nb-insert-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--t-line);
+}
+
+.nb-insert-title {
+  padding: 4px 8px 3px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-faint);
+}
+
+.nb-insert-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--t-text);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nb-insert-item:hover,
+.nb-insert-item:first-child:only-child {
+  background: color-mix(in srgb, var(--t-text) 8%, transparent);
+}
+
+.nb-insert-item .icon {
+  color: var(--t-muted);
+}
+
+.nb-insert-empty {
+  padding: 10px;
+  font-size: 13px;
+  color: var(--t-muted);
+}
+
+/* the end of the page: click to keep writing */
+.nb-end {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 18px 0 0 -30px;
+}
+
+.nb-end-write {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  background: none;
+  color: var(--t-faint);
+  font: inherit;
+  text-align: left;
+  cursor: text;
+  opacity: 0.7;
+  transition: opacity 0.12s;
+}
+
+.nb-end:hover .nb-end-write {
+  opacity: 1;
+}
+
+/* a picture alone on a line keeps to where its line says */
+.nb-solo.is-align-center .nb-flat {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.nb-solo.is-align-right .nb-flat {
+  margin-left: auto;
+}
+
+/* text being written: the page itself, no box — the same type as when it's read */
+.nb-block.is-text > .nb-edit {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  line-height: inherit;
+  caret-color: var(--t-blue);
+}
+
+.nb-block.is-text.is-editing {
+  background: none;
+}
+
+.nb-block.is-text > .nb-cm {
+  background: none;
+}
+
+/* a block open in its app: outlined, a small tag saying so */
+.nb-block.is-in-app {
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--cell-hue) 70%, transparent);
+}
+
+.nb-in-app {
+  position: absolute;
+  top: -10px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--cell-hue) 85%, var(--t-bg));
+  color: var(--t-bg);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 18px;
+  z-index: 3;
 }

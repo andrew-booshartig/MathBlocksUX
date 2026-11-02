@@ -15,10 +15,19 @@
 export type CellLang = "vars" | "calc" | "graph" | "numberline" | "work" | "python";
 export const CELL_LANGS: CellLang[] = ["vars", "calc", "graph", "numberline", "work", "python"];
 
-/** where a block sits: beside the one above it (in a row), and how much of the row it takes (percent) */
+/** where a block sits, as a picture does in a document: beside the one above it (in a row), how much
+ * of its line it takes (percent), which side it keeps to, whether text flows around it */
 export interface Placement {
   beside?: boolean;
   width?: number;
+  /** narrower than its line: where on it (left unless said) */
+  align?: "left" | "center" | "right";
+  /** the text after it flows around it, on its other side */
+  wrap?: "left" | "right";
+  /** wider than the text, out toward the page's edges */
+  wide?: boolean;
+  /** its own height, in pixels (a graph) */
+  height?: number;
 }
 
 export type Block = ({ id: string; kind: "text"; text: string } | { id: string; kind: "cell"; lang: string; info: string; code: string }) & Placement;
@@ -33,12 +42,26 @@ function readPlacement(words: string): Placement {
     if (part === "beside") out.beside = true;
     const w = part.match(/^width\s+(\d+(?:\.\d+)?)%?$/);
     if (w) out.width = Math.max(5, Math.min(100, Number(w[1])));
+    const a = part.match(/^align\s+(left|center|right)$/);
+    if (a) out.align = a[1] as Placement["align"];
+    const r = part.match(/^wrap\s+(left|right)$/);
+    if (r) out.wrap = r[1] as Placement["wrap"];
+    if (part === "wide") out.wide = true;
+    const h = part.match(/^height\s+(\d+)(?:px)?$/);
+    if (h) out.height = Math.max(80, Math.min(2400, Number(h[1])));
   }
   return out;
 }
 
 const placementLine = (b: Placement) => {
-  const parts = [b.beside ? "beside" : "", b.width ? `width ${Math.round(b.width)}` : ""].filter(Boolean);
+  const parts = [
+    b.beside ? "beside" : "",
+    b.width ? `width ${Math.round(b.width)}` : "",
+    b.align && b.align !== "left" ? `align ${b.align}` : "",
+    b.wrap ? `wrap ${b.wrap}` : "",
+    b.wide ? "wide" : "",
+    b.height ? `height ${Math.round(b.height)}` : "",
+  ].filter(Boolean);
   return parts.length ? `<!-- matrixlab: ${parts.join(", ")} -->\n` : "";
 };
 
