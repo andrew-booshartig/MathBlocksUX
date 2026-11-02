@@ -2198,3 +2198,14 @@
 .nb-block.is-drop-after {
   box-shadow: 0 2px 0 var(--t-pink, #c99bbf);
 }
+
+/* the block picked with the keys (j/k), while the notebook has them */
+.nb:focus .nb-block.is-picked,
+.nb:focus-within .nb-block.is-picked {
+  box-shadow: inset 3px 0 0 var(--t-blue);
+  background: color-mix(in srgb, var(--t-blue) 7%, transparent);
+}
+
+.nb:focus {
+  outline: none;
+}

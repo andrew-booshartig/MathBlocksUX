@@ -230,6 +230,12 @@ export default function NotebookTile({
     setEditingState(id);
   };
   const [draft, setDraft] = useState("");
+  /** the block picked with the keys (Esc out of one, then j/k) — as in Jupyter's command mode */
+  const [picked, setPicked] = useState<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  /** the last plain key, for dd */
+  const lastKey = useRef({ key: "", at: 0 });
+  const toldKeys = useRef(false);
   const [headerOpen, setHeaderOpen] = useState(false);
   const [elsewhere, setElsewhere] = useState(false);
   const [source, setSource] = useState("");
@@ -1016,6 +1022,7 @@ export default function NotebookTile({
   const startEditing = (b: Block) => {
     if (editing && editing !== b.id) finishEditing();
     setEditing(b.id);
+    setPicked(b.id);
     setDraft(b.kind === "text" ? b.text : b.code);
   };
   /** done editing a block: kept (an empty text block goes) */
@@ -1028,6 +1035,12 @@ export default function NotebookTile({
     const b = now.blocks.find((x) => x.id === id);
     setEditing(null);
     if (!b) return;
+    // it stays picked, so the keys go on from it (with nothing else taking them)
+    setPicked(id);
+    setTimeout(() => {
+      const now = document.activeElement;
+      if (!now || now === document.body) root.current?.focus({ preventScroll: true });
+    }, 0);
     const draft = draftRef.current;
     if (b.kind === "text") {
       if (!draft.trim()) removeBlock(b.id, true);
@@ -1582,7 +1595,7 @@ export default function NotebookTile({
     );
     if (b.kind === "text") {
       return (
-        <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}`} {...dropOn(b.id)}>
+        <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}${picked === b.id && !isEditing ? " is-picked" : ""}`} {...dropOn(b.id)}>
           {!isEditing && blockGrip(b.id)}
           {isEditing ? (
             vimKeys ? (
@@ -1692,7 +1705,7 @@ export default function NotebookTile({
     );
     // a work cell being edited: its fields, with the checked work under them
     return (
-      <div key={b.id} data-block={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}${flat ? " is-flat" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}`} {...dropOn(b.id)}>
+      <div key={b.id} data-block={b.id} className={`nb-block is-cell is-${b.lang}${isEditing ? " is-editing" : ""}${flat ? " is-flat" : ""}${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}${picked === b.id && !isEditing ? " is-picked" : ""}`} {...dropOn(b.id)}>
         {!isEditing && blockGrip(b.id)}
         <div className="nb-cell-head">
           <span className="nb-cell-lang">{label}</span>
@@ -1797,9 +1810,62 @@ export default function NotebookTile({
     );
   };
 
+  /** a key in the notebook, nothing being edited: j/k pick, Enter edits, a/b add, dd deletes… */
+  const commandKey = (e: React.KeyboardEvent) => {
+    if (!doc || editing || e.metaKey || e.ctrlKey || e.altKey) return false;
+    const blocks = doc.blocks;
+    const at = picked ? blocks.findIndex((b) => b.id === picked) : -1;
+    const pick = (i: number) => {
+      const b = blocks[Math.max(0, Math.min(blocks.length - 1, i))];
+      if (!b) return;
+      setPicked(b.id);
+      page.current?.querySelector(`[data-block="${b.id}"]`)?.scrollIntoView({ block: "nearest" });
+      if (!toldKeys.current) {
+        toldKeys.current = true;
+        setNotice("j/k: pick · Enter: edit · a/b: add above/below · dd: delete · ⇧J/⇧K: move it · ⇧⏎: run");
+      }
+    };
+    const key = e.key;
+    const twice = lastKey.current.key === key && Date.now() - lastKey.current.at < 600;
+    lastKey.current = { key, at: Date.now() };
+    if (key === "j" || (key === "ArrowDown" && at >= 0)) return pick(at + 1), true;
+    if (key === "k" || (key === "ArrowUp" && at >= 0)) return pick(at < 0 ? blocks.length - 1 : at - 1), true;
+    if (at < 0) return false;
+    const b = blocks[at];
+    if (key === "Enter" && e.shiftKey) {
+      if (runnable(b)) runBlock(b, b.kind === "cell" ? b.code : b.text);
+      return pick(at + 1), true;
+    }
+    if (key === "Enter") return startEditing(b), true;
+    if (key === "Escape") return setPicked(null), true;
+    if (key === "J" || key === "K") {
+      moveBlock(b.id, key === "J" ? 1 : -1);
+      setTimeout(() => page.current?.querySelector(`[data-block="${b.id}"]`)?.scrollIntoView({ block: "nearest" }), 0);
+      return true;
+    }
+    if (key === "a" || key === "b") {
+      const id = blockId();
+      const where = key === "a" ? at : at + 1;
+      commit({ ...doc, blocks: [...blocks.slice(0, where), { id, kind: "text", text: "" }, ...blocks.slice(where)] });
+      setEditing(id);
+      setDraft("");
+      return true;
+    }
+    if (key === "d") {
+      if (!twice) return true;
+      lastKey.current = { key: "", at: 0 };
+      removeBlock(b.id);
+      const next = blocks[at + 1] ?? blocks[at - 1];
+      setPicked(next?.id ?? null);
+      return true;
+    }
+    return false;
+  };
+
   let calcAt = 0;
   return (
     <div
+      ref={root}
       className="nb"
       // focusable, so its keys (⌘F) come here once it's clicked
       tabIndex={-1}
@@ -1823,6 +1889,12 @@ export default function NotebookTile({
         if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "f" && !(e.target as HTMLElement).closest?.(".cm-editor")) {
           e.preventDefault();
           startFinding();
+          return;
+        }
+        // the keys of command mode (not while typing anywhere)
+        if (!inField && !(e.target as HTMLElement).closest?.("button, select, .nb-pop, .xy-pop") && commandKey(e)) {
+          e.preventDefault();
+          e.stopPropagation();
         }
       }}
     >
