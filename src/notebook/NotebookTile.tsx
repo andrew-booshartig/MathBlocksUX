@@ -206,7 +206,6 @@ export default function NotebookTile({
   const allLanguages = useLanguages();
   const plugins = usePlugins();
   const { offCells } = useParts();
-  const [codeMenu, setCodeMenu] = useState(false);
   /** the notebook's Python: off (not started), idle, or running a cell */
   const [kernel, setKernel] = useState<"off" | "idle" | "busy">("off");
   /** reactive: running a cell reruns the cells below that use what it made */
@@ -1554,6 +1553,11 @@ export default function NotebookTile({
 
   const toolbar = (
     <div className="nb-bar">
+      {view !== "new" && doc && (
+        <button className={`nb-tool is-icon${libraryOpen ? " is-on" : ""}`} title="Your notes — search, tags, what links here" onClick={() => setLibraryOpen(!libraryOpen)}>
+          <Icon name="panel" size={15} />
+        </button>
+      )}
       <div className="nb-switch">
         <button className={`nb-switch-btn${switcher ? " is-on" : ""}`} title="Your notebooks" onClick={() => (refreshListing(), setSwitcher(!switcher))}>
           <Icon name="notebook" size={15} />
@@ -1608,42 +1612,16 @@ export default function NotebookTile({
               </button>
             </span>
           )}
-          <button className={`nb-tool nb-vim-toggle${vimKeys ? " is-on" : ""}`} title={vimKeys ? "Vim keys are on in code and text — click to turn them off" : "Vim keys are off — click to edit code and text with vim (Space r runs a cell, :w is done)"} onClick={() => setVimKeys(!vimKeys)}>
-            vim
-          </button>
-          <button className={`nb-tool is-icon${finding ? " is-on" : ""}`} title="Find (and replace) in this notebook — ⌘F" onClick={() => (finding ? setFinding(null) : startFinding())}>
-            <Icon name="zoom" size={14} />
-          </button>
-          <button className={`nb-tool is-icon${libraryOpen ? " is-on" : ""}`} title="Your notes — search, tags, what links here" onClick={() => setLibraryOpen(!libraryOpen)}>
-            <Icon name="panel" size={14} />
+          <button className={`nb-tool is-icon${finding ? " is-on" : ""}`} title="Find and replace (⌘F)" onClick={() => (finding ? setFinding(null) : startFinding())}>
+            <Icon name="zoom" size={15} />
           </button>
           {outline.length > 0 && (
-            <button className={`nb-tool${outlineOpen ? " is-on" : ""}`} title="Its headings, beside the page — click one to go there" onClick={() => setOutlineOpen(!outlineOpen)}>
-              <Icon name="list" size={14} /> Outline
+            <button className={`nb-tool is-icon${outlineOpen ? " is-on" : ""}`} title="Outline — the headings, beside the page" onClick={() => setOutlineOpen(!outlineOpen)}>
+              <Icon name="list" size={15} />
             </button>
           )}
-          <button className="nb-tool" title="Edit this notebook in Neovim, in your own terminal — every :w shows up here" onClick={neovim}>
-            <Icon name="pen" size={14} /> Neovim
-          </button>
-          <button
-            className={`nb-tool${view === "source" ? " is-on" : ""}`}
-            title="The whole file as Markdown, to edit as text"
-            onClick={() => {
-              if (view === "source") setView("doc");
-              else {
-                finishEditing();
-                setSource(writeNotebook(doc));
-                setView("source");
-              }
-            }}
-          >
-            <Icon name="source" size={14} /> Source
-          </button>
-          <button className="nb-tool" title="The page as it prints" onClick={showPreview}>
-            <Icon name="eye" size={14} /> Preview
-          </button>
-          <button className="nb-tool" title="Print it, or ⌘P → Save as PDF" onClick={print}>
-            <Icon name="print" size={14} /> Print / PDF
+          <button className="nb-tool is-icon" title="Edit in Neovim — every :w shows up here" onClick={neovim}>
+            <Icon name="pen" size={15} />
           </button>
           <div className="nb-switch">
             <button className={`nb-tool is-icon${menu ? " is-on" : ""}`} title="More" onClick={() => setMenu(!menu)}>
@@ -1651,6 +1629,30 @@ export default function NotebookTile({
             </button>
             {menu && (
               <div className="nb-pop is-right" onMouseLeave={() => (setMenu(false), setPrompt(null))}>
+                <button
+                  className="nb-pop-item"
+                  onClick={() => {
+                    setMenu(false);
+                    if (view === "source") setView("doc");
+                    else {
+                      finishEditing();
+                      setSource(writeNotebook(doc));
+                      setView("source");
+                    }
+                  }}
+                >
+                  <Icon name="source" size={14} /> {view === "source" ? "Back to the page" : "Source (the Markdown)"}
+                </button>
+                <button className="nb-pop-item" onClick={() => (setMenu(false), showPreview())}>
+                  <Icon name="eye" size={14} /> Preview as printed
+                </button>
+                <button className="nb-pop-item" onClick={() => (setMenu(false), print())}>
+                  <Icon name="print" size={14} /> Print or save as PDF
+                </button>
+                <button className={`nb-pop-item nb-vim-toggle${vimKeys ? " is-on" : ""}`} title="Vim in code cells and text, set up like Neovim: Space is the leader (Space r runs), :w is done, yanks go to the clipboard" onClick={() => (setMenu(false), setVimKeys(!vimKeys))}>
+                  <Icon name="check" size={14} /> Vim keys {vimKeys ? "on" : "off"}
+                </button>
+                <div className="nb-pop-line" />
                 {work.inProgress && (
                   <button className="nb-pop-item" onClick={addInProgress}>
                     <Icon name="work" size={14} /> Add the problem in Work
@@ -1681,9 +1683,7 @@ export default function NotebookTile({
                     <Icon name="reset" size={14} /> Unflatten everything
                   </button>
                 )}
-                <button className="nb-pop-item" title="Vim in code cells and text, set up like Neovim: Space is the leader (Space r runs), :w is done, yanks go to the clipboard" onClick={() => setVimKeys(!vimKeys)}>
-                  <Icon name="source" size={14} /> Vim keys {vimKeys ? "on — turn off" : "off — turn on"}
-                </button>
+
                 <div className="nb-pop-line" />
                 <button className="nb-pop-item" onClick={() => exportAs("ipynb")}>
                   <Icon name="download" size={14} /> Save as a Jupyter notebook (.ipynb{mainLanguage(doc) === "python" ? "" : `, ${mainLanguage(doc) === "matlab" ? "Octave" : mainLanguage(doc)} kernel`})
@@ -2680,35 +2680,6 @@ export default function NotebookTile({
               Click to write
             </button>
             {inserting?.after === null && !inserting.replace && insertMenu(null)}
-          </div>
-          <div className="nb-add">
-            {NEW_CELLS.filter((c) => c.lang !== "text" && !offCells.includes(c.lang)).map((c) => (
-              <button key={c.lang} className="nb-add-btn" title={`Add ${c.label === "Math" ? "math" : `a ${c.label} block`} at the end`} onClick={() => addBlock(c)}>
-                <Icon name={c.icon} size={13} /> {c.label}
-              </button>
-            ))}
-            <span className="nb-switch">
-              <button className={`nb-add-btn${codeMenu ? " is-on" : ""}`} title="Code in another language — MATLAB, C++, Rust… (plugins add more)" onClick={() => setCodeMenu(!codeMenu)}>
-                <Icon name="source" size={13} /> Code ▾
-              </button>
-              {codeMenu && (
-                <div className="nb-pop is-up" onMouseLeave={() => setCodeMenu(false)}>
-                  {plugins.cells.filter((c) => !offCells.includes(c.id)).map((c) => (
-                    <button key={`cell:${c.id}`} className="nb-pop-item" title={`A ${c.label} cell, from the plugin ${c.plugin}`} onClick={() => (setCodeMenu(false), addBlock({ lang: c.id, start: c.starter ?? "" }))}>
-                      {c.label}
-                      <span className="nb-pop-dim">{c.plugin}</span>
-                    </button>
-                  ))}
-                  {plugins.cells.length > 0 && <div className="nb-pop-line" />}
-                  {allLanguages.map((l) => (
-                    <button key={l.id} className="nb-pop-item" title={l.plugin === "built-in" ? "Comes with the app" : `From the plugin ${l.plugin}`} onClick={() => (setCodeMenu(false), addBlock({ lang: l.id, start: l.starter ?? "" }))}>
-                      {l.label}
-                      {l.plugin !== "built-in" && <span className="nb-pop-dim">{l.plugin}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </span>
           </div>
           <div className="nb-foot">
             Saved as {name}.md · {todayLabel()} · {wordCount} word{wordCount === 1 ? "" : "s"}
