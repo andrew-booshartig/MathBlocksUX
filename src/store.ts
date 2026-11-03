@@ -351,8 +351,10 @@ export interface XYExtra {
 
 export interface XYTable {
   id: string;
-  /** x and y, as typed */
-  rows: [string, string][];
+  /** its cells, as typed (x, y, and any more columns; = for a formula) */
+  rows: string[][];
+  /** its columns' names */
+  headers?: string[];
   /** the curve fit to them (linear, quadratic…), and what came out */
   model?: string;
   fit?: { latex: string; r2: number } | null;

@@ -31,6 +31,7 @@ import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import { toggleTask, writingKey } from "./writing";
+import { TableBlock } from "./tableBlock";
 import type { EditorView, KeyBinding } from "@codemirror/view";
 import Library, { QuickOpen } from "./Library";
 import FormatBar from "./FormatBar";
@@ -85,14 +86,15 @@ export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon:
   { lang: "vars", label: "Variables", icon: "variables", start: "m = 2.5 kg  # the cart's mass\ng = 9.81  # gravity, m/s²" },
   { lang: "calc", label: "Calculate", icon: "calc", start: "" },
   { lang: "graph", label: "Graph", icon: "graph", start: "y = 2x + 1" },
+  { lang: "table", label: "Table", icon: "table", start: "x\ty\n0\t\n1\t\n2\t" },
   { lang: "numberline", label: "Number line", icon: "segment", start: "x < 3" },
   { lang: "work", label: "Work", icon: "work", start: "problem: 2x + 3 = 11\n" },
   { lang: "python", label: "Python", icon: "source", start: "" },
 ];
 
-const LANG_LABEL: Record<string, string> = { vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
+const LANG_LABEL: Record<string, string> = { table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
-const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python"]);
+const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table"]);
 /** cells worked out by the calculator, in order: calc lines, and variables blocks (as name = value) */
 const isCalcLike = (b: Block) => b.kind === "cell" && (b.lang === "calc" || b.lang === "vars");
 /** a cell's language, when a plugin's — not one of the app's own */
@@ -1238,8 +1240,10 @@ export default function NotebookTile({
     }
     editingRef.current = null;
     commit({ ...now, blocks });
-    setEditing(id);
     setPicked(id);
+    // (a table is typed into where it is: nothing to open)
+    if (kind.lang === "table") return setEditing(null);
+    setEditing(id);
     setDraft(kind.start);
   };
   const addBlock = (kind: { lang: string; start: string }) => insertBlock(kind, null);
@@ -1865,6 +1869,8 @@ export default function NotebookTile({
   };
   /** open it: work in the app (a picture made live first) */
   const openBlock = (b: Block) => {
+    // a table is worked in where it is
+    if (b.kind === "cell" && b.lang === "table") return;
     if (b.kind === "cell" && flatOf(b)) unflatten(b);
     if (openInApp(b)) return;
     startEditing(b);
@@ -1934,7 +1940,7 @@ export default function NotebookTile({
   const objectDown = (e: ReactPointerEvent, b: Block) => {
     if (e.button !== 0 || editing === b.id) return;
     const t = e.target as HTMLElement;
-    if (t.closest("button, a, input, textarea, select, math-field, .cm-editor, [contenteditable], .nb-obj-bar, .nb-gutter, .nb-size, .nb-insert, .nb-folded")) return;
+    if (t.closest("button, a, input, textarea, select, math-field, .cm-editor, [contenteditable], .nb-obj-bar, .nb-gutter, .nb-size, .nb-insert, .nb-folded, .sheet")) return;
     press.current = { id: b.id, already: picked === b.id };
     pickBlock(b.id);
     // placed freely: dragged anywhere (a graph's plot and an output's text excepted — the grip moves those)
@@ -2280,6 +2286,9 @@ export default function NotebookTile({
             }
           />
         )
+      ) : b.lang === "table" ? (
+        // a spreadsheet, typed into right on the page
+        <TableBlock code={b.code} plotted={hasFlag(b, "plot")} onChange={(code) => updateBlock(b.id, { code })} onPlot={(on) => updateBlock(b.id, { info: withFlag(b.info, "plot", on) })} />
       ) : b.lang === "numberline" ? (
         <NumberLineCell code={isEditing ? draft : b.code} />
       ) : b.lang === "work" ? (
@@ -2381,12 +2390,12 @@ export default function NotebookTile({
             <Icon name={icon} size={12} /> open in {label}
           </span>
         )}
-        {isEditing && !isCode && b.lang !== "graph" && (
+        {isEditing && !isCode && b.lang !== "graph" && b.lang !== "table" && (
           <div className="nb-obj-live">
             <span className="nb-obj-name">
               <Icon name={icon} size={13} /> {label}
             </span>
-            <span className="nb-obj-live-hint">Esc, or click outside it, when you're done</span>
+            <span className="nb-obj-live-hint" />
             <button className="nb-obj-done" onClick={() => finishEditing()}>
               <Icon name="check" size={13} /> Done
             </button>

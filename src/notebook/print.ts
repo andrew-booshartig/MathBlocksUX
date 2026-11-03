@@ -3,6 +3,8 @@
  * work lined up at its = signs with the answer boxed, graphs as pictures in
  * printer colors, number lines, and what Python printed and drew. Math is
  * MathML — every browser draws it, no fonts or internet needed. */
+import { readTable } from "./tableBlock";
+import { evaluate } from "../sheet/formula";
 import { Plotly } from "../PlotlyChart";
 import { mathRequest } from "../mathSidecar";
 import { PRINT_PALETTE, numberLineSvg, sameWritten } from "../numberLine";
@@ -126,6 +128,12 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
       if (o.numberLines) body.push(await numberLinePicture(b.code.trim().split("\n")[0] ?? ""));
     } else if (b.lang === "work") body.push(await workPicture(b.code, o));
     else if (b.lang === "python") body.push(pythonPicture(b.code, py[b.code], false, hideCode));
+    else if (b.lang === "table") {
+      // a table prints as one, its cells worked out (formulas' results)
+      const { headers, rows } = readTable(b.code);
+      const values = evaluate(rows);
+      body.push(`<table class="data"><tr>${headers.map((h) => `<th>${escape(h)}</th>`).join("")}</tr>${values.map((r) => `<tr>${r.map((v) => `<td>${escape(v)}</td>`).join("")}</tr>`).join("")}</table>`);
+    }
     else body.push(`<pre class="code">${escape(b.code)}</pre>`);
   }
   // side by side, as on the page: each block its share of the row

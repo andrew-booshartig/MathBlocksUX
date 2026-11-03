@@ -3,6 +3,9 @@
  * how far a segment reaches, its midpoint, its perpendicular bisector), data
  * tables with a fitted curve, the graph's settings, and the kinds of thing
  * it graphs, as examples to start from. */
+import Sheet from "../sheet/Sheet";
+import { evaluate } from "../sheet/formula";
+import LineFacts from "../sheet/LineFacts";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { mathRequest } from "../mathSidecar";
 import type { GraphLineStyle, XYExtra, XYSettings, XYTable } from "../store";
@@ -342,7 +345,8 @@ export const MODELS: { value: string; label: string; tex: string }[] = [
 
 /** its numbers (rows where both are numbers) */
 export const tablePoints = (t: XYTable): [number, number][] =>
-  t.rows.flatMap(([a, b]) => {
+  // (formulas worked out first: =2*A1)
+  evaluate(t.rows.map((r) => [r[0] ?? "", r[1] ?? ""])).flatMap(([a, b]) => {
     const x = readNumber(a);
     const y = readNumber(b);
     return x !== null && y !== null ? [[x, y] as [number, number]] : [];
@@ -364,7 +368,7 @@ export function DataTable({
   onRemove: () => void;
   onUseFit: (latex: string) => void;
 }) {
-  const rows = table.rows.length ? table.rows : ([["", ""]] as [string, string][]);
+  const rows = table.rows.length ? table.rows : [["", ""]];
   // a table of values: each y worked out again when an x (or the row) changes
   const xsKey = JSON.stringify(rows.map((r) => r[0]));
   useEffect(() => {
@@ -374,7 +378,7 @@ export function DataTable({
       .compute(rows.map((r) => r[0]))
       .then((out) => {
         if (!live) return;
-        const next = rows.map((r, k) => [r[0], r[0].trim() ? (out[k]?.text ?? "") : ""] as [string, string]);
+        const next = rows.map((r, k) => [r[0], r[0].trim() ? (out[k]?.text ?? "") : "", ...r.slice(2)]);
         if (JSON.stringify(next) !== JSON.stringify(latest.current.rows)) onChange({ ...latest.current, rows: next });
       })
       .catch(() => {});
@@ -401,15 +405,6 @@ export function DataTable({
       live = false;
     };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  const setCell = (r: number, c: 0 | 1, v: string) => onChange({ ...table, rows: rows.map((row, i) => (i === r ? ((c === 0 ? [v, row[1]] : [row[0], v]) as [string, string]) : row)) });
-  /** a column (or two) pasted from a spreadsheet: tabs or commas between x and y */
-  const paste = (r: number, text: string) => {
-    const lines = text.trim().split(/\r?\n/).map((l) => l.split(/\t|,\s*|\s{2,}/).map((c) => c.trim()));
-    if (lines.length < 2 && (lines[0]?.length ?? 0) < 2) return false;
-    const pasted = lines.map((l) => [l[0] ?? "", l[1] ?? ""] as [string, string]);
-    onChange({ ...table, rows: [...rows.slice(0, r), ...pasted, ...rows.slice(r + 1)].filter((row, i, all) => i < all.length - 1 || row[0] || row[1]) });
-    return true;
-  };
   const model = MODELS.find((m) => m.value === (table.model ?? ""));
   return (
     <div className={`xy-table${table.hidden ? " is-hidden" : ""}`}>
@@ -435,36 +430,15 @@ export function DataTable({
           ×
         </button>
       </div>
-      <div className="xy-table-grid">
-        <span className="xy-table-col">x</span>
-        <span className="xy-table-col">y</span>
-        <span />
-        {rows.map((row, r) => (
-          <TableRow
-            key={r}
-            row={row}
-            computed={!!table.of}
-            onCell={(c, v) => setCell(r, c, v)}
-            onPaste={(text) => paste(r, text)}
-            onEnter={() => onChange({ ...table, rows: [...rows.slice(0, r + 1), ["", ""], ...rows.slice(r + 1)] })}
-            onRemove={rows.length > 1 ? () => onChange({ ...table, rows: rows.filter((_, i) => i !== r) }) : undefined}
-          />
-        ))}
-      </div>
-      <div className="xy-table-foot">
-        <button
-          className="xy-add"
-          onClick={() => {
-            // a table of values goes on by the same step
-            const [a, b] = [readNumber(rows[rows.length - 2]?.[0] ?? ""), readNumber(rows[rows.length - 1]?.[0] ?? "")];
-            const next = table.of && b !== null ? String(Math.round((b + (a !== null ? b - a : 1)) * 1e6) / 1e6) : "";
-            onChange({ ...table, rows: [...rows, [next, ""]] });
-          }}
-        >
-          + row
-        </button>
-        <span className="xy-dim">{table.of ? "type any x — y is worked out" : "paste columns from a spreadsheet"}</span>
-      </div>
+      <Sheet
+        headers={table.headers ?? (table.of ? ["x", "y"] : [])}
+        rows={rows}
+        minRows={3}
+        readOnlyCols={table.of ? [1] : []}
+        colColor={(c) => (c === 1 ? color : undefined)}
+        onChange={(headers, next) => onChange({ ...table, headers: headers.some((h) => h) ? headers : undefined, rows: next })}
+      />
+      <LineFacts pts={tablePoints(table)} onDraw={onUseFit} />
       {table.model && (
         <div className="xy-fit">
           {table.fit ? (
@@ -486,44 +460,6 @@ export function DataTable({
   );
 }
 
-function TableRow({
-  row,
-  computed,
-  onCell,
-  onPaste,
-  onEnter,
-  onRemove,
-}: {
-  row: [string, string];
-  /** y is worked out, not typed */
-  computed?: boolean;
-  onCell: (c: 0 | 1, v: string) => void;
-  onPaste: (text: string) => boolean;
-  onEnter: () => void;
-  onRemove?: () => void;
-}) {
-  const cell = (c: 0 | 1) => (
-    <input
-      className={`xy-cell${computed && c === 1 ? " is-computed" : row[c].trim() && readNumber(row[c]) === null ? " is-bad" : ""}`}
-      readOnly={computed && c === 1}
-      tabIndex={computed && c === 1 ? -1 : undefined}
-      value={row[c]}
-      spellCheck={false}
-      onChange={(e) => onCell(c, e.target.value)}
-      onPaste={(e) => onPaste(e.clipboardData.getData("text")) && e.preventDefault()}
-      onKeyDown={(e) => e.key === "Enter" && onEnter()}
-    />
-  );
-  return (
-    <>
-      {cell(0)}
-      {cell(1)}
-      <button className="xy-row-x" title="Remove this row" disabled={!onRemove} onClick={onRemove}>
-        ×
-      </button>
-    </>
-  );
-}
 
 // ---- the graph's settings
 

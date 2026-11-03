@@ -55,7 +55,7 @@ const keyOf = (tool: GraphTool) => Object.entries(TOOL_KEYS).find(([, t]) => t =
 
 /** what to do with the tool in hand, said under the graph */
 const HINTS: Record<GraphTool, string> = {
-  pan: "Drag the graph to move around · hover a curve to read it",
+  pan: "",
   move: "Drag a point — whatever's built on it follows",
   point: "Click to plot a point (A, B, C…) — on a curve or shape, it slides along it · exact numbers like 2/3: + → Point",
   segment: "Click a point, then another — or type its length: 5, or 5<30 for 30° · Shift locks to 15° steps",
@@ -1171,7 +1171,7 @@ export default function XYGraph({
     }
     const markers = (result?.markers ?? []).filter((m) => (Array.isArray(m.series) ? m.series : [m.series]).every((i) => !hiddenAt(Number(i))));
     for (const m of markers) if (m.kind !== "y-intercept") take(m.x, m.y);
-    for (const t of tables) if (!t.hidden) for (const [a, b] of t.rows) take(readNumber(a), readNumber(b));
+    for (const t of tables) if (!t.hidden) for (const [a, b] of tablePoints(t)) take(a, b);
     const near = xs.length ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 4) * 1.5 : Infinity;
     for (const m of markers)
       if (m.kind === "y-intercept" && (!xs.length || (m.y >= Math.min(...ys) - near && m.y <= Math.max(...ys) + near && m.x >= Math.min(...xs) - near && m.x <= Math.max(...xs) + near))) take(m.x, m.y);

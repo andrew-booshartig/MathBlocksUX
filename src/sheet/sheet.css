@@ -1,0 +1,243 @@
+/* A spreadsheet grid: hairline cells, a quiet header, the picked cell outlined */
+.sheet {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  background: var(--t-bg1);
+  outline: none;
+  font: 13px -apple-system, "Inter", sans-serif;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.sheet.is-focused {
+  border-color: color-mix(in srgb, var(--t-blue) 45%, var(--t-line));
+}
+
+.sheet-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+}
+
+.sheet-table th,
+.sheet-table td {
+  height: 28px;
+  padding: 0;
+  border-right: 1px solid var(--t-line);
+  border-bottom: 1px solid var(--t-line);
+}
+
+.sheet-corner,
+.sheet-row {
+  width: 34px;
+  min-width: 34px;
+  background: var(--t-bg2);
+  color: var(--t-faint);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  position: relative;
+}
+
+.sheet-col {
+  position: relative;
+  min-width: 96px;
+  padding: 0 6px !important;
+  background: var(--t-bg2);
+  text-align: left;
+  box-shadow: inset 0 -2px 0 var(--col, transparent);
+}
+
+.sheet-col.is-lit,
+.sheet-row.is-lit {
+  background: color-mix(in srgb, var(--t-blue) 14%, var(--t-bg2));
+  color: var(--t-text);
+}
+
+.sheet-letter {
+  margin-right: 6px;
+  color: var(--t-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.sheet-name {
+  width: calc(100% - 34px);
+  border: none;
+  background: none;
+  color: var(--t-text);
+  font: 600 12.5px -apple-system, "Inter", sans-serif;
+  outline: none;
+}
+
+.sheet-name::placeholder {
+  color: var(--t-faint);
+  font-weight: 500;
+}
+
+.sheet-x {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--t-faint);
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.sheet-row .sheet-x {
+  right: auto;
+  left: 1px;
+}
+
+.sheet-col:hover .sheet-x,
+.sheet-row:hover .sheet-x {
+  opacity: 1;
+}
+
+.sheet-x:hover {
+  background: var(--t-bg4);
+  color: var(--t-red);
+}
+
+.sheet-add-col {
+  width: 28px;
+  background: var(--t-bg2);
+  border-bottom: 1px solid var(--t-line);
+}
+
+.sheet-add-col button {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: none;
+  color: var(--t-faint);
+  cursor: pointer;
+}
+
+.sheet-add-col button:hover {
+  color: var(--t-text);
+}
+
+.sheet-cell {
+  position: relative;
+  min-width: 96px;
+  padding: 0 8px !important;
+  color: var(--t-text);
+  white-space: nowrap;
+  cursor: cell;
+}
+
+.sheet-cell.is-num {
+  text-align: right;
+}
+
+.sheet-cell.is-formula {
+  color: var(--t-teal, #56b6c2);
+}
+
+.sheet-cell.is-err {
+  color: var(--t-red);
+}
+
+.sheet-cell.is-ro {
+  color: var(--t-subtle);
+  background: color-mix(in srgb, var(--t-text) 2.5%, transparent);
+}
+
+.sheet-cell.is-in {
+  background: color-mix(in srgb, var(--t-blue) 14%, transparent);
+}
+
+.sheet-cell.is-at {
+  box-shadow: inset 0 0 0 2px var(--t-blue);
+}
+
+.sheet-edit {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: none;
+  background: var(--t-bg1);
+  box-shadow: inset 0 0 0 2px var(--t-blue);
+  color: var(--t-text);
+  font: inherit;
+  outline: none;
+}
+
+.sheet-ghost .sheet-cell,
+.sheet-ghost .sheet-row {
+  opacity: 0.55;
+}
+
+.sheet-pad {
+  border-bottom: none !important;
+  border-right: none !important;
+}
+
+/* the line through a table's points */
+.sheet-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 8px 2px 2px;
+  color: var(--t-text);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet-fact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.sheet-fact-label {
+  color: var(--t-faint);
+  font-size: 11px;
+}
+
+.sheet-fact.is-note {
+  flex-basis: 100%;
+  color: var(--t-green);
+  font-size: 12px;
+}
+
+/* the spare column at the right: type into it for a new one */
+.sheet-cell.is-spare {
+  min-width: 28px;
+  width: 28px;
+  background: color-mix(in srgb, var(--t-text) 1.5%, transparent);
+}
+
+.sheet-cell.is-spare.is-at {
+  min-width: 96px;
+}
+
+.sheet-btn {
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--t-line);
+  border-radius: 6px;
+  background: none;
+  color: var(--t-subtle);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.sheet-btn:hover {
+  border-color: var(--t-blue);
+  color: var(--t-text);
+}

@@ -3800,3 +3800,54 @@ body.nb-is-moving * {
 .nb-free > .nb-block.is-text > .nb-gutter {
   left: -30px;
 }
+
+/* ---- the Table block: a spreadsheet in the page, its plot beside it */
+.nb-table {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.nb-table-sheet {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.nb-table.is-plotted .nb-table-sheet {
+  flex: 0 1 55%;
+}
+
+.nb-table-plot {
+  flex: 1 1 45%;
+  min-width: 0;
+}
+
+.nb-table-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.nb-table-foot .sheet-facts {
+  flex: 1;
+}
+
+.nb-table-foot > .sheet-btn {
+  margin-top: 8px;
+}
+
+.sheet-btn.is-on {
+  border-color: var(--t-blue);
+  color: var(--t-text);
+}
+
+@container (max-width: 620px) {
+  .nb-table {
+    flex-direction: column;
+  }
+  .nb-table.is-plotted .nb-table-sheet,
+  .nb-table-plot {
+    flex-basis: auto;
+    width: 100%;
+  }
+}
