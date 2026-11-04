@@ -3851,3 +3851,25 @@ body.nb-is-moving * {
     width: 100%;
   }
 }
+
+/* the bar sits inside its block, at the bottom right — it never covers the lines around it */
+.nb-obj-bar {
+  top: auto;
+  bottom: 6px;
+  right: 6px;
+}
+
+/* a narrow block (free, wrapped, in a row, sized small): the bar just under its own edge */
+.nb-free > .nb-block > .nb-obj-bar,
+.nb-col .nb-block > .nb-obj-bar,
+.nb-solo[style*="width"] > .nb-block > .nb-obj-bar {
+  bottom: auto;
+  top: calc(100% + 4px);
+  right: 0;
+}
+
+/* a text block's bar (picked by its grip): under it, at its right */
+.nb-block.is-text > .nb-obj-bar {
+  bottom: auto;
+  top: calc(100% + 2px);
+}
