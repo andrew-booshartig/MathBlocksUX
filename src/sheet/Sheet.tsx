@@ -20,13 +20,30 @@ export interface SheetProps {
   onValues?: (values: string[][]) => void;
   /** rows shown at the least (empty ones to type into) */
   minRows?: number;
+  /** columns' widths, in pixels (0 or none: as wide as what's in them) */
+  widths?: number[];
+  onWidths?: (widths: number[]) => void;
 }
+
+/** how wide some text is in the sheet's type */
+let ruler: CanvasRenderingContext2D | null = null;
+const textWidth = (text: string) => {
+  ruler ??= document.createElement("canvas").getContext("2d");
+  if (!ruler) return text.length * 7.5;
+  ruler.font = '13px -apple-system, "Inter", sans-serif';
+  return ruler.measureText(text).width;
+};
 
 type Cell = { r: number; c: number };
 
 const isNum = (s: string) => s.trim() !== "" && Number.isFinite(Number(s.replace(/,/g, "")));
 
-export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colColor, onValues, minRows = 1 }: SheetProps) {
+export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colColor, onValues, minRows = 1, widths: given, onWidths }: SheetProps) {
+  const [ownWidths, setOwnWidths] = useState<number[]>([]);
+  const widths = given ?? ownWidths;
+  const setWidths = (next: number[]) => (onWidths ? onWidths(next) : setOwnWidths(next));
+  /** Tab across a row, then Enter: down to the column the Tabs started from (as Excel does) */
+  const tabFrom = useRef<number | null>(null);
   const width = Math.max(headers.length, ...rows.map((r) => r.length), 1);
   const height = Math.max(rows.length, minRows);
   const grid = useMemo(() => Array.from({ length: height }, (_, r) => Array.from({ length: width }, (_, c) => rows[r]?.[c] ?? "")), [rows, width, height]);
@@ -39,6 +56,7 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
   const box = useRef<HTMLDivElement>(null);
   const editor = useRef<HTMLInputElement>(null);
   const dragging = useRef(false);
+  const [live, setLive] = useState<number[] | null>(null);
 
   const range = { r0: Math.min(at.r, anchor.r), r1: Math.max(at.r, anchor.r), c0: Math.min(at.c, anchor.c), c1: Math.max(at.c, anchor.c) };
   const inRange = (r: number, c: number) => r >= range.r0 && r <= range.r1 && c >= range.c0 && c <= range.c1;
@@ -57,7 +75,8 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
     while (out.length > 1 && out[out.length - 1].every((v) => !v.trim()) && out.length > minRows) out.pop();
     onChange(Array.from({ length: cols }, (_, c) => nextHeaders[c] ?? ""), out);
   };
-  const move = (dr: number, dc: number, extend = false) => {
+  const move = (dr: number, dc: number, extend = false, keepTab = false) => {
+    if (!keepTab) tabFrom.current = null;
     // (one past the last row and column: a spare one, to type a new row or column into)
     const next = { r: Math.max(0, Math.min(height, at.r + dr)), c: Math.max(0, Math.min(width, at.c + dc)) };
     setAt(next);
@@ -66,6 +85,14 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
   const startEdit = (cell: Cell, value?: string) => {
     if (readOnly(cell.c)) return;
     setEditing({ cell, value: value ?? grid[cell.r]?.[cell.c] ?? "" });
+  };
+  /** Enter: down a row (to where a run of Tabs began) */
+  const enterDown = (up = false) => {
+    const from = tabFrom.current;
+    tabFrom.current = null;
+    const next = { r: Math.max(0, Math.min(height, at.r + (up ? -1 : 1))), c: from ?? at.c };
+    setAt(next);
+    setAnchor(next);
   };
   const commit = (then?: () => void) => {
     if (editing) write([{ ...editing.cell, v: editing.value }]);
@@ -107,7 +134,20 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
   };
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (editing) return;
+    // keys typed fast, before the cell's field has taken them: still its
+    if (editing) {
+      if (e.target === editor.current) return;
+      if (e.key === "Enter") return void (e.preventDefault(), commit(() => enterDown(e.shiftKey)));
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const from = tabFrom.current ?? at.c;
+        return void commit(() => (move(0, e.shiftKey ? -1 : 1, false, true), (tabFrom.current = from)));
+      }
+      if (e.key === "Escape") return void (setEditing(null), box.current?.focus());
+      if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) return void (e.preventDefault(), setEditing((now) => now && { ...now, value: now.value + e.key }));
+      if (e.key === "Backspace") return void (e.preventDefault(), setEditing((now) => now && { ...now, value: now.value.slice(0, -1) }));
+      return;
+    }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === "c") return void (e.preventDefault(), navigator.clipboard?.writeText(tsv()).catch(() => {}));
     if (mod && e.key.toLowerCase() === "x") return void (e.preventDefault(), navigator.clipboard?.writeText(tsv()).catch(() => {}), clear());
@@ -118,8 +158,12 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
       ArrowDown: () => move(1, 0, e.shiftKey),
       ArrowLeft: () => move(0, -1, e.shiftKey),
       ArrowRight: () => move(0, 1, e.shiftKey),
-      Tab: () => move(0, e.shiftKey ? -1 : 1),
-      Enter: () => startEdit(at),
+      Tab: () => {
+        const from = tabFrom.current ?? at.c;
+        move(0, e.shiftKey ? -1 : 1, false, true);
+        tabFrom.current = from;
+      },
+      Enter: () => enterDown(e.shiftKey),
       F2: () => startEdit(at),
       Backspace: clear,
       Delete: clear,
@@ -138,6 +182,13 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
   };
 
   const shown = Array.from({ length: height + 1 }, (_, r) => r);
+  /** a column being resized (its widths as dragged), and the one being typed in growing to fit */
+  function colStyle(c: number): React.CSSProperties {
+    const set = (live ?? widths)[c];
+    const typing = editing?.cell.c === c ? textWidth(editing.value) + 26 : 0;
+    if (set) return { width: Math.max(set, typing), minWidth: Math.max(set, typing), maxWidth: Math.max(set, typing) };
+    return typing ? { minWidth: Math.max(96, typing) } : {};
+  }
   return (
     <div
       className={`sheet${focused ? " is-focused" : ""}`}
@@ -162,7 +213,7 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
           <tr>
             <th className="sheet-corner" />
             {Array.from({ length: width }, (_, c) => (
-              <th key={c} className={`sheet-col${c >= range.c0 && c <= range.c1 && focused ? " is-lit" : ""}`} style={{ "--col": colColor?.(c) } as React.CSSProperties}>
+              <th key={c} className={`sheet-col${c >= range.c0 && c <= range.c1 && focused ? " is-lit" : ""}`} style={{ "--col": colColor?.(c), ...colStyle(c) } as React.CSSProperties}>
                 <span className="sheet-letter">{colName(c)}</span>
                 <input
                   className="sheet-name"
@@ -171,6 +222,35 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
                   spellCheck={false}
                   onChange={(e) => onChange(Array.from({ length: width }, (_, k) => (k === c ? e.target.value : (headers[k] ?? ""))), grid)}
                   onKeyDown={(e) => e.stopPropagation()}
+                />
+                <span
+                  className="sheet-resize"
+                  title="Drag to resize · double-click to fit"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const th = (e.currentTarget as HTMLElement).parentElement!;
+                    const x0 = e.clientX;
+                    const w0 = th.getBoundingClientRect().width;
+                    const next = Array.from({ length: width }, (_, k) => widths[k] ?? 0);
+                    const moveW = (ev: PointerEvent) => {
+                      next[c] = Math.max(48, Math.round(w0 + ev.clientX - x0));
+                      setLive([...next]);
+                    };
+                    const up = () => {
+                      window.removeEventListener("pointermove", moveW);
+                      window.removeEventListener("pointerup", up);
+                      setLive(null);
+                      setWidths(next);
+                    };
+                    window.addEventListener("pointermove", moveW);
+                    window.addEventListener("pointerup", up);
+                  }}
+                  onDoubleClick={() => {
+                    // as wide as the widest thing in it
+                    const fit = Math.max(textWidth(headers[c] ?? "") + 40, ...values.map((row) => textWidth(row[c] ?? "") + 22), 48);
+                    setWidths(Array.from({ length: width }, (_, k) => (k === c ? Math.ceil(fit) : (widths[k] ?? 0))));
+                  }}
                 />
                 {width > 1 && (
                   <button className="sheet-x" title="Take this column out" onClick={() => onChange(headers.filter((_, k) => k !== c), grid.map((row) => row.filter((_, k) => k !== c)))}>
@@ -205,6 +285,7 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
                 return (
                   <td
                     key={c}
+                    style={c < width ? colStyle(c) : undefined}
                     className={`sheet-cell${c === width ? " is-spare" : ""}${here && focused ? " is-at" : ""}${inRange(r, c) && focused && (range.r0 !== range.r1 || range.c0 !== range.c1) ? " is-in" : ""}${isNum(value) ? " is-num" : ""}${value.startsWith("#") ? " is-err" : ""}${raw.startsWith("=") ? " is-formula" : ""}${readOnly(c) ? " is-ro" : ""}`}
                     title={raw.startsWith("=") ? raw : undefined}
                     onMouseDown={(e) => {
@@ -231,8 +312,12 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
                         onBlur={() => commit()}
                         onKeyDown={(e) => {
                           e.stopPropagation();
-                          if (e.key === "Enter") (e.preventDefault(), commit(() => move(e.shiftKey ? -1 : 1, 0)));
-                          else if (e.key === "Tab") (e.preventDefault(), commit(() => move(0, e.shiftKey ? -1 : 1)));
+                          if (e.key === "Enter") (e.preventDefault(), commit(() => enterDown(e.shiftKey)));
+                          else if (e.key === "Tab") {
+                            e.preventDefault();
+                            const from = tabFrom.current ?? at.c;
+                            commit(() => (move(0, e.shiftKey ? -1 : 1, false, true), (tabFrom.current = from)));
+                          }
                           else if (e.key === "Escape") (e.preventDefault(), setEditing(null), box.current?.focus());
                         }}
                       />

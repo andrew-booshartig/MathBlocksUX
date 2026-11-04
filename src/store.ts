@@ -355,6 +355,8 @@ export interface XYTable {
   rows: string[][];
   /** its columns' names */
   headers?: string[];
+  /** its columns' widths in pixels (0: as wide as what's in them) */
+  widths?: number[];
   /** the curve fit to them (linear, quadratic…), and what came out */
   model?: string;
   fit?: { latex: string; r2: number } | null;

@@ -241,3 +241,28 @@
   border-color: var(--t-blue);
   color: var(--t-text);
 }
+
+/* a column's edge, to drag it wider (double-click: as wide as what's in it) */
+.sheet-resize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+  touch-action: none;
+}
+
+.sheet-resize:hover {
+  background: color-mix(in srgb, var(--t-blue) 60%, transparent);
+}
+
+.sheet-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sheet-cell:has(.sheet-edit) {
+  overflow: visible;
+}

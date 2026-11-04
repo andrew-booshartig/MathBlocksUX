@@ -31,7 +31,7 @@ import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import { toggleTask, writingKey } from "./writing";
-import { TableBlock } from "./tableBlock";
+import { TableBlock, fromMarkdownTable, tableMarkdown } from "./tableBlock";
 import type { EditorView, KeyBinding } from "@codemirror/view";
 import Library, { QuickOpen } from "./Library";
 import FormatBar from "./FormatBar";
@@ -1272,6 +1272,12 @@ export default function NotebookTile({
       if (!now || now === document.body) root.current?.focus({ preventScroll: true });
     }, 0);
     const draft = draftRef.current;
+    if (b.kind === "text" && fromMarkdownTable(draft) !== null) {
+      // a table written as Markdown: a spreadsheet instead
+      const now2 = docRef.current!;
+      commit({ ...now2, blocks: now2.blocks.map((x) => (x.id === b.id ? ({ id: x.id, kind: "cell", lang: "table", info: "", code: fromMarkdownTable(draft)!, beside: x.beside, width: x.width } as Block) : x)) });
+      return;
+    }
     if (b.kind === "text") {
       // (a Math block with no math in it goes too)
       if (!draft.trim() || mathRowsOf(draft)?.every((r) => !r)) removeBlock(b.id, true);
@@ -2085,6 +2091,11 @@ export default function NotebookTile({
                 <button onClick={() => (setBarMenu(null), flatten(cell, "png"))}>A picture (PNG)</button>
                 <button onClick={() => (setBarMenu(null), flatten(cell, "jpeg"))}>A smaller picture (JPEG)</button>
                 {(cell.lang === "calc" || cell.lang === "vars") && <button onClick={() => (setBarMenu(null), toLatex(cell, calcIndex.get(cell.id) ?? -1))}>Math text (LaTeX)</button>}
+                {cell.lang === "table" && (
+                  <button onClick={() => (setBarMenu(null), commit({ ...doc!, blocks: doc!.blocks.map((x) => (x.id === cell.id ? ({ id: x.id, kind: "text", text: tableMarkdown(cell.code), beside: x.beside, width: x.width } as Block) : x)) }))}>
+                    A Markdown table (text)
+                  </button>
+                )}
               </span>
             )}
           </span>
@@ -2288,7 +2299,7 @@ export default function NotebookTile({
         )
       ) : b.lang === "table" ? (
         // a spreadsheet, typed into right on the page
-        <TableBlock code={b.code} plotted={hasFlag(b, "plot")} onChange={(code) => updateBlock(b.id, { code })} onPlot={(on) => updateBlock(b.id, { info: withFlag(b.info, "plot", on) })} />
+        <TableBlock id={b.id} code={b.code} info={b.info} onChange={(code) => updateBlock(b.id, { code })} onInfo={(info) => updateBlock(b.id, { info })} onRemove={() => removeBlock(b.id)} />
       ) : b.lang === "numberline" ? (
         <NumberLineCell code={isEditing ? draft : b.code} />
       ) : b.lang === "work" ? (
@@ -2483,7 +2494,7 @@ export default function NotebookTile({
       tabIndex={-1}
       onKeyDownCapture={(e) => {
         // ⌘Z / ⌘⇧Z: the notebook's changes (a field or the code editor undoes its own typing)
-        const inField = (e.target as HTMLElement).closest?.("input, textarea, .cm-editor, math-field, [contenteditable]");
+        const inField = (e.target as HTMLElement).closest?.("input, textarea, .cm-editor, math-field, [contenteditable], .sheet");
         if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "z" && !inField) {
           e.preventDefault();
           notebookUndo(e.shiftKey);
@@ -2626,7 +2637,12 @@ export default function NotebookTile({
         <div className="nb-main">
         {libraryOpen && <Library listing={listing} current={name ?? null} onOpen={(n) => (setView("doc"), onOpen(n))} onNew={() => setView("new")} />}
         <div className="nb-center">
-        <FormatBar view={textView} onUndo={() => notebookUndo(false)} onRedo={() => notebookUndo(true)} onNew={(start) => addBlock({ lang: "text", start })} onPicture={keepPicture} />
+        <FormatBar view={textView} onUndo={() => notebookUndo(false)} onRedo={() => notebookUndo(true)} onNew={(start) => addBlock({ lang: "text", start })} onPicture={keepPicture} onTable={() => {
+            // (what's being written is kept first)
+            const at = editingRef.current;
+            finishEditing();
+            setTimeout(() => insertBlock({ lang: "table", start: "x\ty\n\t\n\t\n\t" }, at), 0);
+          }} />
         <div
           className="nb-page"
           ref={page}

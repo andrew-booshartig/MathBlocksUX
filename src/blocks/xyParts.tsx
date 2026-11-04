@@ -437,6 +437,8 @@ export function DataTable({
         readOnlyCols={table.of ? [1] : []}
         colColor={(c) => (c === 1 ? color : undefined)}
         onChange={(headers, next) => onChange({ ...table, headers: headers.some((h) => h) ? headers : undefined, rows: next })}
+        widths={table.widths}
+        onWidths={(widths) => onChange({ ...table, widths })}
       />
       <LineFacts pts={tablePoints(table)} onDraw={onUseFit} />
       {table.model && (

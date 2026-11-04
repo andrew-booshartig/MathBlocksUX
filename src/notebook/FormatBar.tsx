@@ -60,6 +60,7 @@ export default function FormatBar({
   onRedo,
   onNew,
   onPicture,
+  onTable,
 }: {
   /** the text being written, if any */
   view: EditorView | null;
@@ -70,6 +71,8 @@ export default function FormatBar({
   onNew: (start: string) => void;
   /** a picture file chosen: kept with the notebook, its Markdown back */
   onPicture: (file: File) => Promise<string | null>;
+  /** a spreadsheet, under the text being written (or at the end) */
+  onTable: () => void;
 }) {
   const [styles, setStyles] = useState(false);
   const file = useRef<HTMLInputElement>(null);
@@ -132,7 +135,7 @@ export default function FormatBar({
         <Icon name="check" size={15} />
       </button>
       <span className="nb-format-sep" />
-      <button title="A table" onClick={() => (view ? insert(view, "\n| Column | Column |\n| --- | --- |\n|  |  |\n", 3) : onNew("| Column | Column |\n| --- | --- |\n|  |  |"))}>
+      <button title="A table — a spreadsheet, typed into right on the page" onClick={onTable}>
         <Icon name="table" size={15} />
       </button>
       <button title="A picture" onClick={() => file.current?.click()}>
