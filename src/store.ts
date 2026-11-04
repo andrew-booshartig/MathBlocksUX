@@ -611,6 +611,8 @@ export interface CalculatorBlockData extends BlockBase {
   smartWork?: Partial<Omit<WorkBlockData, "id" | "type" | "position">>;
   /** its Electrical tile: which tool, and what's typed in each (see electrical/ElectricalTile.tsx) */
   smartElectrical?: import("./electrical/ElectricalTile").ElectricalState;
+  /** its Paper tile: long division / multiplication, the problem and how it's worked */
+  smartPaper?: import("./paper/PaperTile").PaperState;
   ti?: TIState;
   /** the TI layout's extra-keys strip (fractions, powers…); on unless turned off */
   tiExtras?: boolean;

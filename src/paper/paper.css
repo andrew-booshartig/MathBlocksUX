@@ -1,0 +1,269 @@
+/* Paper: a problem worked on graph-paper squares, a step at a time */
+.pp {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  outline: none;
+  font: 13px -apple-system, "Inter", sans-serif;
+  color: var(--t-text);
+}
+
+.pp-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pp-switch {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: var(--t-bg2);
+}
+
+.pp-switch button {
+  height: 26px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.pp-switch button.is-on {
+  background: color-mix(in srgb, var(--t-green) 20%, transparent);
+  color: var(--t-green);
+}
+
+.pp-switch.is-small button {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.pp-problem {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pp-num {
+  width: 110px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font: 500 19px ui-monospace, "SF Mono", Menlo, monospace;
+  text-align: center;
+  outline: none;
+}
+
+.pp-num:focus {
+  border-color: color-mix(in srgb, var(--t-green) 60%, var(--t-line));
+}
+
+.pp-op {
+  color: var(--t-muted);
+  font-size: 20px;
+}
+
+.pp-places select {
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--t-line);
+  border-radius: 7px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font-size: 12.5px;
+}
+
+.pp-space {
+  flex: 1;
+}
+
+/* the paper: faint squares, a digit in each */
+.pp-sheet {
+  overflow-x: auto;
+  padding: 18px 20px;
+  border: 1px solid var(--t-line);
+  border-radius: 12px;
+  background-color: var(--t-bg1);
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--t-text) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--t-text) 6%, transparent) 1px, transparent 1px);
+  background-size: 30px 30px;
+  background-position: 20px 18px;
+}
+
+.pp-grid {
+  position: relative;
+  margin: 0 auto;
+}
+
+.pp-mark {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  font: 500 20px ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--t-text);
+  transition: color 0.2s;
+}
+
+.pp-mark.is-small {
+  place-items: end center;
+  font-size: 12px;
+  color: var(--t-orange);
+}
+
+.pp-mark.is-now {
+  color: var(--t-green);
+  animation: pp-in 0.25s ease-out;
+}
+
+@keyframes pp-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.pp-line {
+  position: absolute;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--t-subtle);
+}
+
+.pp-line.is-now {
+  background: var(--t-green);
+}
+
+/* long division's bracket: a line over the dividend, its curve at the left */
+.pp-bracket {
+  position: absolute;
+  border-top: 2px solid var(--t-subtle);
+  border-left: 2px solid var(--t-subtle);
+  border-top-left-radius: 10px 30px;
+}
+
+.pp-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--t-line);
+  border-radius: 12px;
+  background: var(--t-bg2);
+}
+
+.pp-count {
+  color: var(--t-faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pp-say {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.pp-ask {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--t-subtle);
+}
+
+.pp-ask input {
+  width: 80px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--t-line);
+  border-radius: 7px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font: 500 17px ui-monospace, "SF Mono", Menlo, monospace;
+  text-align: center;
+  outline: none;
+}
+
+.pp-ask.is-wrong input {
+  border-color: var(--t-red);
+  animation: pp-shake 0.25s;
+}
+
+@keyframes pp-shake {
+  25% {
+    transform: translateX(-3px);
+  }
+  75% {
+    transform: translateX(3px);
+  }
+}
+
+.pp-hint {
+  color: var(--t-red);
+  font-size: 12.5px;
+}
+
+.pp-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--t-blue);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pp-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pp-nav button,
+.pp-ask > button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--t-line);
+  border-radius: 7px;
+  background: none;
+  color: var(--t-text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.pp-nav button.is-primary,
+.pp-ask > button {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--t-green) 24%, var(--t-bg3));
+}
+
+.pp-nav button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pp-nav .pp-quiet {
+  border-color: transparent;
+  color: var(--t-muted);
+}
+
+.pp-empty {
+  color: var(--t-faint);
+}

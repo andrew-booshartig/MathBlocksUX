@@ -3,6 +3,7 @@
  * one letter, solves an equation or inequality in one letter. With several
  * letters it asks what you want (solve for which letter, simplify, expand,
  * factor). A slim keypad for the structures that are awkward to type. */
+import PaperTile from "../paper/PaperTile";
 import ElectricalTile from "../electrical/ElectricalTile";
 import Icon from "../Icon";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -1704,6 +1705,8 @@ export default function SmartCalc({
       onCopy={(text) => navigator.clipboard?.writeText(text).then(() => setNote("Copied")).catch(() => {})}
     />
   );
+  // ---- Paper: long division and multiplication, a step at a time
+  const paperBody = <PaperTile state={data.smartPaper ?? {}} update={(patch) => updateBlock(data.id, { smartPaper: { ...(current()?.smartPaper ?? {}), ...patch } })} />;
   const referenceBody = (
     <ReferenceTab
       lookup={data.smartReference}
@@ -2167,6 +2170,7 @@ export default function SmartCalc({
             notebook: notebookBody,
             reference: referenceBody,
             electrical: electricalBody,
+            paper: paperBody,
             equations: equationsBody,
           }}
         />
