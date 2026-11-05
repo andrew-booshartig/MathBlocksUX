@@ -3,7 +3,7 @@
  * letters — leave one blank and it's worked out; "Work it" makes it the
  * problem, numbers in, to solve by hand. The numbers stay with the equation
  * from one problem to the next. */
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import MathInput, { type MathInputHandle } from "../MathInput";
 import { useLiveMath } from "../mathSidecar";
 import { type Equation, STARTER } from "../equations";
@@ -56,6 +56,11 @@ export function plugIn(latex: string, values: Record<string, string>): string {
   return out;
 }
 
+const RENAMED: Record<string, string> = {
+  "x\\text{-intercept} = x - \\frac{\\Delta x}{\\Delta y} \\times y": "I_{x} = x - \\frac{\\Delta x}{\\Delta y} \\times y",
+  "y\\text{-intercept} = y - \\frac{\\Delta y}{\\Delta x} \\times x": "I_{y} = y - \\frac{\\Delta y}{\\Delta x} \\times x",
+};
+
 export default function WorkEquations({
   mine,
   onSave,
@@ -80,6 +85,13 @@ export default function WorkEquations({
   onLine: (latex: string) => void;
   onClose: () => void;
 }) {
+  // the intercepts as first written (x-intercept = …), now I_x and I_y: kept ones (and their numbers) brought up to date
+  useEffect(() => {
+    const renamed = (latex: string) => RENAMED[latex] ?? latex;
+    if (!mine.some((e) => RENAMED[e.latex])) return;
+    onSave(mine.map((e) => (RENAMED[e.latex] ? STARTER.flatMap((g) => g.equations).find((s) => s.latex === renamed(e.latex)) ?? e : e)));
+    onValues(Object.fromEntries(Object.entries(values).map(([latex, v]) => [renamed(latex), RENAMED[latex] ? Object.fromEntries(Object.entries(v).filter(([n]) => !n.includes("\\text"))) : v])));
+  }, [mine]); // eslint-disable-line react-hooks/exhaustive-deps
   const [open, setOpen] = useState<string | null>(mine[0]?.latex ?? null);
   const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState("");
