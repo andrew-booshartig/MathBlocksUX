@@ -18,6 +18,8 @@ import MathInput, { type MathInputHandle } from "../MathInput";
 import MathKeypad from "../MathKeypad";
 import LanguageEditor from "../LanguageEditor";
 import BlockShell from "./BlockShell";
+import WorkEquations from "./WorkEquations";
+import type { Equation } from "../equations";
 
 interface CheckedLine {
   status: "ok" | "wrong" | "carried" | "error" | "unknown" | "empty";
@@ -101,6 +103,8 @@ export function WorkPad({
   onNotebook,
   autoFocus,
   insert,
+  equations,
+  onEquations,
 }: {
   data: WorkBlockData;
   update: (patch: Partial<WorkBlockData>) => void;
@@ -120,6 +124,9 @@ export function WorkPad({
   /** something to put in the line being typed (a unit, from the Reference
    * sheet) — a new n each time */
   insert?: { latex: string; n: number };
+  /** your saved equations, for the shelf above the problem (the app's own list) */
+  equations?: Equation[];
+  onEquations?: (next: Equation[]) => void;
 }) {
   const latest = useRef(data);
   latest.current = data;
@@ -490,6 +497,11 @@ export function WorkPad({
           >
             🗂{history.length > 0 && <span className="work-history-count">{history.length}</span>}
           </button>
+          {onEquations && (
+            <button className={`block-icon-btn work-eq-btn${data.shelf ? " is-active" : ""}`} title="Equations — keep the ones you need in view, plug numbers in" onClick={() => update({ shelf: !data.shelf || undefined })}>
+              <i>f</i>(x)
+            </button>
+          )}
           <button className={`block-icon-btn${paper ? " is-active" : ""}`} title="Paper view — the finished work, lined up" onClick={() => setPaper(!paper)}>
             📄
           </button>
@@ -581,6 +593,25 @@ export function WorkPad({
               ))}
           </div>
         </div>
+      )}
+      {data.shelf && onEquations && (
+        <WorkEquations
+          mine={equations ?? []}
+          onSave={onEquations}
+          values={data.plug ?? {}}
+          onValues={(plug) => update({ plug })}
+          problem={data.problem}
+          onWork={(latex) => {
+            problemMath.current?.setValue(latex);
+            problemEntered(latex);
+          }}
+          onLine={(latex) => {
+            const at = activeMath.current && activeMath.current !== problemMath.current ? activeMath.current : mathInputs.current[lines.length - 1];
+            at?.focus();
+            at?.insert(latex);
+          }}
+          onClose={() => update({ shelf: undefined })}
+        />
       )}
       {flash && <div className="work-flash">{flash}</div>}
       {settings && (

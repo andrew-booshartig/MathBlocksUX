@@ -267,6 +267,10 @@ export interface WorkBlockData extends BlockBase {
   /** how the problem is solved (the calculator's Show work): a guide
    *  shown above the lines, a step at a time — never part of the work */
   guide?: WorkGuide;
+  /** the equations shelf above the problem: open or not */
+  shelf?: boolean;
+  /** the numbers typed into the shelf's equations' letters, by equation — kept from problem to problem */
+  plug?: Record<string, Record<string, string>>;
 }
 
 export interface WorkGuide {

@@ -1674,6 +1674,8 @@ export default function SmartCalc({
       autoFocus={focusOn.current === "work"}
       onReset={clearOwnVariables}
       insert={workInsert ?? undefined}
+      equations={myEquations}
+      onEquations={saveEquations}
       onCalculate={(latex) => {
         // onto the Calculate line (in place of anything half-typed there)
         const typed = draft.trim();

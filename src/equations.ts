@@ -38,6 +38,15 @@ export const STARTER: { group: string; equations: Equation[] }[] = [
     ],
   },
   {
+    group: "Intercepts",
+    equations: [
+      { name: "x-intercept from a point", latex: "x\\text{-intercept} = x - \\frac{\\Delta x}{\\Delta y} \\times y", labels: { x: "a point's x", y: "its y", "\\Delta x": "change in x", "\\Delta y": "change in y" } },
+      { name: "y-intercept from a point", latex: "y\\text{-intercept} = y - \\frac{\\Delta y}{\\Delta x} \\times x", labels: { x: "a point's x", y: "its y", "\\Delta x": "change in x", "\\Delta y": "change in y" } },
+      { name: "x-intercept from the slope", latex: "x = -\\frac{b}{m}", labels: { x: "x-intercept", b: "y-intercept", m: "slope" } },
+      { name: "y-intercept (b) from a point", latex: "b = y - m x", labels: { b: "y-intercept", y: "a point's y", m: "slope", x: "its x" } },
+    ],
+  },
+  {
     group: "Lines & temperature",
     equations: [
       { name: "Slope-intercept", latex: "y = m x + b", labels: { y: "y", m: "slope", x: "x", b: "y-intercept" } },

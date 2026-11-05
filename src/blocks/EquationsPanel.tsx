@@ -122,7 +122,8 @@ export default function EquationsPanel({
           </>
         )}
         {STARTER.map((g) => {
-          const shown = g.equations.filter(matches);
+          // (one with a long name on the left — x-intercept = … — is Work's shelf's: it can't load as letters here)
+          const shown = g.equations.filter((eq) => matches(eq) && !/\\text/.test(eq.latex.split("=")[0]));
           return (
             shown.length > 0 && (
               <div key={g.group}>

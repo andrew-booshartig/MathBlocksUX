@@ -8008,3 +8008,231 @@ math-field {
 .smart-send-btn:hover {
   background: var(--t-bg4, #262632);
 }
+
+/* Work's equations shelf: the ones you need, in view above the problem */
+.weq {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 10px;
+  background: var(--t-bg2, #121a22);
+}
+
+.weq-shelf {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.weq-chip {
+  max-width: 100%;
+  padding: 3px 10px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 8px;
+  background: var(--t-bg1, #0e0e14);
+  color: var(--t-text, #e8e8f0);
+  font-size: 13px;
+  cursor: pointer;
+  overflow-x: auto;
+}
+
+.weq-chip:hover,
+.weq-chip.is-open {
+  border-color: color-mix(in srgb, var(--t-green, #6ee7a8) 55%, var(--t-line, #2e2e3a));
+}
+
+.weq-chip.is-open {
+  background: color-mix(in srgb, var(--t-green, #6ee7a8) 10%, var(--t-bg1, #0e0e14));
+}
+
+.weq-add {
+  width: 26px;
+  height: 26px;
+  border: 1px dashed var(--t-line, #2e2e3a);
+  border-radius: 8px;
+  background: none;
+  color: var(--t-muted, #8a8aa0);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.weq-add:hover,
+.weq-add.is-open {
+  border-style: solid;
+  color: var(--t-text, #e8e8f0);
+}
+
+.weq-space {
+  flex: 1;
+}
+
+.weq-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.weq-picker-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.weq-field {
+  flex: 1;
+  min-width: 160px;
+}
+
+.weq-search {
+  width: 110px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 7px;
+  background: var(--t-bg1, #0e0e14);
+  color: var(--t-text, #e8e8f0);
+  font-size: 12px;
+  outline: none;
+}
+
+.weq-starters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 12px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.weq-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weq-group-name {
+  margin: 4px 0 2px;
+  color: var(--t-faint, #66667a);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.weq-starter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--t-text, #e8e8f0);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  overflow-x: auto;
+}
+
+.weq-starter:hover {
+  border-color: var(--t-line, #2e2e3a);
+  background: var(--t-bg1, #0e0e14);
+}
+
+.weq-starter.is-kept {
+  opacity: 0.55;
+}
+
+.weq-starter-name {
+  color: var(--t-muted, #8a8aa0);
+  font-size: 11px;
+}
+
+.weq-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.weq-letters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.weq-letter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--t-line, #2e2e3a);
+  border-radius: 8px;
+  background: var(--t-bg1, #0e0e14);
+  font-size: 13px;
+}
+
+.weq-letter.is-blank {
+  border-style: dashed;
+}
+
+.weq-letter input {
+  width: 74px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--t-text, #e8e8f0);
+  font: 500 13px ui-monospace, "SF Mono", Menlo, monospace;
+  outline: none;
+}
+
+.weq-letter input::placeholder {
+  color: var(--t-faint, #66667a);
+  font: 11px -apple-system, "Inter", sans-serif;
+}
+
+.weq-out {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 15px;
+  overflow-x: auto;
+}
+
+.weq-arrow {
+  color: var(--t-faint, #66667a);
+}
+
+.weq-answer {
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--t-green, #6ee7a8) 14%, transparent);
+  color: var(--t-green, #6ee7a8);
+}
+
+.weq-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.weq-actions .chip.is-primary {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--t-green, #6ee7a8) 24%, var(--t-bg3, #1c1c24));
+  color: var(--t-text, #e8e8f0);
+}
+
+.weq-actions .chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.work-eq-btn i {
+  font-family: "Times New Roman", serif;
+}
