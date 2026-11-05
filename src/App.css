@@ -8029,15 +8029,26 @@ math-field {
 }
 
 .weq-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
   max-width: 100%;
-  padding: 3px 10px;
+  padding: 0 10px;
   border: 1px solid var(--t-line, #2e2e3a);
   border-radius: 8px;
   background: var(--t-bg1, #0e0e14);
   color: var(--t-text, #e8e8f0);
   font-size: 13px;
   cursor: pointer;
-  overflow-x: auto;
+  overflow: hidden;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* an equation on one line — never broken after its = (KaTeX would) */
+.weq-chip .katex-html,
+.weq-starter .katex-html {
+  white-space: nowrap;
 }
 
 .weq-chip:hover,
