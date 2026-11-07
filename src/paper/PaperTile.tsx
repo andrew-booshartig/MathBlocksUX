@@ -154,8 +154,9 @@ const CELL = 30;
 const KEPT = new Map<string, { cells: Record<string, string>; small: Record<string, string>; under: Set<string>; crossed: Set<string>; cur: { r: number; c: number } }>();
 
 /** A blank sheet's writing, the same wherever there is one: type anywhere —
- * Tab and ⇧Tab move right and left, Enter and ⇧Enter down and up (the arrows
- * too). A line: drag along under the squares (over one to rub it out), or _
+ * the arrows move a square; Enter and ⇧Enter go to the start of the row below
+ * or above (where its writing starts — an empty row, under where this one's
+ * does); Tab goes over to the other sheet (the multiples ⇄ the work). A line: drag along under the squares (over one to rub it out), or _
  * (it moves on, so ___ is a line three long). A carry: ⇧ and a digit (or ⌥, or
  * the Carry tool) writes it small — over the digit below it. x crosses one out. */
 function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fixed: (r: number, c: number) => boolean = () => false, onEdit?: () => void) {
@@ -185,8 +186,23 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
   const onKeyDown = (e: React.KeyboardEvent) => {
     const k = at2(cur.r, cur.c);
     if (e.metaKey || e.ctrlKey) return;
-    if (e.key === "Tab") return void (e.preventDefault(), move(0, e.shiftKey ? -1 : 1));
-    if (e.key === "Enter") return void (e.preventDefault(), move(e.shiftKey ? -1 : 1, 0));
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const here = e.currentTarget as HTMLElement;
+      const other = [...(here.closest(".pp")?.querySelectorAll<HTMLElement>(".pp-scratch") ?? [])].find((x) => x !== here);
+      return void other?.focus();
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const r = Math.max(0, cur.r + (e.shiftKey ? -1 : 1));
+      const starts = (row: number) => {
+        const cs = Object.keys(cells)
+          .filter((k) => cells[k] && Number(k.split(",")[0]) === row)
+          .map((k) => Number(k.split(",")[1]));
+        return cs.length ? Math.min(...cs) : null;
+      };
+      return void setCur({ r, c: starts(r) ?? starts(cur.r) ?? cur.c });
+    }
     const arrows: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
     if (arrows[e.key]) return void (e.preventDefault(), move(...arrows[e.key]));
     // a carry: ⇧ or ⌥ and a digit, or any digit with the Carry tool — small, at the square's top
@@ -400,7 +416,7 @@ function Scratch({ paper, divide, side, tool, onTool, onShow }: { paper: Paper; 
               <span className="pp-verdict is-wrong">{checked.answer ? `${checked.answer} isn't it` : "No answer written yet"}{divide ? " (the answer goes over the bracket)" : " (the answer is the lowest row)"} — digits where they usually go are marked.</span>
             )
           ) : (
-            <span className="pp-keys">Tab ⇧Tab ← → · Enter ⇧Enter ↓ ↑ · drag or _ for a line · ⇧digit carry · x cross out</span>
+            <span className="pp-keys">arrows move · Enter ⇧Enter next / last row · Tab the other sheet · drag or _ line · ⇧digit carry · x cross out</span>
           )}
         </div>
         <div className="pp-nav">
