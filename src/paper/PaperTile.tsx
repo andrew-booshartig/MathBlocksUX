@@ -251,9 +251,10 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
   const used = Object.keys(cells)
     .filter((k) => cells[k])
     .map((k) => k.split(",").map(Number));
-  const size = (minRows: number, minCols: number) => ({
-    rows: Math.max(minRows, cur.r + 3, ...used.map(([r]) => r + 2)),
-    cols: Math.max(minCols, cur.c + 3, ...used.map(([, c]) => c + 2)),
+  // (`spare`: the room kept past what's written, and past the cursor)
+  const size = (minRows: number, minCols: number, spare = 2, pastCursor = spare) => ({
+    rows: Math.max(minRows, cur.r + 1 + pastCursor, ...used.map(([r]) => r + 1 + spare)),
+    cols: Math.max(minCols, cur.c + 1 + pastCursor, ...used.map(([, c]) => c + 1 + spare)),
   });
   /** what's written: the digits (a class for each, if wanted), lines, small ones, the cursor */
   const ink = (cls: (k: string, v: string) => string = () => "") => (
@@ -295,7 +296,8 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
  * Outside a test (Show me, Fill in), a row that's its multiple turns green. */
 function Multiples({ divisor, live, tool, onClose }: { divisor: number; live: boolean; tool: Tool; onClose: () => void }) {
   const sheet = useSheet(`multiples:${divisor}`, { r: 0, c: 0 }, tool);
-  const { rows, cols } = sheet.size(9, String(divisor * 9).length + 1);
+  // only as big as what's written on it: a square past it each way (where the next goes), no more
+  const { rows, cols } = sheet.size(1, 1, 1, 0);
   const rowValue = (r: number) =>
     Object.entries(sheet.cells)
       .filter(([k, v]) => v && Number(k.split(",")[0]) === r)
