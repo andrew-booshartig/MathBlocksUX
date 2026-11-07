@@ -267,3 +267,61 @@
 .pp-empty {
   color: var(--t-faint);
 }
+
+/* Fill in: a box where each digit goes */
+.pp-box {
+  position: absolute;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--t-text) 22%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--t-bg1) 80%, transparent);
+  color: var(--t-text);
+  font: 500 19px ui-monospace, "SF Mono", Menlo, monospace;
+  text-align: center;
+  caret-color: transparent;
+  outline: none;
+  transition: border-color 0.12s, opacity 0.12s;
+}
+
+.pp-box:focus {
+  border-color: var(--t-orange);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-orange) 30%, transparent);
+}
+
+.pp-box.is-ahead {
+  opacity: 0.45;
+}
+
+.pp-box.is-ahead:focus {
+  opacity: 1;
+}
+
+.pp-box.is-done {
+  border-color: transparent;
+  background: none;
+  color: var(--t-green);
+}
+
+.pp-box.is-wrong {
+  border-color: var(--t-red);
+  color: var(--t-red);
+  animation: pp-shake 0.25s;
+}
+
+.pp-line.is-ahead {
+  opacity: 0.35;
+}
+
+.pp-count {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pp-hints {
+  margin-left: auto;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
