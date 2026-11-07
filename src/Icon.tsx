@@ -88,6 +88,7 @@ const PATHS: Record<string, string> = {
   check: "M5 12.5l4.5 4.5L19 7",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
   table: "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14",
+  gridpaper: "M4 4h16v16H4zM4 8h16M4 12h16M4 16h16M8 4v16M12 4v16M16 4v16",
   image: "M4 5h16v14H4zM8.5 10a1.5 1.5 0 1 0 0-.01M20 15l-5-5-8 9",
   // Extensions: a puzzle piece
   puzzle: "M10 4.5a2 2 0 1 1 4 0V6h4a1 1 0 0 1 1 1v4h-1.5a2 2 0 1 0 0 4H19v4a1 1 0 0 1-1 1h-4v-1.5a2 2 0 1 0-4 0V20H6a1 1 0 0 1-1-1v-4h1.5a2 2 0 1 0 0-4H5V7a1 1 0 0 1 1-1h4z",

@@ -75,7 +75,7 @@ export default function FormatBar({
   /** a spreadsheet, under the text being written (or at the end) */
   onTable: () => void;
   /** an app block (Calculate, Work, Graph), under the text being written (or at the end), open to work in */
-  onApp: (lang: "calc" | "work" | "graph") => void;
+  onApp: (lang: "calc" | "work" | "graph" | "paper" | "math") => void;
 }) {
   const [styles, setStyles] = useState(false);
   const file = useRef<HTMLInputElement>(null);
@@ -144,7 +144,7 @@ export default function FormatBar({
       <button title="A picture" onClick={() => file.current?.click()}>
         <Icon name="image" size={15} />
       </button>
-      <button disabled={off} title="Math in the line ($x^2$)" onClick={() => view && insert(view, "$$", 1)}>
+      <button title="Math — a problem written out, typed as it reads (in a line of text, $x^2$ does it)" onClick={() => onApp("math")}>
         <span className="nb-format-num">∑</span>
       </button>
       <span className="nb-format-sep" />
@@ -156,6 +156,9 @@ export default function FormatBar({
       </button>
       <button className="nb-format-app" title="Graph — right on the page" onClick={() => onApp("graph")}>
         <Icon name="graph" size={15} />
+      </button>
+      <button className="nb-format-app" title="Graph paper — beside what you're writing: work it out by hand, a digit a square, carries, lines, crossing out" onClick={() => onApp("paper")}>
+        <Icon name="gridpaper" size={15} /> Paper
       </button>
       <input
         ref={file}

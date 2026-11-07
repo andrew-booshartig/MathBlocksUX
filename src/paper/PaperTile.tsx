@@ -149,9 +149,15 @@ export default function PaperTile({ state, update }: { state: PaperState; update
 
 /** a sheet's cell: "row,col" */
 const at2 = (r: number, c: number) => `${r},${c}`;
-const CELL = 30;
+export const CELL = 30;
 
-const KEPT = new Map<string, { cells: Record<string, string>; small: Record<string, string>; under: Set<string>; crossed: Set<string>; cur: { r: number; c: number } }>();
+/** what's written on a sheet: digits (and signs) by square, small ones over them, lines under squares, crossings out, and walls — a line down a square's left edge (a division bracket's side) */
+export type Ink = { cells: Record<string, string>; small: Record<string, string>; under: Set<string>; crossed: Set<string>; walls: Set<string> };
+const KEPT = new Map<string, Ink & { cur: { r: number; c: number } }>();
+
+/** what an open sheet takes as writing: digits, the signs of arithmetic, letters for labels (x crosses out; * writes ×, / ÷, - −) */
+const OPEN_CHAR = /^[0-9.+=()%$a-wyzA-WYZ]$/;
+const OPEN_SIGN: Record<string, string> = { "*": "×", "/": "÷", "-": "−" };
 
 /** A blank sheet's writing, the same wherever there is one: type anywhere —
  * the arrows move a square; Enter and ⇧Enter go to the start of the row below
@@ -159,21 +165,34 @@ const KEPT = new Map<string, { cells: Record<string, string>; small: Record<stri
  * does); Tab goes over to the other sheet (the multiples ⇄ the work). A line: drag along under the squares (over one to rub it out), or _
  * (it moves on, so ___ is a line three long). A carry: ⇧ and a digit (or ⌥, or
  * the Carry tool) writes it small — over the digit below it. x crosses one out. */
-function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fixed: (r: number, c: number) => boolean = () => false, onEdit?: () => void) {
+export function useSheet(
+  keep: string,
+  start: { r: number; c: number },
+  tool: Tool,
+  fixed: (r: number, c: number) => boolean = () => false,
+  onEdit?: () => void,
+  /** an open sheet (the notebook's): signs and letters too, what's on it to start, and each change handed back */
+  opts: { open?: boolean; init?: Ink; onInk?: (ink: Ink) => void } = {},
+) {
   // (what's written is kept by problem: switching to Show me and back, it's still there)
-  const was = KEPT.get(keep);
+  const was = KEPT.get(keep) ?? opts.init;
   const [cells, setCells] = useState<Record<string, string>>(was?.cells ?? {});
   const [small, setSmall] = useState<Record<string, string>>(was?.small ?? {});
   const [under, setUnder] = useState<Set<string>>(was?.under ?? new Set());
   const [crossed, setCrossed] = useState<Set<string>>(was?.crossed ?? new Set());
-  const [cur, setCur] = useState(was?.cur ?? start);
-  useEffect(() => void KEPT.set(keep, { cells, small, under, crossed, cur }), [keep, cells, small, under, crossed, cur]);
+  const [walls, setWalls] = useState<Set<string>>(was?.walls ?? new Set());
+  const [cur, setCur] = useState((was && "cur" in was ? (was as { cur: { r: number; c: number } }).cur : undefined) ?? start);
+  useEffect(() => void KEPT.set(keep, { cells, small, under, crossed, walls, cur }), [keep, cells, small, under, crossed, walls, cur]);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) return void (first.current = false);
+    opts.onInk?.({ cells, small, under, crossed, walls });
+  }, [cells, small, under, crossed, walls]); // eslint-disable-line react-hooks/exhaustive-deps
   // ⌘Z / Ctrl+Z: one thing written at a time (a digit, a carry, a line, a crossing out) — ⇧ to redo
-  type Ink = { cells: Record<string, string>; small: Record<string, string>; under: Set<string>; crossed: Set<string> };
   const past = useRef<Ink[]>([]);
   const ahead = useRef<Ink[]>([]);
   const snap = () => {
-    past.current.push({ cells, small, under, crossed });
+    past.current.push({ cells, small, under, crossed, walls });
     if (past.current.length > 300) past.current.shift();
     ahead.current = [];
   };
@@ -182,13 +201,14 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
     setSmall(ink.small);
     setUnder(ink.under);
     setCrossed(ink.crossed);
+    setWalls(ink.walls);
     onEdit?.();
   };
   const undo = (redo: boolean) => {
     const from = redo ? ahead.current : past.current;
     const ink = from.pop();
     if (!ink) return;
-    (redo ? past.current : ahead.current).push({ cells, small, under, crossed });
+    (redo ? past.current : ahead.current).push({ cells, small, under, crossed, walls });
     put(ink);
   };
   const clear = () => {
@@ -197,6 +217,7 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
     setSmall({});
     setUnder(new Set());
     setCrossed(new Set());
+    setWalls(new Set());
     setCur(start);
     onEdit?.();
   };
@@ -242,14 +263,17 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
       setSmall((s) => ({ ...s, [k]: ((s[k] ?? "") + e.code.slice(-1)).slice(-2) }));
       return onEdit?.();
     }
-    if (/^[\d.]$/.test(e.key) && !fixed(cur.r, cur.c)) {
+    // | or ) : the bracket's side — a line down this square's left edge (again, it goes)
+    if (e.key === "|" || (opts.open && e.key === ")")) return void (e.preventDefault(), toggle(walls, setWalls, k));
+    const ch = opts.open ? (OPEN_SIGN[e.key] ?? (OPEN_CHAR.test(e.key) ? e.key : null)) : /^[\d.]$/.test(e.key) ? e.key : null;
+    if (ch && !fixed(cur.r, cur.c)) {
       e.preventDefault();
       snap();
-      setCells((s) => ({ ...s, [k]: e.key }));
+      setCells((s) => ({ ...s, [k]: ch }));
       onEdit?.();
       return move(0, 1);
     }
-    if (e.key === "_" || e.key === "-") {
+    if (e.key === "_" || (!opts.open && e.key === "-")) {
       e.preventDefault();
       snap();
       setUnder((u) => new Set(u).add(k));
@@ -270,13 +294,23 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
     }
   };
   // a drag along a row draws a line under the squares it crosses (starting on a line, rubs it out)
-  const drag = useRef<{ r: number; c: number; erase: boolean; base: Set<string>; moved: boolean } | null>(null);
+  const drag = useRef<{ r: number; c: number; erase: boolean; base: Set<string>; wallBase: Set<string>; moved: boolean; down?: boolean } | null>(null);
   const cellAt = (e: React.MouseEvent) => {
     const box = e.currentTarget.getBoundingClientRect();
     return { r: Math.max(0, Math.floor((e.clientY - box.top) / CELL)), c: Math.max(0, Math.floor((e.clientX - box.left) / CELL)) };
   };
-  const lineTo = (c: number) => {
+  const lineTo = (c: number, r = drag.current!.r) => {
     const d = drag.current!;
+    // (dragged down a column: the line goes down the squares' left edges — a bracket's side)
+    if (d.down === undefined && r !== d.r && c === d.c) d.down = true;
+    if (d.down) {
+      const next = new Set(d.wallBase);
+      const erase = d.wallBase.has(at2(d.r, d.c));
+      for (let y = Math.min(d.r, r); y <= Math.max(d.r, r); y++) erase ? next.delete(at2(y, d.c)) : next.add(at2(y, d.c));
+      setUnder(d.base);
+      setWalls(next);
+      return onEdit?.();
+    }
     const next = new Set(d.base);
     for (let x = Math.min(d.c, c); x <= Math.max(d.c, c); x++) d.erase ? next.delete(at2(d.r, x)) : next.add(at2(d.r, x));
     setUnder(next);
@@ -285,17 +319,17 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
   const onMouseDown = (e: React.MouseEvent) => {
     const p = cellAt(e);
     setCur(p);
-    drag.current = { ...p, erase: under.has(at2(p.r, p.c)), base: under, moved: false };
+    drag.current = { ...p, erase: under.has(at2(p.r, p.c)), base: under, wallBase: walls, moved: false };
     if (tool === "line") (snap(), lineTo(p.c));
   };
   const onMouseMove = (e: React.MouseEvent) => {
     const d = drag.current;
     if (!d || !(e.buttons & 1)) return void (drag.current = null);
     const p = cellAt(e);
-    if (p.c === d.c && !d.moved && tool !== "line") return;
+    if (p.c === d.c && p.r === d.r && !d.moved && tool !== "line") return;
     if (!d.moved && tool !== "line") snap();
     d.moved = true;
-    lineTo(p.c);
+    lineTo(p.c, p.r);
   };
   const onMouseUp = () => void (drag.current = null);
   // it grows as you write: always room below and to the right
@@ -313,6 +347,10 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
       {[...under].map((k) => {
         const [r, c] = k.split(",").map(Number);
         return <div key={`u${k}`} className="pp-line" style={{ left: c * CELL, top: (r + 1) * CELL - 1, width: CELL }} />;
+      })}
+      {[...walls].map((k) => {
+        const [r, c] = k.split(",").map(Number);
+        return <div key={`w${k}`} className="pp-wall" style={{ left: c * CELL - 1, top: r * CELL, height: CELL }} />;
       })}
       {Object.entries(cells)
         .filter(([, v]) => v)
@@ -339,6 +377,20 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
   );
   const handlers = { onKeyDown, onMouseDown, onMouseMove, onMouseUp };
   return { cells, crossed, cur, clear, handlers, size, ink };
+}
+export type { Tool };
+/** an ink as it's kept in a file */
+export function writeInk(ink: Ink): string {
+  const pick = (o: Record<string, string>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v));
+  return JSON.stringify({ cells: pick(ink.cells), small: pick(ink.small), under: [...ink.under], crossed: [...ink.crossed], walls: [...ink.walls] });
+}
+export function readInk(text: string): Ink {
+  try {
+    const j = JSON.parse(text || "{}");
+    return { cells: j.cells ?? {}, small: j.small ?? {}, under: new Set(j.under ?? []), crossed: new Set(j.crossed ?? []), walls: new Set(j.walls ?? []) };
+  } catch {
+    return { cells: {}, small: {}, under: new Set(), crossed: new Set(), walls: new Set() };
+  }
 }
 
 /** The divisor's multiples, listed down the left the way it's done on scrap

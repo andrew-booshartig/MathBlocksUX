@@ -519,3 +519,52 @@
   background: color-mix(in srgb, var(--t-green) 20%, transparent);
   color: var(--t-green);
 }
+
+.pp-wall {
+  position: absolute;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--t-subtle);
+}
+
+/* the notebook's open sheet: graph paper on the page, written on anywhere */
+.nb-paper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.nb-paper-sheet {
+  overflow: auto;
+  max-width: 100%;
+}
+
+.nb-paper .pp-grid {
+  margin: 0;
+  outline: none;
+}
+
+.nb-paper-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.nb-paper:hover .nb-paper-bar,
+.nb-paper:focus-within .nb-paper-bar {
+  opacity: 1;
+}
+
+.nb-paper-bar .pp-quiet {
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-muted);
+  font-size: 12px;
+  cursor: pointer;
+}

@@ -30,6 +30,7 @@ import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
+import PaperBlock from "./paperBlock";
 import { toggleTask, writingKey } from "./writing";
 import { TableBlock, fromMarkdownTable, tableMarkdown } from "./tableBlock";
 import type { EditorView, KeyBinding } from "@codemirror/view";
@@ -89,12 +90,13 @@ export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon:
   { lang: "table", label: "Table", icon: "table", start: "x\ty\n0\t\n1\t\n2\t" },
   { lang: "numberline", label: "Number line", icon: "segment", start: "x < 3" },
   { lang: "work", label: "Work", icon: "work", start: "problem: 2x + 3 = 11\n" },
+  { lang: "paper", label: "Graph paper", icon: "gridpaper", start: "" },
   { lang: "python", label: "Python", icon: "source", start: "" },
 ];
 
-const LANG_LABEL: Record<string, string> = { table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
+const LANG_LABEL: Record<string, string> = { paper: "Graph paper", table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
-const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table"]);
+const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "paper"]);
 /** cells worked out by the calculator, in order: calc lines, and variables blocks (as name = value) */
 /** an app's fence written inside text: ```calc, ```work, ```graph … */
 const APP_FENCE = /^(`{3,}|~{3,})\s*(calc|work|graph|vars|numberline|table)\b/im;
@@ -1222,12 +1224,12 @@ export default function NotebookTile({
   };
   /** the + menu: what to add, and where (under a block; at the end; in place of an empty one) */
   const [inserting, setInserting] = useState<{ after: string | null; replace?: string } | null>(null);
-  const insertBlock = (kind: { lang: string; start: string }, after: string | null, replace?: string) => {
+  const insertBlock = (kind: { lang: string; start: string; beside?: boolean }, after: string | null, replace?: string) => {
     const now = docRef.current;
     if (!now) return;
     setInserting(null);
     const id = blockId();
-    const block: Block = kind.lang === "text" || kind.lang === "math" ? { id, kind: "text", text: kind.start } : { id, kind: "cell", lang: kind.lang, info: "", code: kind.start };
+    const block: Block = kind.lang === "text" || kind.lang === "math" ? { id, kind: "text", text: kind.start } : { id, kind: "cell", lang: kind.lang, info: "", code: kind.start, ...(kind.beside && after ? { beside: true } : {}) };
     let blocks: Block[];
     if (replace && now.blocks.some((b) => b.id === replace)) {
       const old = now.blocks.find((b) => b.id === replace)!;
@@ -1242,7 +1244,11 @@ export default function NotebookTile({
     editingRef.current = null;
     commit({ ...now, blocks });
     setPicked(id);
-    // (a table is typed into where it is: nothing to open)
+    // (a table, or graph paper, is typed into where it is: nothing to open)
+    if (kind.lang === "paper") {
+      setEditing(null);
+      return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${id}"] .pp-scratch`)?.focus(), 60);
+    }
     if (kind.lang === "table") return setEditing(null);
     setEditing(id);
     setDraft(kind.start);
@@ -1885,8 +1891,8 @@ export default function NotebookTile({
   };
   /** open it: work in the app (a picture made live first) */
   const openBlock = (b: Block) => {
-    // a table is worked in where it is
-    if (b.kind === "cell" && b.lang === "table") return;
+    // a table (graph paper) is worked in where it is
+    if (b.kind === "cell" && (b.lang === "table" || b.lang === "paper")) return;
     if (b.kind === "cell" && flatOf(b)) unflatten(b);
     if (openInApp(b)) return;
     startEditing(b);
@@ -2310,6 +2316,8 @@ export default function NotebookTile({
       ) : b.lang === "table" ? (
         // a spreadsheet, typed into right on the page
         <TableBlock id={b.id} code={b.code} info={b.info} onChange={(code) => updateBlock(b.id, { code })} onInfo={(info) => updateBlock(b.id, { info })} onRemove={() => removeBlock(b.id)} />
+      ) : b.lang === "paper" ? (
+        <PaperBlock id={b.id} code={b.code} onChange={(code) => updateBlock(b.id, { code })} />
       ) : b.lang === "numberline" ? (
         <NumberLineCell code={isEditing ? draft : b.code} />
       ) : b.lang === "work" ? (
@@ -2523,7 +2531,7 @@ export default function NotebookTile({
           return;
         }
         // the keys of command mode (not while typing anywhere)
-        if (!inField && !(e.target as HTMLElement).closest?.("button, select, .nb-pop, .xy-pop") && commandKey(e)) {
+        if (!inField && !(e.target as HTMLElement).closest?.("button, select, .nb-pop, .xy-pop, .pp-scratch") && commandKey(e)) {
           e.preventDefault();
           e.stopPropagation();
         }
@@ -2656,7 +2664,9 @@ export default function NotebookTile({
             const at = editingRef.current ?? picked;
             finishEditing();
             const kind = NEW_CELLS.find((c) => c.lang === lang)!;
-            setTimeout(() => insertBlock({ lang, start: lang === "work" ? "" : kind.start }, at), 0);
+            // (graph paper: beside what's being written — the problem on the left, its working on the right)
+            const here = at && docRef.current?.blocks.some((x) => x.id === at) ? at : null;
+            setTimeout(() => insertBlock({ lang, start: lang === "work" ? "" : kind.start, beside: lang === "paper" && !!here }, here), 0);
           }} />
         <div
           className="nb-page"

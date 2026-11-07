@@ -128,6 +128,7 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
       if (o.numberLines) body.push(await numberLinePicture(b.code.trim().split("\n")[0] ?? ""));
     } else if (b.lang === "work") body.push(await workPicture(b.code, o));
     else if (b.lang === "python") body.push(pythonPicture(b.code, py[b.code], false, hideCode));
+    else if (b.lang === "paper") body.push(paperPicture(b.code));
     else if (b.lang === "table") {
       // a table prints as one, its cells worked out (formulas' results)
       const { headers, rows } = readTable(b.code);
@@ -199,4 +200,44 @@ ${body.join("\n")}
 </body>
 </html>
 `;
+}
+
+/** graph paper as printed: light squares, what's written on them */
+function paperPicture(code: string): string {
+  let j: { cells?: Record<string, string>; small?: Record<string, string>; under?: string[]; crossed?: string[]; walls?: string[] } = {};
+  try {
+    j = JSON.parse(code || "{}");
+  } catch {
+    /* nothing written */
+  }
+  const C = 22;
+  const pos = (k: string) => k.split(",").map(Number) as [number, number];
+  const all = [...Object.keys(j.cells ?? {}), ...Object.keys(j.small ?? {}), ...(j.under ?? []), ...(j.walls ?? [])].map(pos);
+  const rows = Math.max(4, ...all.map(([r]) => r + 2));
+  const cols = Math.max(6, ...all.map(([, c]) => c + 2));
+  const crossed = new Set(j.crossed ?? []);
+  const out: string[] = [];
+  for (let r = 0; r <= rows; r++) out.push(`<line x1="0" y1="${r * C}" x2="${cols * C}" y2="${r * C}" stroke="#d9dee7" stroke-width="0.6"/>`);
+  for (let c = 0; c <= cols; c++) out.push(`<line x1="${c * C}" y1="0" x2="${c * C}" y2="${rows * C}" stroke="#d9dee7" stroke-width="0.6"/>`);
+  for (const k of j.under ?? []) {
+    const [r, c] = pos(k);
+    out.push(`<line x1="${c * C}" y1="${(r + 1) * C}" x2="${(c + 1) * C}" y2="${(r + 1) * C}" stroke="#222" stroke-width="1.6"/>`);
+  }
+  for (const k of j.walls ?? []) {
+    const [r, c] = pos(k);
+    out.push(`<line x1="${c * C}" y1="${r * C}" x2="${c * C}" y2="${(r + 1) * C}" stroke="#222" stroke-width="1.6"/>`);
+  }
+  for (const [k, v] of Object.entries(j.cells ?? {})) {
+    if (!v) continue;
+    const [r, c] = pos(k);
+    out.push(`<text x="${c * C + C / 2}" y="${r * C + C * 0.72}" text-anchor="middle" font-size="15" font-family="Menlo, monospace" fill="#111">${escape(v)}</text>`);
+    if (crossed.has(k)) out.push(`<line x1="${c * C + 4}" y1="${(r + 1) * C - 4}" x2="${(c + 1) * C - 4}" y2="${r * C + 4}" stroke="#c0392b" stroke-width="1.4"/>`);
+  }
+  for (const [k, v] of Object.entries(j.small ?? {})) {
+    if (!v) continue;
+    const [r, c] = pos(k);
+    const over = !!j.cells?.[k];
+    out.push(`<text x="${over ? (c + 1) * C - 3 : c * C + C / 2}" y="${over ? r * C + 8 : r * C + C * 0.62}" text-anchor="${over ? "end" : "middle"}" font-size="9" font-family="Menlo, monospace" fill="#555">${escape(v)}</text>`);
+  }
+  return `<svg class="paper" width="${cols * C}" height="${rows * C}" viewBox="0 0 ${cols * C} ${rows * C}" xmlns="http://www.w3.org/2000/svg">${out.join("")}</svg>`;
 }
