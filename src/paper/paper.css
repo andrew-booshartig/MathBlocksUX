@@ -548,3 +548,38 @@
 .pp-box:not(.is-borrow) {
   border-radius: 0;
 }
+
+/* the multiples sheet: its own squares, row numbers down its edge */
+.pp-mult {
+  background-image: none;
+  box-shadow: none;
+}
+
+.pp-mult-body {
+  display: flex;
+}
+
+.pp-mult-ns {
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-mult-ns .pp-mult-n {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 30px;
+}
+
+.pp-mult-n.is-right {
+  color: var(--t-green);
+}
+
+.pp-mult .pp-own.is-right {
+  color: var(--t-green);
+}
+
+.pp-sheet {
+  overflow: auto;
+  justify-content: safe center;
+}
