@@ -26,12 +26,17 @@ const near = (a: number, b: number) => Math.abs(a - b) < 0.004;
 
 interface Lesson {
   title: string;
+  /** its group, shown over its first lesson */
+  group?: string;
+  /** needs the A, B and CI scales: they're turned on when it's opened */
+  all?: boolean;
   steps: { say: string; done?: (s: { slide: number; cursor: number; all: boolean }) => boolean }[];
 }
 
 const LESSONS: Lesson[] = [
   {
     title: "Multiply: 2 × 3",
+    group: "The basics",
     steps: [
       { say: "Drag the slide so C's 1 — its left end, called the index — sits right over the 2 on D.", done: (s) => near(s.slide, log(2)) },
       { say: "Now drag the cursor (the glass with the red hairline) over the 3 on C.", done: (s) => near(s.cursor, s.slide + log(3)) },
@@ -63,23 +68,136 @@ const LESSONS: Lesson[] = [
     ],
   },
   {
-    title: "Squares: 3²",
+    title: "1 over: CI",
+    group: "The other scales",
+    all: true,
     steps: [
-      { say: "Squares use the A scale, above the slide. Turn on All scales.", done: (s) => s.all },
-      { say: "Put the hairline over D's 3.", done: (s) => near(s.cursor, log(3)) },
+      { say: "CI is C run backwards (it's red, as on a real rule). Put the hairline over the 4 on C.", done: (s) => near(s.cursor, s.slide + log(4)) },
+      { say: "Read CI under the hairline: 2.5. CI always shows 1 over the C number — 1/4 is less than 1, so it's 0.25. You place the decimal point, as always." },
+    ],
+  },
+  {
+    title: "Multiply with CI: 2 × 4",
+    all: true,
+    steps: [
+      { say: "CI lets you multiply in one move that rarely runs off the end. Put the hairline over D's 2.", done: (s) => near(s.cursor, log(2)) },
+      { say: "Slide the 4 on CI (red) under the hairline.", done: (s) => near(s.slide, log(8) - 1) },
+      { say: "Move the hairline to C's 10 — the slide's right end.", done: (s) => near(s.cursor, s.slide + 1) },
+      { say: "D reads 8. Dividing by 1/4 is multiplying by 4 — that's all CI does." },
+    ],
+  },
+  {
+    title: "Squares: 3²",
+    all: true,
+    steps: [
+      { say: "Squares use the A scale, at the top of the body. Put the hairline over D's 3.", done: (s) => near(s.cursor, log(3)) },
       { say: "Read A under the hairline: 9. A is two D scales squeezed into the same length, so every number on A is the square of the one below it on D." },
+    ],
+  },
+  {
+    title: "Square roots: √20",
+    all: true,
+    steps: [
+      {
+        say: "Square roots go the other way: from A down to D. A has two halves — 1 to 10 on the left, 10 to 100 on the right. 20 is on the right half: put the hairline over A's 20.",
+        done: (s) => near(s.cursor, log(20) / 2),
+      },
+      { say: "Read D: 4.47. Check: 4.47 × 4.47 ≈ 20 ✓. A number with an odd count of digits before the point (2, 200) uses A's left half; an even count (20, 2000), the right." },
+    ],
+  },
+  {
+    title: "Amps: 1500 W on 120 V",
+    group: "On the job",
+    steps: [
+      { say: "Amps = watts ÷ volts. The rule only does digits, so work 1.5 ÷ 1.2: put C's 1.2 over D's 1.5.", done: (s) => near(s.slide, log(1.25)) },
+      { say: "Hairline to C's 1.", done: (s) => near(s.cursor, s.slide) },
+      { say: "D reads 1.25. Estimate: 1500 ÷ 120 is a bit over 12 — so 12.5 A. Fixed electric heat counts as a continuous load, sized at 125%: 12.5 × 1.25 ≈ 15.6 A — more than a 15 A breaker, so it goes on a 20 A circuit (check the code book and your AHJ)." },
+    ],
+  },
+  {
+    title: "Heat in a wire: P = I²R",
+    all: true,
+    steps: [
+      { say: "12 A through 0.5 Ω of wire: P = I² × R. First I²: put the hairline over D's 1.2.", done: (s) => near(s.cursor, log(1.2)) },
+      { say: "A reads 1.44 (12² = 144). Now multiply on A and B: slide B's 1 — its left end — under the hairline.", done: (s) => near(s.slide, s.cursor) },
+      { say: "Move the hairline to B's 5 (for 0.5).", done: (s) => near(s.cursor, s.slide + log(5) / 2) },
+      { say: "A reads 7.2. Estimate: 144 × 0.5 = 72 — so 72 W of heat in the wire. Squares and a multiply, without leaving the A and B scales." },
+    ],
+  },
+  {
+    title: "Check long division: 7896 ÷ 24",
+    group: "Check your paper work",
+    steps: [
+      { say: "Before (or after) working it on paper, see roughly what it should be. Three figures is plenty: 7.9 ÷ 2.4. Put C's 2.4 over D's 7.9.", done: (s) => near(s.slide, log(7.9) - log(2.4)) },
+      { say: "Hairline to C's 1.", done: (s) => near(s.cursor, s.slide) },
+      { say: "D reads 3.29. Estimate: 8000 ÷ 25 = 320 — so about 329. Long division should land right there (it's exactly 329)." },
+    ],
+  },
+  {
+    title: "Check long multiplication: 347 × 26",
+    steps: [
+      { say: "347 × 26: set up 3.47 × 2.6. Put C's 1 over D's 3.47 (just shy of 3.5).", done: (s) => near(s.slide, log(3.47)) },
+      { say: "Hairline over C's 2.6.", done: (s) => near(s.cursor, s.slide + log(2.6)) },
+      { say: "D reads 9.02. Estimate: 350 × 25 ≈ 8750 — so about 9020. On paper it's exactly 9022: the rule gets you the first three digits and where the point goes." },
     ],
   },
 ];
 
-/** a practice problem: a × b or a ÷ b, numbers a rule reads well */
-function problem(): { a: number; b: number; op: "×" | "÷"; answer: number } {
-  const num = () => Number((Math.round((1.1 + Math.random() * 8.8) * 10) / 10 * 10 ** Math.floor(Math.random() * 2)).toPrecision(3));
+type Kind = "numbers" | "job" | "paper";
+interface Problem {
+  ask: string;
+  answer: number;
+  unit?: string;
+}
+const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
+const int = (lo: number, hi: number) => lo + Math.floor(Math.random() * (hi - lo + 1));
+
+/** a practice problem: plain numbers, an electrician's, or a check on long division / multiplication */
+function problem(kind: Kind): Problem {
+  if (kind === "job") {
+    const v = pick([120, 208, 240, 277, 480]);
+    return pick<() => Problem>([
+      () => {
+        const w = int(6, 48) * 50;
+        return { ask: `A ${w} W load on ${v} V: how many amps?`, answer: w / v, unit: "A" };
+      },
+      () => {
+        const i = int(3, 40);
+        const r = pick([0.2, 0.25, 0.4, 0.5, 1.5, 2.4, 3.6, 4.8, 6, 12, 15]);
+        return { ask: `${i} A through ${r} Ω: how many volts?`, answer: i * r, unit: "V" };
+      },
+      () => {
+        const i = int(4, 45);
+        return { ask: `${i} A at ${v} V: how many watts?`, answer: i * v, unit: "W" };
+      },
+      () => {
+        const i = int(5, 40);
+        const r = pick([0.05, 0.1, 0.2, 0.25, 0.4, 0.5, 0.8, 1.2]);
+        return { ask: `${i} A through ${r} Ω of wire: watts of heat (P = I²R)?`, answer: i * i * r, unit: "W" };
+      },
+      () => {
+        const ohms = int(10, 240);
+        return { ask: `${v} V across ${ohms} Ω: how many amps?`, answer: v / ohms, unit: "A" };
+      },
+    ])();
+  }
+  if (kind === "paper") {
+    if (Math.random() < 0.5) {
+      const d = int(12, 89);
+      const q = int(21, 389);
+      const n = d * q + (Math.random() < 0.5 ? 0 : int(1, d - 1));
+      return { ask: `${n} ÷ ${d} — about what? (check before working it on paper)`, answer: n / d };
+    }
+    const a = int(112, 989);
+    const b = int(12, 98);
+    return { ask: `${a} × ${b} — about what?`, answer: a * b };
+  }
+  const num = () => Number(((Math.round((1.1 + Math.random() * 8.8) * 10) / 10) * 10 ** Math.floor(Math.random() * 2)).toPrecision(3));
   const a = num();
   const b = num();
-  if (Math.random() < 0.5) return { a, b, op: "×", answer: a * b };
+  if (Math.random() < 0.5) return { ask: `${a} × ${b}`, answer: a * b };
   const p = Number((a * b).toPrecision(3));
-  return { a: p, b, op: "÷", answer: p / b };
+  return { ask: `${p} ÷ ${b}`, answer: p / b };
 }
 
 const ROW = 34;
@@ -151,13 +269,15 @@ export default function SlideRuleTile({ state, update }: { state: SlideRuleState
   useEffect(() => {
     if (mode === "learn" && step.done?.({ slide, cursor, all })) update({ step: stepAt + 1 });
   }, [mode, slide, cursor, all, stepAt, lessonAt]); // eslint-disable-line react-hooks/exhaustive-deps
-  const openLesson = (n: number) => update({ lesson: n, step: 0 });
+  const openLesson = (n: number) => update({ lesson: n, step: 0, ...(LESSONS[n].all ? { all: true } : {}) });
 
   // ---- Practice
-  const [prob, setProb] = useState(problem);
+  const [kind, setKind] = useState<Kind>("numbers");
+  const [prob, setProb] = useState(() => problem("numbers"));
   const [typed, setTyped] = useState("");
   const [verdict, setVerdict] = useState<null | { ok: boolean; say: string }>(null);
   const [score, setScore] = useState({ right: 0, tried: 0 });
+  const unit = prob.unit ? ` ${prob.unit}` : "";
   const check = () => {
     const v = Number(typed.replace(/,/g, ""));
     if (!typed.trim() || !Number.isFinite(v) || v <= 0) return;
@@ -167,15 +287,15 @@ export default function SlideRuleTile({ state, update }: { state: SlideRuleState
     setVerdict({
       ok,
       say: ok
-        ? `Right — it's ${reading(prob.answer)} (to three figures; exactly ${Number(prob.answer.toFixed(4))}).`
+        ? `Right — ${reading(prob.answer)}${unit} to three figures (exactly ${Number(prob.answer.toFixed(4))}${unit}).`
         : digitsRight
-          ? `The digits are right, the decimal point isn't: it's ${reading(prob.answer)}. Estimate first, then place it.`
-          : `Not quite — it's ${reading(prob.answer)}. Check the slide's setting and read again.`,
+          ? `The digits are right, the decimal point isn't: it's ${reading(prob.answer)}${unit}. Estimate first, then place it.`
+          : `Not quite — it's ${reading(prob.answer)}${unit}. Check the slide's setting and read again.`,
     });
     setScore((s) => ({ right: s.right + (ok ? 1 : 0), tried: s.tried + 1 }));
   };
-  const nextProblem = () => {
-    setProb(problem());
+  const nextProblem = (k: Kind = kind) => {
+    setProb(problem(k));
     setTyped("");
     setVerdict(null);
   };
@@ -288,11 +408,19 @@ export default function SlideRuleTile({ state, update }: { state: SlideRuleState
 
       {mode === "learn" && (
         <div className="sr-panel">
-          <div className="sr-lessons">
-            {LESSONS.map((l, n) => (
-              <button key={n} className={n === lessonAt ? "is-on" : ""} onClick={() => openLesson(n)}>
-                {l.title}
-              </button>
+          {/* the lessons, a row to each group */}
+          <div className="sr-groups">
+            {LESSONS.reduce<{ group: string; at: number[] }[]>((gs, l, n) => (l.group || !gs.length ? [...gs, { group: l.group ?? "", at: [n] }] : (gs[gs.length - 1].at.push(n), gs)), []).map((g) => (
+              <div key={g.group} className="sr-group-row">
+                <span className="sr-group">{g.group}</span>
+                <div className="sr-lessons">
+                  {g.at.map((n) => (
+                    <button key={n} className={n === lessonAt ? "is-on" : ""} onClick={() => openLesson(n)}>
+                      {LESSONS[n].title}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
           <div className="sr-steps">
@@ -320,22 +448,37 @@ export default function SlideRuleTile({ state, update }: { state: SlideRuleState
 
       {mode === "practice" && (
         <div className="sr-panel">
+          <div className="sr-kinds">
+            {(
+              [
+                ["numbers", "Numbers"],
+                ["job", "On the job"],
+                ["paper", "Check long ÷ and ×"],
+              ] as const
+            ).map(([k, label]) => (
+              <button key={k} className={kind === k ? "is-on" : ""} onClick={() => (setKind(k), nextProblem(k))}>
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="sr-prob">
-            <span className="sr-q">
-              {prob.a} {prob.op} {prob.b}
-            </span>
+            <span className={`sr-q${prob.ask.length > 14 ? " is-words" : ""}`}>{prob.ask}</span>
+          </div>
+          <div className="sr-prob">
             <span className="sr-eq">≈</span>
             <input
               className="sr-answer"
+              autoFocus
               value={typed}
               inputMode="decimal"
-              placeholder="read it off D"
-              disabled={!!verdict}
+              placeholder="what you read"
+              readOnly={!!verdict}
               onChange={(e) => setTyped(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (verdict ? nextProblem() : check())}
             />
+            {prob.unit && <span className="sr-unit">{prob.unit}</span>}
             {verdict ? (
-              <button className="is-primary" onClick={nextProblem}>
+              <button className="is-primary" onClick={() => nextProblem()}>
                 Next ↵
               </button>
             ) : (
@@ -350,7 +493,13 @@ export default function SlideRuleTile({ state, update }: { state: SlideRuleState
             )}
           </div>
           {verdict && <div className={`sr-say ${verdict.ok ? "is-right" : "is-wrong"}`}>{verdict.say}</div>}
-          {!verdict && <div className="sr-tip">Work it on the rule, estimate where the decimal point goes, type what you read. Within 2% counts.</div>}
+          {!verdict && (
+            <div className="sr-tip">
+              {kind === "paper"
+                ? "Three figures and the right size is the goal — the rule tells you what your long division or multiplication should come out near. Within 2% counts."
+                : "Work it on the rule, estimate where the decimal point goes, type what you read. Within 2% counts."}
+            </div>
+          )}
         </div>
       )}
     </div>
