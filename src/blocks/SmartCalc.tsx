@@ -4,6 +4,7 @@
  * letters it asks what you want (solve for which letter, simplify, expand,
  * factor). A slim keypad for the structures that are awkward to type. */
 import PaperTile from "../paper/PaperTile";
+import FactsTile from "../drill/FactsTile";
 import ElectricalTile from "../electrical/ElectricalTile";
 import Icon from "../Icon";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -1708,6 +1709,7 @@ export default function SmartCalc({
     />
   );
   // ---- Paper: long division and multiplication, a step at a time
+  const factsBody = <FactsTile state={data.smartFacts ?? {}} update={(patch) => updateBlock(data.id, { smartFacts: { ...(current()?.smartFacts ?? {}), ...patch } })} />;
   const paperBody = <PaperTile state={data.smartPaper ?? {}} update={(patch) => updateBlock(data.id, { smartPaper: { ...(current()?.smartPaper ?? {}), ...patch } })} />;
   const referenceBody = (
     <ReferenceTab
@@ -2173,6 +2175,7 @@ export default function SmartCalc({
             reference: referenceBody,
             electrical: electricalBody,
             paper: paperBody,
+            facts: factsBody,
             equations: equationsBody,
           }}
         />

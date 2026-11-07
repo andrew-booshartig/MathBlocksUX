@@ -617,6 +617,8 @@ export interface CalculatorBlockData extends BlockBase {
   smartElectrical?: import("./electrical/ElectricalTile").ElectricalState;
   /** its Paper tile: long division / multiplication, the problem and how it's worked */
   smartPaper?: import("./paper/PaperTile").PaperState;
+  /** its Flash cards tile: which tables, and how each fact is doing */
+  smartFacts?: import("./drill/FactsTile").FactsState;
   ti?: TIState;
   /** the TI layout's extra-keys strip (fractions, powers…); on unless turned off */
   tiExtras?: boolean;
