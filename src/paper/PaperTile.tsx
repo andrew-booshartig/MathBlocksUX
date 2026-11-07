@@ -168,7 +168,31 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
   const [crossed, setCrossed] = useState<Set<string>>(was?.crossed ?? new Set());
   const [cur, setCur] = useState(was?.cur ?? start);
   useEffect(() => void KEPT.set(keep, { cells, small, under, crossed, cur }), [keep, cells, small, under, crossed, cur]);
+  // ⌘Z / Ctrl+Z: one thing written at a time (a digit, a carry, a line, a crossing out) — ⇧ to redo
+  type Ink = { cells: Record<string, string>; small: Record<string, string>; under: Set<string>; crossed: Set<string> };
+  const past = useRef<Ink[]>([]);
+  const ahead = useRef<Ink[]>([]);
+  const snap = () => {
+    past.current.push({ cells, small, under, crossed });
+    if (past.current.length > 300) past.current.shift();
+    ahead.current = [];
+  };
+  const put = (ink: Ink) => {
+    setCells(ink.cells);
+    setSmall(ink.small);
+    setUnder(ink.under);
+    setCrossed(ink.crossed);
+    onEdit?.();
+  };
+  const undo = (redo: boolean) => {
+    const from = redo ? ahead.current : past.current;
+    const ink = from.pop();
+    if (!ink) return;
+    (redo ? past.current : ahead.current).push({ cells, small, under, crossed });
+    put(ink);
+  };
   const clear = () => {
+    snap();
     setCells({});
     setSmall({});
     setUnder(new Set());
@@ -178,6 +202,7 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
   };
   const move = (dr: number, dc: number) => setCur((p) => ({ r: Math.max(0, p.r + dr), c: Math.max(0, p.c + dc) }));
   const toggle = (set: Set<string>, put: (s: Set<string>) => void, k: string) => {
+    snap();
     const next = new Set(set);
     next.has(k) ? next.delete(k) : next.add(k);
     put(next);
@@ -185,6 +210,11 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
     const k = at2(cur.r, cur.c);
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key.toLowerCase() === "z" || e.key.toLowerCase() === "y")) {
+      e.preventDefault();
+      e.stopPropagation();
+      return undo(e.shiftKey || e.key.toLowerCase() === "y");
+    }
     if (e.metaKey || e.ctrlKey) return;
     if (e.key === "Tab") {
       e.preventDefault();
@@ -208,17 +238,20 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
     // a carry: ⇧ or ⌥ and a digit, or any digit with the Carry tool — small, at the square's top
     if (/^Digit\d$/.test(e.code) && (e.shiftKey || e.altKey || tool === "carry")) {
       e.preventDefault();
+      snap();
       setSmall((s) => ({ ...s, [k]: ((s[k] ?? "") + e.code.slice(-1)).slice(-2) }));
       return onEdit?.();
     }
     if (/^[\d.]$/.test(e.key) && !fixed(cur.r, cur.c)) {
       e.preventDefault();
+      snap();
       setCells((s) => ({ ...s, [k]: e.key }));
       onEdit?.();
       return move(0, 1);
     }
     if (e.key === "_" || e.key === "-") {
       e.preventDefault();
+      snap();
       setUnder((u) => new Set(u).add(k));
       onEdit?.();
       return move(0, 1);
@@ -229,6 +262,7 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
       e.preventDefault();
       const here = cells[k] || small[k];
       const target = here || e.key === "Delete" ? k : at2(cur.r, Math.max(0, cur.c - 1));
+      if (cells[target] || small[target]) snap();
       setCells((s) => ({ ...s, [target]: "" }));
       setSmall((s) => ({ ...s, [target]: "" }));
       if (!here && e.key === "Backspace") move(0, -1);
@@ -252,13 +286,14 @@ function useSheet(keep: string, start: { r: number; c: number }, tool: Tool, fix
     const p = cellAt(e);
     setCur(p);
     drag.current = { ...p, erase: under.has(at2(p.r, p.c)), base: under, moved: false };
-    if (tool === "line") lineTo(p.c);
+    if (tool === "line") (snap(), lineTo(p.c));
   };
   const onMouseMove = (e: React.MouseEvent) => {
     const d = drag.current;
     if (!d || !(e.buttons & 1)) return void (drag.current = null);
     const p = cellAt(e);
     if (p.c === d.c && !d.moved && tool !== "line") return;
+    if (!d.moved && tool !== "line") snap();
     d.moved = true;
     lineTo(p.c);
   };
@@ -416,7 +451,7 @@ function Scratch({ paper, divide, side, tool, onTool, onShow }: { paper: Paper; 
               <span className="pp-verdict is-wrong">{checked.answer ? `${checked.answer} isn't it` : "No answer written yet"}{divide ? " (the answer goes over the bracket)" : " (the answer is the lowest row)"} — digits where they usually go are marked.</span>
             )
           ) : (
-            <span className="pp-keys">arrows move · Enter ⇧Enter next / last row · Tab the other sheet · drag or _ line · ⇧digit carry · x cross out</span>
+            <span className="pp-keys">arrows move · Enter ⇧Enter next / last row · Tab the other sheet · drag or _ line · ⇧digit carry · x cross out · ⌘Z undo</span>
           )}
         </div>
         <div className="pp-nav">

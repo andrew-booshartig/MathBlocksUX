@@ -80,8 +80,8 @@ export default function CalculatorApp() {
     history.current = h;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "z" || typingInField()) return;
-      // a notebook keeps its own history (its blocks, its file)
-      if ((document.activeElement as HTMLElement | null)?.closest?.(".nb")) return;
+      // a notebook keeps its own history (its blocks, its file), and so does a Paper sheet (what's written on it)
+      if ((document.activeElement as HTMLElement | null)?.closest?.(".nb, .pp-scratch")) return;
       // ours: the field the cursor's in doesn't undo too
       e.preventDefault();
       e.stopPropagation();
