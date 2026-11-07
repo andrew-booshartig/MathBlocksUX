@@ -268,72 +268,9 @@
   color: var(--t-faint);
 }
 
-/* Fill in: a box where each digit goes */
-.pp-box {
-  position: absolute;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--t-text) 22%, transparent);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--t-bg1) 80%, transparent);
-  color: var(--t-text);
-  font: 500 19px ui-monospace, "SF Mono", Menlo, monospace;
-  text-align: center;
-  caret-color: transparent;
-  outline: none;
-  transition: border-color 0.12s, opacity 0.12s;
-}
-
-.pp-box:focus {
-  border-color: var(--t-orange);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-orange) 30%, transparent);
-}
-
-.pp-box.is-ahead {
-  opacity: 0.45;
-}
-
-.pp-box.is-ahead:focus {
-  opacity: 1;
-}
-
-.pp-box.is-done {
-  border-color: transparent;
-  background: none;
-  color: var(--t-green);
-}
-
-.pp-box.is-wrong {
-  border-color: var(--t-red);
-  color: var(--t-red);
-  animation: pp-shake 0.25s;
-}
-
-.pp-line.is-ahead {
-  opacity: 0.35;
-}
-
-.pp-count {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.pp-hints {
-  margin-left: auto;
-  font-size: 11px;
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 400;
-}
 
 /* a borrow: the digit lent from crossed out, its new value small above */
 .pp-mark.is-struck,
-.pp-box.is-struck {
-  text-decoration: line-through;
-  text-decoration-color: var(--t-orange);
-  text-decoration-thickness: 2px;
-  color: var(--t-muted);
-}
 
 .pp-mark.is-borrow {
   place-items: start end;
@@ -343,19 +280,8 @@
   color: var(--t-orange);
 }
 
-.pp-box.is-borrow {
-  border-radius: 4px;
-  font-size: 11.5px;
-  z-index: 1;
-}
 
-.pp-box.is-borrow.is-done {
-  color: var(--t-orange);
-}
 
-.pp-box.is-hidden {
-  visibility: hidden;
-}
 
 /* the multiples, listed down the left: 1. 24, 2. 48 … a digit a box */
 .pp-sheet {
@@ -433,21 +359,6 @@
   margin-left: auto;
 }
 
-/* Fill in blends into the paper: no box until you're on it */
-.pp-box {
-  border-color: transparent;
-  background: none;
-}
-
-.pp-box:focus {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--t-orange) 14%, transparent);
-  box-shadow: inset 0 -2px 0 var(--t-orange);
-}
-
-.pp-box.is-wrong {
-  border-color: transparent;
-}
 
 .pp-mult-row input {
   border-color: transparent;
@@ -545,9 +456,6 @@
   box-sizing: border-box;
 }
 
-.pp-box:not(.is-borrow) {
-  border-radius: 0;
-}
 
 /* the multiples sheet: its own squares, row numbers down its edge */
 .pp-mult {
@@ -582,4 +490,32 @@
 .pp-sheet {
   overflow: auto;
   justify-content: safe center;
+}
+
+/* a carry written on the sheet: small, in an empty square at its foot (just over the digit below); over a digit, in its corner */
+.pp-mark.is-carry {
+  place-items: end center;
+  font-size: 12px;
+  color: var(--t-orange);
+}
+
+.pp-tools {
+  align-self: center;
+  margin-right: 6px;
+}
+
+.pp-scratch {
+  user-select: none;
+}
+
+.pp-nav .pp-tools button {
+  height: 24px;
+  border-color: transparent;
+  background: none;
+  color: var(--t-muted);
+}
+
+.pp-nav .pp-tools button.is-on {
+  background: color-mix(in srgb, var(--t-green) 20%, transparent);
+  color: var(--t-green);
 }
