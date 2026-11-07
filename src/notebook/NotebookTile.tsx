@@ -96,6 +96,8 @@ const LANG_LABEL: Record<string, string> = { table: "Table", vars: "Variables", 
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
 const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table"]);
 /** cells worked out by the calculator, in order: calc lines, and variables blocks (as name = value) */
+/** an app's fence written inside text: ```calc, ```work, ```graph … */
+const APP_FENCE = /^(`{3,}|~{3,})\s*(calc|work|graph|vars|numberline|table)\b/im;
 const isCalcLike = (b: Block) => b.kind === "cell" && (b.lang === "calc" || b.lang === "vars");
 /** a cell's language, when a plugin's — not one of the app's own */
 const codeLanguage = (b: Block) => (b.kind === "cell" && !OWN_CELLS.has(b.lang) ? languageOf(b.lang) : undefined);
@@ -1278,11 +1280,19 @@ export default function NotebookTile({
       commit({ ...now2, blocks: now2.blocks.map((x) => (x.id === b.id ? ({ id: x.id, kind: "cell", lang: "table", info: "", code: fromMarkdownTable(draft)!, beside: x.beside, width: x.width } as Block) : x)) });
       return;
     }
+    if (b.kind === "text" && APP_FENCE.test(draft)) {
+      // an app written as its fence (```calc …): the app itself, not code
+      const now2 = docRef.current!;
+      const parts = parseNotebook(draft).blocks.map((x, k) => (k === 0 ? { ...x, id: b.id, beside: b.beside, width: b.width } : x) as Block);
+      commit({ ...now2, blocks: now2.blocks.flatMap((x) => (x.id === b.id ? parts : [x])) });
+      return;
+    }
     if (b.kind === "text") {
       // (a Math block with no math in it goes too)
       if (!draft.trim() || mathRowsOf(draft)?.every((r) => !r)) removeBlock(b.id, true);
       else if (draft !== b.text) updateBlock(b.id, { text: draft });
-    } else if (draft !== b.code) updateBlock(b.id, { code: draft });
+    } else if ((b.lang === "calc" || b.lang === "work") && !draft.replace(/problem:/, "").trim()) removeBlock(b.id, true);
+    else if (draft !== b.code) updateBlock(b.id, { code: draft });
   };
   /** ⌘⏎: done editing — and run it, if it runs */
   const runEdited = (b: Block) => {
@@ -2642,6 +2652,11 @@ export default function NotebookTile({
             const at = editingRef.current;
             finishEditing();
             setTimeout(() => insertBlock({ lang: "table", start: "x\ty\n\t\n\t\n\t" }, at), 0);
+          }} onApp={(lang) => {
+            const at = editingRef.current ?? picked;
+            finishEditing();
+            const kind = NEW_CELLS.find((c) => c.lang === lang)!;
+            setTimeout(() => insertBlock({ lang, start: lang === "work" ? "" : kind.start }, at), 0);
           }} />
         <div
           className="nb-page"
