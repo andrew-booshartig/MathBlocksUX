@@ -164,6 +164,53 @@ const LESSONS: Lesson[] = [
     ],
   },
   {
+    title: "3φ drop: 480 V, 50 A, 200 ft, 6 AWG",
+    group: "Three-phase",
+    steps: [
+      {
+        say: "Three-phase: VD = √3 × I × R × L ÷ 1000 — √3 (1.732) instead of single-phase's 2, because the current comes back on the other phases, not one return wire. 6 AWG copper is 0.491 Ω per 1000 ft. In your head: 50 A × 200 ft ÷ 1000 = 10. That leaves 1.732 × 0.491: put C's 1 over D's 1.732.",
+        done: (s) => near(s.slide, log(Math.sqrt(3))),
+      },
+      { say: "Hairline over C's 4.91.", done: (s) => near(s.cursor, s.slide + log(4.91)) },
+      { say: "D reads 8.5 — 0.85 × 10, so 8.5 V. As a percent of 480 V: slide C's 4.8 under the hairline.", done: (s) => near(s.slide, s.cursor - log(4.8)) },
+      { say: "Hairline to C's 1.", done: (s) => near(s.cursor, s.slide) },
+      { say: "D reads 1.77 — a 1.8% drop. Fine for a feeder. Higher voltage, same power, less current, less drop: that's why big loads run on 480." },
+    ],
+  },
+  {
+    title: "3φ drop: 208 V, 30 A, 150 ft, 10 AWG",
+    steps: [
+      { say: "In your head: 30 × 150 ÷ 1000 = 4.5. On the rule it's 1.732 × 1.21 (10 AWG) × 4.5 — a chain. Put C's 1 over D's 1.732.", done: (s) => near(s.slide, log(Math.sqrt(3))) },
+      { say: "Hairline over C's 1.21.", done: (s) => near(s.cursor, s.slide + log(1.21)) },
+      { say: "D reads 2.1. Don't write it down — slide C's 1 under the hairline.", done: (s) => near(s.slide, s.cursor) },
+      { say: "Hairline over C's 4.5.", done: (s) => near(s.cursor, s.slide + log(4.5)) },
+      { say: "D reads 9.43 — 9.43 V. Percent of 208: slide C's 2.08 under the hairline.", done: (s) => near(s.slide, s.cursor - log(2.08)) },
+      { say: "Hairline to C's 1.", done: (s) => near(s.cursor, s.slide) },
+      { say: "D reads 4.53 — a 4.5% drop, over the 3% aim. Same load on 208 drops far more than on 480. Next: the size that fixes it." },
+    ],
+  },
+  {
+    title: "3φ wire size for 3%: 208 V",
+    steps: [
+      { say: "3% of 208 V is 6.24 V. R = 6.24 ÷ 1.732 ÷ 4.5. Put C's 1.732 over D's 6.24.", done: (s) => near(s.slide, log(6.24) - log(Math.sqrt(3))) },
+      { say: "Hairline to C's 1.", done: (s) => near(s.cursor, s.slide) },
+      { say: "D reads 3.6. Now ÷ 4.5: slide C's 4.5 under the hairline.", done: (s) => near(s.slide, s.cursor - log(4.5)) },
+      { say: "C's 1 is off the left end — hairline to C's 10.", done: (s) => near(s.cursor, s.slide + 1) },
+      { say: "D reads 8 — and 3.6 ÷ 4.5 is under 1, so 0.80 Ω per 1000 ft at most. 10 AWG is 1.21, 8 AWG is 0.764 — 8 AWG copper." },
+    ],
+  },
+  {
+    title: "3φ amps: 30 kW at 480 V",
+    steps: [
+      {
+        say: "I = P ÷ (√3 × V). Worth knowing by heart: √3 × 208 ≈ 360, √3 × 240 ≈ 416, √3 × 480 ≈ 831. So it's 30,000 ÷ 831: put C's 8.31 over D's 3.",
+        done: (s) => near(s.slide, log(3) - log(8.31)),
+      },
+      { say: "C's 1 is off the left end — hairline to C's 10.", done: (s) => near(s.cursor, s.slide + 1) },
+      { say: "D reads 3.61. Estimate: 30,000 ÷ 800 ≈ 37 — so 36.1 A per phase. (A 30 kW load at power factor 1; with a power factor, multiply it into the bottom.)" },
+    ],
+  },
+  {
     title: "Check long division: 7896 ÷ 24",
     group: "Check your paper work",
     steps: [
@@ -232,6 +279,25 @@ function problem(kind: Kind): Problem {
         const i = int(10, 40);
         const ft = int(2, 10) * 25;
         return { ask: `${i} A, ${ft} ft one way on ${vv} V: most Ω per 1000 ft for a 3% drop?`, answer: (0.03 * vv * 1000) / (2 * i * ft), unit: "Ω/kft" };
+      },
+      () => {
+        // three-phase drop: √3 × I × R × L ÷ 1000
+        const vv = pick([208, 480]);
+        const size = pick<Size>(["10", "8", "6", "4", "2"]);
+        const r = RESISTANCE.cu[size]!;
+        const i = int(15, 90);
+        const ft = int(2, 12) * 25;
+        const drop = (Math.sqrt(3) * i * r * ft) / 1000;
+        return pick([
+          { ask: `3φ ${vv} V: ${i} A, ${ft} ft, ${size} AWG copper (${r} Ω per 1000 ft): volts dropped?`, answer: drop, unit: "V" },
+          { ask: `3φ ${vv} V: ${i} A, ${ft} ft, ${size} AWG copper (${r} Ω per 1000 ft): percent drop?`, answer: (drop / vv) * 100, unit: "%" },
+        ]);
+      },
+      () => {
+        // three-phase amps from kW
+        const vv = pick([208, 240, 480]);
+        const kw = int(5, 120);
+        return { ask: `${kw} kW, 3φ ${vv} V (power factor 1): amps per phase?`, answer: (kw * 1000) / (Math.sqrt(3) * vv), unit: "A" };
       },
       () => {
         // derated ampacity: 310.16 (90 °C) × 310.15(C)(1) × 310.15(B)(1)
