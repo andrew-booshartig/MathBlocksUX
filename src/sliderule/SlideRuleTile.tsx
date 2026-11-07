@@ -5,6 +5,7 @@
  * ← → nudge whatever you moved last (⇧ for bigger steps). */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { SCALES, type Scale, type ScaleId, reading, ticks, valueAt } from "./scales";
+import { AMBIENT, AMPACITY, BUNDLED, RESISTANCE, type Size } from "../electrical/nec";
 import "./sliderule.css";
 
 export interface SlideRuleState {
@@ -125,6 +126,44 @@ const LESSONS: Lesson[] = [
     ],
   },
   {
+    title: "Voltage drop: 12 AWG, 100 ft, 20 A",
+    group: "Voltage drop & wire size",
+    steps: [
+      {
+        say: "Single-phase: VD = 2 × I × R × L ÷ 1000, with R from Chapter 9 Table 8 — 12 AWG copper is 1.93 Ω per 1000 ft. In your head: 2 × 20 A × 100 ft ÷ 1000 = 4. That leaves 4 × 1.93: put C's 1 over D's 1.93.",
+        done: (s) => near(s.slide, log(1.93)),
+      },
+      { say: "Hairline over C's 4.", done: (s) => near(s.cursor, s.slide + log(4)) },
+      { say: "D reads 7.72 — 7.72 V lost in the wire. As a percent of 120 V, divide by 1.2 without reading anything off: slide C's 1.2 under the hairline.", done: (s) => near(s.slide, s.cursor - log(1.2)) },
+      { say: "Hairline to C's 1.", done: (s) => near(s.cursor, s.slide) },
+      { say: "D reads 6.43 — a 6.4% drop. The NEC's 3% for a branch circuit is advice (an informational note), not a rule — but it's what good work aims for. This wire's too small for that run. Next: what size is big enough." },
+    ],
+  },
+  {
+    title: "Wire size for 3% drop",
+    steps: [
+      {
+        say: "Same run: 20 A, 100 ft, 120 V. 3% of 120 V is 3.6 V allowed. Turn the formula round: R = 3.6 ÷ 4 (the 2 × I × L ÷ 1000 from before). Put C's 4 over D's 3.6.",
+        done: (s) => near(s.slide, log(3.6) - log(4)),
+      },
+      { say: "C's 1 is off the left end — read at the other index: hairline to C's 10.", done: (s) => near(s.cursor, s.slide + 1) },
+      { say: "D reads 9 — the answer is under 1 (3.6 ÷ 4), so 0.9 Ω per 1000 ft at most. Table 8: 10 AWG is 1.21 (too much), 8 AWG is 0.764 — so 8 AWG copper keeps this run under 3%." },
+    ],
+  },
+  {
+    title: "Ampacity, derated: 10 AWG THHN",
+    steps: [
+      {
+        say: "10 AWG THHN copper: 40 A in the 90 °C column (Table 310.16). Eight current-carrying wires in one conduit: × 0.70 (310.15(C)(1)). On a 40 °C rooftop: × 0.91 (310.15(B)(1)). 4 × 7 runs off the right end, so start from the other index: put C's 10 over D's 4.",
+        done: (s) => near(s.slide, log(4) - 1),
+      },
+      { say: "Hairline over C's 7.", done: (s) => near(s.cursor, s.slide + log(7)) },
+      { say: "D reads 2.8 — 28 A so far. Keep going without writing it down: × 0.91 would run off the end too, so slide C's 10 under the hairline.", done: (s) => near(s.slide, s.cursor - 1) },
+      { say: "Hairline over C's 9.1.", done: (s) => near(s.cursor, s.slide + log(9.1)) },
+      { say: "D reads 2.55 — 25.5 A is what each of those wires can carry there, well under its 40 A. Size the wire up, or split the run. What breaker it can be on is 240.4's call — check the code book." },
+    ],
+  },
+  {
     title: "Check long division: 7896 ÷ 24",
     group: "Check your paper work",
     steps: [
@@ -178,6 +217,30 @@ function problem(kind: Kind): Problem {
       () => {
         const ohms = int(10, 240);
         return { ask: `${v} V across ${ohms} Ω: how many amps?`, answer: v / ohms, unit: "A" };
+      },
+      () => {
+        // voltage drop, single-phase: 2 × I × R × L ÷ 1000 (R: Chapter 9 Table 8)
+        const size = pick<Size>(["14", "12", "10", "8", "6"]);
+        const r = RESISTANCE.cu[size]!;
+        const i = int(8, 40);
+        const ft = int(2, 12) * 25;
+        return { ask: `${i} A, ${ft} ft one way, ${size} AWG copper (${r} Ω per 1000 ft): volts dropped?`, answer: (2 * i * r * ft) / 1000, unit: "V" };
+      },
+      () => {
+        // the most resistance a wire can have and keep the drop to 3%
+        const vv = pick([120, 240]);
+        const i = int(10, 40);
+        const ft = int(2, 10) * 25;
+        return { ask: `${i} A, ${ft} ft one way on ${vv} V: most Ω per 1000 ft for a 3% drop?`, answer: (0.03 * vv * 1000) / (2 * i * ft), unit: "Ω/kft" };
+      },
+      () => {
+        // derated ampacity: 310.16 (90 °C) × 310.15(C)(1) × 310.15(B)(1)
+        const size = pick<Size>(["12", "10", "8", "6", "4"]);
+        const base = AMPACITY.cu[size]![2];
+        const n = pick([4, 5, 6, 7, 8, 9, 10, 12]);
+        const bundle = BUNDLED.find(([upTo]) => n <= upTo)![1];
+        const [c, , , f90] = pick(AMBIENT.filter(([t]) => t >= 35 && t <= 50));
+        return { ask: `${size} AWG THHN copper (${base} A at 90 °C), ${n} current-carrying in a raceway (× ${bundle}), ${c} °C ambient (× ${f90}): ampacity?`, answer: base * bundle * f90, unit: "A" };
       },
     ])();
   }
