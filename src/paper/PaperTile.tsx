@@ -1,18 +1,22 @@
 /** Paper: long division and long multiplication worked the way they're
- * done by hand — on graph-paper squares, one step at a time. "Show me"
- * writes each step and says why; "I'll do it" asks for each number and
- * checks it. ← → (or Back / Next) step through. */
+ * done by hand — on graph-paper squares. "Show me" writes each step and
+ * says why (← → step through); "Fill in" has you write each digit in turn,
+ * on paper that shows nothing ahead; "I'll do it" is a blank sheet with only
+ * the problem on it — as in a test — checked when you say. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Mark, type Paper, longDivision, longMultiplication } from "./steps";
 import "./paper.css";
+
+type How = "show" | "fill" | "free";
 
 export interface PaperState {
   mode?: "divide" | "multiply";
   a?: string;
   b?: string;
   places?: number;
+  how?: How;
+  /** (older) "I'll do it" asked for each step's number; "Fill in" was boxes */
   practice?: boolean;
-  /** the whole problem as empty boxes, filled in the order they're written */
   boxes?: boolean;
   /** the multiples column down the left (long division): put away */
   noMultiples?: boolean;
@@ -23,34 +27,15 @@ export default function PaperTile({ state, update }: { state: PaperState; update
   const a = state.a ?? (mode === "divide" ? "7896" : "347");
   const b = state.b ?? (mode === "divide" ? "24" : "26");
   const places = state.places ?? 0;
-  const boxes = !!state.boxes;
-  const practice = !!state.practice && !boxes;
+  const how: How = state.how ?? (state.boxes ? "fill" : state.practice ? "free" : "show");
   const paper = useMemo(() => (mode === "divide" ? longDivision(a, Number(b), places) : longMultiplication(a, b)), [mode, a, b, places]);
   const [at, setAt] = useState(0);
-  const [typed, setTyped] = useState("");
-  const [wrong, setWrong] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
   // a new problem starts over
-  useEffect(() => {
-    setAt(0);
-    setTyped("");
-    setWrong(false);
-  }, [paper]);
+  useEffect(() => setAt(0), [paper]);
   const last = (paper?.steps.length ?? 1) - 1;
   const step = paper?.steps[at];
-  const next = paper?.steps[at + 1];
-  // practicing: the next step's number is asked for before it's shown
-  const asking = practice && !!next?.answer;
-  const go = (to: number) => {
-    setAt(Math.max(0, Math.min(last, to)));
-    setTyped("");
-    setWrong(false);
-  };
-  const check = () => {
-    if (!next?.answer) return go(at + 1);
-    if (typed.trim() === next.answer) go(at + 1);
-    else setWrong(true);
-  };
+  const go = (to: number) => setAt(Math.max(0, Math.min(last, to)));
+  const setHow = (h: How) => update({ how: h, practice: undefined, boxes: undefined });
 
   const cell = 30;
   const side =
@@ -60,11 +45,10 @@ export default function PaperTile({ state, update }: { state: PaperState; update
   return (
     <div
       className="pp"
-      ref={box}
       tabIndex={-1}
       onKeyDown={(e) => {
-        if ((e.target as HTMLElement).tagName === "INPUT") return;
-        if (e.key === "ArrowRight" || e.key === " ") (e.preventDefault(), asking ? undefined : go(at + 1));
+        if (how !== "show" || (e.target as HTMLElement).tagName === "INPUT") return;
+        if (e.key === "ArrowRight" || e.key === " ") (e.preventDefault(), go(at + 1));
         if (e.key === "ArrowLeft") (e.preventDefault(), go(at - 1));
       }}
     >
@@ -98,14 +82,14 @@ export default function PaperTile({ state, update }: { state: PaperState; update
             </button>
           )}
           <div className="pp-switch is-small">
-            <button className={!practice && !boxes ? "is-on" : ""} onClick={() => update({ practice: false, boxes: false })}>
+            <button className={how === "show" ? "is-on" : ""} title="Each step written out, and why" onClick={() => setHow("show")}>
               Show me
             </button>
-            <button className={practice ? "is-on" : ""} onClick={() => update({ practice: true, boxes: false })}>
-              I'll do it
-            </button>
-            <button className={boxes ? "is-on" : ""} title="Every box laid out — fill them in, in order (Tab moves on)" onClick={() => update({ boxes: true })}>
+            <button className={how === "fill" ? "is-on" : ""} title="Write each digit in turn — nothing ahead shows" onClick={() => setHow("fill")}>
               Fill in
+            </button>
+            <button className={how === "free" ? "is-on" : ""} title="A blank sheet with only the problem on it, as in a test" onClick={() => setHow("free")}>
+              I'll do it
             </button>
           </div>
         </div>
@@ -113,14 +97,16 @@ export default function PaperTile({ state, update }: { state: PaperState; update
 
       {!paper ? (
         <div className="pp-empty">{mode === "divide" ? "Two whole numbers, the second not 0" : "Two whole numbers"}</div>
-      ) : boxes ? (
+      ) : how === "fill" ? (
         <FillIn paper={paper} multiply={mode === "multiply"} side={side} />
+      ) : how === "free" ? (
+        <Scratch paper={paper} divide={mode === "divide"} side={side} onShow={() => (setHow("show"), go(last))} />
       ) : (
         <>
           <div className="pp-sheet">
             {side}
-            <div className="pp-grid" style={{ width: paper.cols * cell, height: (paper.rows + 0.4) * cell }}>
-              {paper.bracket && at >= 0 && (
+            <div className="pp-grid" style={{ width: (paper.cols + 1) * cell, height: (paper.rows + 1) * cell }}>
+              {paper.bracket && (
                 <div className="pp-bracket" style={{ left: paper.bracket.col * cell - 2, top: paper.bracket.row * cell, width: paper.bracket.width * cell + 6, height: cell }} />
               )}
               {paper.lines
@@ -143,30 +129,13 @@ export default function PaperTile({ state, update }: { state: PaperState; update
               Step {at + 1} of {last + 1}
             </div>
             <div className="pp-say">{step?.say}</div>
-            {asking && (
-              <div className={`pp-ask${wrong ? " is-wrong" : ""}`}>
-                <span>{next!.say.replace(/\s*\(.*?\)|[:.]?\s*Write.*$|=.*$/, "").replace(/\?.*$/, "?") || "What's next?"}</span>
-                <input
-                  autoFocus
-                  inputMode="numeric"
-                  value={typed}
-                  placeholder="?"
-                  onChange={(e) => (setTyped(e.target.value), setWrong(false))}
-                  onKeyDown={(e) => e.key === "Enter" && check()}
-                />
-                <button onClick={check}>Check</button>
-                {wrong && <span className="pp-hint">Not quite — try again, or <button className="pp-link" onClick={() => go(at + 1)}>show me</button></span>}
-              </div>
-            )}
             <div className="pp-nav">
               <button disabled={at === 0} onClick={() => go(at - 1)}>
                 ← Back
               </button>
-              {!asking && (
-                <button className="is-primary" disabled={at === last} onClick={() => go(at + 1)}>
-                  Next →
-                </button>
-              )}
+              <button className="is-primary" disabled={at === last} onClick={() => go(at + 1)}>
+                Next →
+              </button>
               <button className="pp-quiet" onClick={() => go(last)} disabled={at === last}>
                 Show it all
               </button>
@@ -201,9 +170,9 @@ function order(paper: Paper, multiply: boolean): Mark[] {
   return wanted.sort((x, y) => x.step - y.step || (x.order !== undefined && y.order !== undefined ? x.order - y.order : backwards(x) ? y.col - x.col : x.col - y.col));
 }
 
-/** Fill in: the problem as a worksheet — every box where a digit goes, empty;
- * type in each, in order. Right, and it's kept and the next box is up; wrong,
- * and it says so. What the step is about shows under it. */
+/** Fill in: write each digit in turn, where it goes — on paper that shows
+ * nothing ahead (no boxes, no lines yet). Right, and it's kept and the next
+ * spot is up; wrong, and it says so. What the step is about shows under it. */
 function FillIn({ paper, multiply, side }: { paper: Paper; multiply: boolean; side?: React.ReactNode }) {
   const cell = 30;
   const seq = useMemo(() => order(paper, multiply), [paper, multiply]);
@@ -249,11 +218,15 @@ function FillIn({ paper, multiply, side }: { paper: Paper; multiply: boolean; si
     <>
       <div className="pp-sheet">
         {side}
-        <div className="pp-grid" style={{ width: paper.cols * cell, height: (paper.rows + 0.4) * cell }}>
+        {/* (paper to spare: its size gives nothing away) */}
+        <div className="pp-grid" style={{ width: (paper.cols + 3) * cell, height: Math.max(paper.rows + 3, 12) * cell }}>
           {paper.bracket && <div className="pp-bracket" style={{ left: paper.bracket.col * cell - 2, top: paper.bracket.row * cell, width: paper.bracket.width * cell + 6, height: cell }} />}
-          {paper.lines.map(([row, from, to, s], k) => (
-            <div key={k} className={`pp-line${s > reached ? " is-ahead" : ""}`} style={{ left: from * cell + 3, top: (row + 1) * cell - 1, width: (to - from + 1) * cell - 6 }} />
-          ))}
+          {/* (only the lines reached: nothing ahead gives away the work's shape) */}
+          {paper.lines
+            .filter(([, , , s]) => s <= reached)
+            .map(([row, from, to], k) => (
+              <div key={k} className="pp-line" style={{ left: from * cell + 3, top: (row + 1) * cell - 1, width: (to - from + 1) * cell - 6 }} />
+            ))}
           {/* what's given: the problem, the decimal points, the carries once they're made */}
           {paper.marks
             .filter((m) => !seq.includes(m) && (m.step === 0 || m.step < reached || (!m.small && m.step <= reached)) && (m.until === undefined || reached < m.until))
@@ -267,7 +240,7 @@ function FillIn({ paper, multiply, side }: { paper: Paper; multiply: boolean; si
               key={i}
               ref={(el) => void (inputs.current[i] = el)}
               className={`pp-box${m.borrow ? " is-borrow" : ""}${done[i] ? " is-done" : (typed[i] ?? "").length >= m.ch.length ? " is-wrong" : ""}${m.step > reached ? " is-ahead" : ""}${m.borrow && m.step > reached ? " is-hidden" : ""}${!m.borrow && struckNow(m) ? " is-struck" : ""}`}
-              style={m.borrow ? { left: m.col * cell + 13, top: m.row * cell - 9, width: 19, height: 16 } : { left: m.col * cell + 2, top: m.row * cell + 2, width: cell - 4, height: cell - 4 }}
+              style={m.borrow ? { left: m.col * cell + 13, top: m.row * cell - 9, width: 19, height: 16 } : { left: m.col * cell, top: m.row * cell, width: cell, height: cell }}
               value={done[i] ? m.ch : typed[i] ?? ""}
               readOnly={done[i]}
               tabIndex={done[i] || (m.borrow && m.step > reached) ? -1 : 0}
@@ -370,5 +343,198 @@ function Multiples({ divisor, onClose }: { divisor: number; onClose: () => void 
         );
       })}
     </div>
+  );
+}
+
+/** a sheet's cell: "row,col" */
+const at2 = (r: number, c: number) => `${r},${c}`;
+
+/** I'll do it: a blank sheet with only the problem on it, as in a test. Type
+ * anywhere — Tab and ⇧Tab move right and left, Enter and ⇧Enter down and up
+ * (the arrows too); _ draws a line under a square, x crosses one out, ⌥ and a
+ * digit writes it small above (a borrow or a carry). Check says if the answer's
+ * right, and marks the digits that are where they'd usually go. */
+function Scratch({ paper, divide, side, onShow }: { paper: Paper; divide: boolean; side?: React.ReactNode; onShow: () => void }) {
+  const cell = 30;
+  const given = useMemo(() => paper.marks.filter((m) => m.step === 0), [paper]);
+  const givenLines = useMemo(() => paper.lines.filter(([, , , s]) => s === 0), [paper]);
+  const startAt = useMemo(() => (divide && paper.bracket ? { r: 0, c: paper.bracket.col } : { r: 3, c: paper.cols - 1 }), [paper, divide]);
+  const [cells, setCells] = useState<Record<string, string>>({});
+  const [small, setSmall] = useState<Record<string, string>>({});
+  const [under, setUnder] = useState<Set<string>>(new Set());
+  const [crossed, setCrossed] = useState<Set<string>>(new Set());
+  const [cur, setCur] = useState(startAt);
+  const [checked, setChecked] = useState<{ answer: string; right: boolean } | null>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setCells({});
+    setSmall({});
+    setUnder(new Set());
+    setCrossed(new Set());
+    setCur(startAt);
+    setChecked(null);
+    setTimeout(() => sheet.current?.focus(), 50);
+  }, [paper, startAt]);
+  const isGiven = (r: number, c: number) => given.some((m) => m.row === r && Math.floor(m.col) === c);
+  // it grows as you write: always room below and to the right
+  const used = Object.keys(cells).map((k) => k.split(",").map(Number));
+  const rows = Math.max(paper.rows + 2, cur.r + 3, ...used.map(([r]) => r + 2));
+  const cols = Math.max(paper.cols + 3, cur.c + 3, ...used.map(([, c]) => c + 2));
+  const move = (dr: number, dc: number) => setCur((p) => ({ r: Math.max(0, p.r + dr), c: Math.max(0, p.c + dc) }));
+  const edit = () => setChecked(null);
+  const toggle = (set: Set<string>, put: (s: Set<string>) => void, k: string) => {
+    const next = new Set(set);
+    next.has(k) ? next.delete(k) : next.add(k);
+    put(next);
+    edit();
+  };
+
+  // the answer as written: division's is the row over the bracket (and the
+  // remainder, if one's kept, the lowest row); multiplication's the lowest row
+  const rowText = (r: number) => {
+    const cs = Object.entries(cells).filter(([k]) => Number(k.split(",")[0]) === r).map(([k, v]) => [Number(k.split(",")[1]), v] as const);
+    return cs.sort((x, y) => x[0] - y[0]).map(([, v]) => v).join("");
+  };
+  const lowest = () => Math.max(-1, ...Object.keys(cells).filter((k) => cells[k]).map((k) => Number(k.split(",")[0])));
+  const check = () => {
+    const want = paper.result;
+    let answer: string;
+    if (divide) {
+      const q = rowText(0).replace(/^0+(?=\d)/, "");
+      const rem = / remainder (\d+)/.exec(want)?.[1];
+      answer = rem ? `${q} remainder ${rowText(lowest())}` : q;
+      const right = rem ? q === want.replace(/ remainder.*/, "") && rowText(lowest()).replace(/^0+(?=\d)/, "") === rem : q === want;
+      setChecked({ answer, right });
+    } else {
+      answer = rowText(lowest()).replace(/^0+(?=\d)/, "");
+      setChecked({ answer, right: answer === want });
+    }
+  };
+  // after Check: a digit where one usually goes is marked right or wrong
+  const expected = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const x of paper.marks) if (x.step > 0 && !x.small && /\d/.test(x.ch)) m.set(at2(x.row, x.col), x.ch);
+    return m;
+  }, [paper]);
+
+  return (
+    <>
+      <div className="pp-sheet">
+        {side}
+        <div
+          ref={sheet}
+          className="pp-grid pp-scratch"
+          tabIndex={0}
+          style={{ width: cols * cell, height: rows * cell }}
+          onMouseDown={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            setCur({ r: Math.floor((e.clientY - box.top) / cell), c: Math.floor((e.clientX - box.left) / cell) });
+          }}
+          onKeyDown={(e) => {
+            const k = at2(cur.r, cur.c);
+            if (e.metaKey || e.ctrlKey) return;
+            if (e.key === "Tab") return void (e.preventDefault(), move(0, e.shiftKey ? -1 : 1));
+            if (e.key === "Enter") return void (e.preventDefault(), move(e.shiftKey ? -1 : 1, 0));
+            const arrows: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+            if (arrows[e.key]) return void (e.preventDefault(), move(...arrows[e.key]));
+            if (e.altKey && /^Digit\d$/.test(e.code)) {
+              e.preventDefault();
+              setSmall((s) => ({ ...s, [k]: ((s[k] ?? "") + e.code.slice(-1)).slice(-2) }));
+              return edit();
+            }
+            if (/^[\d.]$/.test(e.key) && !isGiven(cur.r, cur.c)) {
+              e.preventDefault();
+              setCells((s) => ({ ...s, [k]: e.key }));
+              edit();
+              return move(0, 1);
+            }
+            if (e.key === "_" || e.key === "-") return void (e.preventDefault(), toggle(under, setUnder, k));
+            if (e.key === "x" || e.key === "X") return void (e.preventDefault(), toggle(crossed, setCrossed, k));
+            if (e.key === " ") return void (e.preventDefault(), move(0, 1));
+            if (e.key === "Backspace" || e.key === "Delete") {
+              e.preventDefault();
+              const here = cells[k] || small[k];
+              const target = here || e.key === "Delete" ? k : at2(cur.r, Math.max(0, cur.c - 1));
+              setCells((s) => ({ ...s, [target]: "" }));
+              setSmall((s) => ({ ...s, [target]: "" }));
+              if (!here && e.key === "Backspace") move(0, -1);
+              edit();
+            }
+          }}
+        >
+          {paper.bracket && <div className="pp-bracket" style={{ left: paper.bracket.col * cell - 2, top: paper.bracket.row * cell, width: paper.bracket.width * cell + 6, height: cell }} />}
+          {givenLines.map(([row, from, to], k) => (
+            <div key={`g${k}`} className="pp-line" style={{ left: from * cell + 3, top: (row + 1) * cell - 1, width: (to - from + 1) * cell - 6 }} />
+          ))}
+          {[...under].map((k) => {
+            const [r, c] = k.split(",").map(Number);
+            return <div key={`u${k}`} className="pp-line" style={{ left: c * cell, top: (r + 1) * cell - 1, width: cell }} />;
+          })}
+          {given.map((m, k) => (
+            <span key={`m${k}`} className={`pp-mark${crossed.has(at2(m.row, m.col)) ? " is-struck" : ""}`} style={{ left: m.col * cell, top: m.row * cell, width: cell, height: cell }}>
+              {m.ch}
+            </span>
+          ))}
+          {Object.entries(cells)
+            .filter(([, v]) => v)
+            .map(([k, v]) => {
+              const [r, c] = k.split(",").map(Number);
+              const want = expected.get(k);
+              const mark = checked && want !== undefined ? (want === v ? " is-right" : " is-off") : "";
+              return (
+                <span key={k} className={`pp-mark pp-own${mark}${crossed.has(k) ? " is-struck" : ""}`} style={{ left: c * cell, top: r * cell, width: cell, height: cell }}>
+                  {v}
+                </span>
+              );
+            })}
+          {Object.entries(small)
+            .filter(([, v]) => v)
+            .map(([k, v]) => {
+              const [r, c] = k.split(",").map(Number);
+              return (
+                <span key={`s${k}`} className="pp-mark is-small is-borrow" style={{ left: c * cell, top: r * cell, width: cell, height: cell }}>
+                  {v}
+                </span>
+              );
+            })}
+          <div className="pp-cursor" style={{ left: cur.c * cell, top: cur.r * cell, width: cell, height: cell }} />
+        </div>
+      </div>
+      <div className="pp-step">
+        <div className="pp-say">
+          {checked ? (
+            checked.right ? (
+              <span className="pp-verdict is-right">{checked.answer} — that's it.</span>
+            ) : (
+              <span className="pp-verdict is-wrong">{checked.answer ? `${checked.answer} isn't it` : "No answer written yet"}{divide ? " (the answer goes over the bracket)" : " (the answer is the lowest row)"} — digits where they usually go are marked.</span>
+            )
+          ) : (
+            <span className="pp-keys">Tab ⇧Tab ← → · Enter ⇧Enter ↓ ↑ · _ line · x cross out · ⌥digit small</span>
+          )}
+        </div>
+        <div className="pp-nav">
+          <button className="is-primary" onClick={check}>
+            Check
+          </button>
+          <button className="pp-quiet" onClick={onShow}>
+            Show me how
+          </button>
+          <button
+            className="pp-quiet"
+            onClick={() => {
+              setCells({});
+              setSmall({});
+              setUnder(new Set());
+              setCrossed(new Set());
+              setCur(startAt);
+              setChecked(null);
+              sheet.current?.focus();
+            }}
+          >
+            Clear the sheet
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

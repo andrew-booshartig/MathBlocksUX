@@ -432,3 +432,119 @@
 .pp-mult-head button {
   margin-left: auto;
 }
+
+/* Fill in blends into the paper: no box until you're on it */
+.pp-box {
+  border-color: transparent;
+  background: none;
+}
+
+.pp-box:focus {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--t-orange) 14%, transparent);
+  box-shadow: inset 0 -2px 0 var(--t-orange);
+}
+
+.pp-box.is-wrong {
+  border-color: transparent;
+}
+
+.pp-mult-row input {
+  border-color: transparent;
+  background: none;
+}
+
+.pp-mult-row input:focus {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--t-orange) 14%, transparent);
+  box-shadow: inset 0 -2px 0 var(--t-orange);
+}
+
+.pp-mult-row.is-wrong input {
+  border-color: transparent;
+}
+
+/* I'll do it: a blank sheet */
+.pp-scratch {
+  outline: none;
+  cursor: text;
+}
+
+.pp-cursor {
+  position: absolute;
+  border-radius: 3px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.pp-scratch:focus .pp-cursor {
+  opacity: 1;
+  background: color-mix(in srgb, var(--t-orange) 14%, transparent);
+  box-shadow: inset 0 -2px 0 var(--t-orange);
+  animation: pp-blink 1.1s steps(1) infinite;
+}
+
+@keyframes pp-blink {
+  50% {
+    box-shadow: inset 0 0 0 transparent;
+  }
+}
+
+.pp-own.is-right {
+  color: var(--t-green);
+}
+
+.pp-own.is-off {
+  color: var(--t-red);
+}
+
+.pp-verdict.is-right {
+  color: var(--t-green);
+}
+
+.pp-verdict.is-wrong {
+  color: var(--t-red);
+}
+
+.pp-keys {
+  color: var(--t-faint);
+  font-size: 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* the squares are the work's own, so every digit sits in one (the sheet
+   around it is plain) — never offset from the grid */
+.pp-sheet {
+  justify-content: center;
+  background-image: none;
+}
+
+.pp-grid,
+.pp-mult {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--t-text) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--t-text) 7%, transparent) 1px, transparent 1px);
+  background-size: 30px 30px;
+  background-position: 0 0;
+  box-shadow:
+    inset -1px 0 0 color-mix(in srgb, var(--t-text) 7%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--t-text) 7%, transparent);
+}
+
+.pp-grid {
+  margin: 0;
+}
+
+.pp-mult {
+  padding-right: 0;
+  border-right: none;
+  margin-right: 6px;
+}
+
+.pp-mult-n {
+  box-sizing: border-box;
+}
+
+.pp-box:not(.is-borrow) {
+  border-radius: 0;
+}
