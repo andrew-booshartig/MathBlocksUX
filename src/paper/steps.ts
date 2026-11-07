@@ -12,6 +12,14 @@ export interface Mark {
   small?: boolean;
   /** gone from this step on (a carry once its row is done — crossed out, on paper) */
   until?: number;
+  /** crossed out from this step on (a digit borrowed from) */
+  struck?: number;
+  /** a borrow: the digit's new value, written small above it */
+  borrow?: boolean;
+  /** its place in its step's writing, when that isn't simply by column */
+  order?: number;
+  /** what to think about to write it (never its answer) */
+  hint?: string;
 }
 export interface Step {
   say: string;
@@ -68,10 +76,33 @@ export function longDivision(dividendText: string, divisor: number, places = 0):
     marks.push({ row: 0, col: col(i), ch: String(q), step: sq });
     const sp = say(`Multiply: ${q} × ${divisor} = ${p}. Write it under ${current}.`, String(p));
     [...String(p)].forEach((ch, k, a) => marks.push({ row, col: col(i) - (a.length - 1 - k), ch, step: sp }));
-    const ss = say(`Subtract: ${current} − ${p} = ${r}.`, String(r));
+    const borrows = borrowing(String(current), String(p));
+    const ss = say(`Subtract: ${current} − ${p} = ${r}.${borrows.length ? ` (Borrow: ${borrows.map((b) => `${String(current)[String(current).length - 1 - b.place]} → ${b.value}`).join(", ")}.)` : ""}`, String(r));
     const width = Math.max(String(current).length, String(p).length);
     lines.push([row, col(i) - width + 1, col(i), ss]);
-    [...String(r)].forEach((ch, k, a) => marks.push({ row: row + 1, col: col(i) - (a.length - 1 - k), ch, step: ss }));
+    // right to left, a column at a time: its borrows (the digit lent from first), then its answer
+    const top = String(current);
+    const res = String(r).padStart(top.length, " ");
+    let n = 0;
+    const done = new Set<number>();
+    for (let place = 0; place < top.length; place++) {
+      for (const b of borrows.filter((b) => b.forPlace === place && !done.has(b.place)).sort((x, y) => y.place - x.place)) {
+        done.add(b.place);
+        const c = col(i) - b.place;
+        const was = top[top.length - 1 - b.place];
+        const original = marks.find((m) => m.row === row - 1 && m.col === c && !m.small);
+        if (original) original.struck = ss;
+        const hint =
+          b.place === place
+            ? `Can't take ${String(p).padStart(top.length, "0")[top.length - 1 - place]} from ${was} — with the 1 borrowed, the ${was} becomes ?`
+            : b.value === "9" && was === "0"
+              ? `The 0 has nothing to lend: it borrows too, then lends 1 — it becomes ?`
+              : `Borrow 1 from the ${was}: it becomes ?`;
+        marks.push({ row: row - 1, col: c, ch: b.value, step: ss, small: true, borrow: true, order: n++, hint });
+      }
+      const ch = res[res.length - 1 - place];
+      if (ch !== " ") marks.push({ row: row + 1, col: col(i) - place, ch, step: ss, order: n++ });
+    }
     i++;
     if (i >= all.length) {
       // past the last digit: done — or on past the decimal point
@@ -95,6 +126,26 @@ export function longDivision(dividendText: string, divisor: number, places = 0):
     current = r * 10 + Number(all[i]);
     row += 2;
   }
+}
+
+/** a subtraction's borrows: each digit of the top number that changes, by
+ * place (0 = ones), its new value, and the column whose borrow changes it */
+export function borrowing(top: string, bottom: string): { place: number; value: string; forPlace: number }[] {
+  const t = [...top].reverse().map(Number);
+  const b = [...bottom].reverse().map(Number);
+  const out: { place: number; value: string; forPlace: number }[] = [];
+  let lendFor = -1; // the column a borrow chain started at
+  let into = 0;
+  for (let k = 0; k < t.length; k++) {
+    let v = t[k] - into;
+    let lends = 0;
+    if (v < (b[k] ?? 0)) (v += 10), (lends = 1);
+    if (lends && !into) lendFor = k;
+    if (into || lends) out.push({ place: k, value: String(v), forPlace: lendFor });
+    into = lends;
+    if (!lends) lendFor = -1;
+  }
+  return out;
 }
 
 function finish(marks: Mark[], lines: Paper["lines"], steps: Step[], rows: number, n: number, lead: number, D: string, result: string): Paper {

@@ -325,3 +325,110 @@
   letter-spacing: 0;
   font-weight: 400;
 }
+
+/* a borrow: the digit lent from crossed out, its new value small above */
+.pp-mark.is-struck,
+.pp-box.is-struck {
+  text-decoration: line-through;
+  text-decoration-color: var(--t-orange);
+  text-decoration-thickness: 2px;
+  color: var(--t-muted);
+}
+
+.pp-mark.is-borrow {
+  place-items: start end;
+  padding: 0 1px 0 0;
+  margin: -9px 0 0 3px;
+  font-size: 11.5px;
+  color: var(--t-orange);
+}
+
+.pp-box.is-borrow {
+  border-radius: 4px;
+  font-size: 11.5px;
+  z-index: 1;
+}
+
+.pp-box.is-borrow.is-done {
+  color: var(--t-orange);
+}
+
+.pp-box.is-hidden {
+  visibility: hidden;
+}
+
+/* the multiples, listed down the left: 1. 24, 2. 48 … a digit a box */
+.pp-sheet {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.pp-mult {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding-right: 18px;
+  border-right: 1px dashed color-mix(in srgb, var(--t-text) 14%, transparent);
+}
+
+.pp-mult-row {
+  display: flex;
+  align-items: center;
+  height: 30px;
+}
+
+.pp-mult-n {
+  width: 30px;
+  color: var(--t-faint);
+  font: 500 14px ui-monospace, "SF Mono", Menlo, monospace;
+  text-align: right;
+  padding-right: 6px;
+}
+
+.pp-mult-row input {
+  width: 26px;
+  height: 26px;
+  margin: 2px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--t-text) 16%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--t-bg1) 80%, transparent);
+  color: var(--t-text);
+  font: 500 17px ui-monospace, "SF Mono", Menlo, monospace;
+  text-align: center;
+  caret-color: transparent;
+  outline: none;
+}
+
+.pp-mult-row input:focus {
+  border-color: var(--t-orange);
+}
+
+.pp-mult-row.is-right input {
+  border-color: transparent;
+  background: none;
+  color: var(--t-green);
+}
+
+.pp-mult-row.is-wrong input {
+  border-color: color-mix(in srgb, var(--t-red) 60%, transparent);
+  color: var(--t-red);
+}
+
+.pp-mult-row.is-right .pp-mult-n {
+  color: var(--t-green);
+}
+
+.pp-mult-head {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  gap: 6px;
+  color: var(--t-faint);
+  font-size: 11px;
+}
+
+.pp-mult-head button {
+  margin-left: auto;
+}

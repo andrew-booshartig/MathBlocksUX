@@ -14,6 +14,8 @@ export interface PaperState {
   practice?: boolean;
   /** the whole problem as empty boxes, filled in the order they're written */
   boxes?: boolean;
+  /** the multiples column down the left (long division): put away */
+  noMultiples?: boolean;
 }
 
 export default function PaperTile({ state, update }: { state: PaperState; update: (patch: Partial<PaperState>) => void }) {
@@ -51,6 +53,10 @@ export default function PaperTile({ state, update }: { state: PaperState; update
   };
 
   const cell = 30;
+  const side =
+    mode === "divide" && paper ? (
+      state.noMultiples ? null : <Multiples divisor={Number(b)} onClose={() => update({ noMultiples: true })} />
+    ) : null;
   return (
     <div
       className="pp"
@@ -86,6 +92,11 @@ export default function PaperTile({ state, update }: { state: PaperState; update
             </label>
           )}
           <span className="pp-space" />
+          {mode === "divide" && state.noMultiples && (
+            <button className="pp-link pp-mult-back" title="List the divisor's multiples down the left" onClick={() => update({ noMultiples: false })}>
+              Multiples
+            </button>
+          )}
           <div className="pp-switch is-small">
             <button className={!practice && !boxes ? "is-on" : ""} onClick={() => update({ practice: false, boxes: false })}>
               Show me
@@ -103,10 +114,11 @@ export default function PaperTile({ state, update }: { state: PaperState; update
       {!paper ? (
         <div className="pp-empty">{mode === "divide" ? "Two whole numbers, the second not 0" : "Two whole numbers"}</div>
       ) : boxes ? (
-        <FillIn paper={paper} multiply={mode === "multiply"} />
+        <FillIn paper={paper} multiply={mode === "multiply"} side={side} />
       ) : (
         <>
           <div className="pp-sheet">
+            {side}
             <div className="pp-grid" style={{ width: paper.cols * cell, height: (paper.rows + 0.4) * cell }}>
               {paper.bracket && at >= 0 && (
                 <div className="pp-bracket" style={{ left: paper.bracket.col * cell - 2, top: paper.bracket.row * cell, width: paper.bracket.width * cell + 6, height: cell }} />
@@ -119,7 +131,7 @@ export default function PaperTile({ state, update }: { state: PaperState; update
               {paper.marks
                 .filter((m) => m.step <= at && (m.until === undefined || at < m.until))
                 .map((m, k) => (
-                  <span key={k} className={`pp-mark${m.small ? " is-small" : ""}${m.step === at ? " is-now" : ""}`} style={{ left: m.col * cell, top: m.row * cell, width: cell, height: cell }}>
+                  <span key={k} className={`pp-mark${m.small ? " is-small" : ""}${m.borrow ? " is-borrow" : ""}${m.struck !== undefined && at >= m.struck ? " is-struck" : ""}${m.step === at ? " is-now" : ""}`} style={{ left: m.col * cell, top: m.row * cell, width: cell, height: cell }}>
                     {m.ch}
                   </span>
                 ))}
@@ -174,6 +186,7 @@ function hintOf(say: string): string {
   if (say.includes("?")) return say.slice(0, say.indexOf("?") + 1);
   if (/^Bring down/.test(say)) return "Bring down the next digit.";
   return say
+    .replace(/\s*\(Borrow.*$/, "")
     .replace(/\s*(Write|It's the last digit).*$/, "")
     .replace(/=\s*-?[\d.]+/g, "= ?")
     .replace(/\.$/, "");
@@ -183,15 +196,15 @@ function hintOf(say: string): string {
  * step, left to right — but right to left when subtracting or multiplying
  * (that's where borrows and carries come from) */
 function order(paper: Paper, multiply: boolean): Mark[] {
-  const wanted = paper.marks.filter((m) => m.step > 0 && !m.small && /\d/.test(m.ch));
+  const wanted = paper.marks.filter((m) => m.step > 0 && (!m.small || m.borrow) && /\d/.test(m.ch));
   const backwards = (m: Mark) => multiply || /^Subtract/.test(paper.steps[m.step]?.say ?? "");
-  return wanted.sort((x, y) => x.step - y.step || (backwards(x) ? y.col - x.col : x.col - y.col));
+  return wanted.sort((x, y) => x.step - y.step || (x.order !== undefined && y.order !== undefined ? x.order - y.order : backwards(x) ? y.col - x.col : x.col - y.col));
 }
 
 /** Fill in: the problem as a worksheet — every box where a digit goes, empty;
  * type in each, in order. Right, and it's kept and the next box is up; wrong,
  * and it says so. What the step is about shows under it. */
-function FillIn({ paper, multiply }: { paper: Paper; multiply: boolean }) {
+function FillIn({ paper, multiply, side }: { paper: Paper; multiply: boolean; side?: React.ReactNode }) {
   const cell = 30;
   const seq = useMemo(() => order(paper, multiply), [paper, multiply]);
   const [done, setDone] = useState<boolean[]>([]);
@@ -212,11 +225,14 @@ function FillIn({ paper, multiply }: { paper: Paper; multiply: boolean }) {
   const focusNext = (from: number, filled: boolean[]) => {
     for (let k = 1; k <= seq.length; k++) {
       const j = (from + k) % seq.length;
-      if (!filled[j]) return inputs.current[j]?.focus();
+      // (after it's drawn: a borrow box only shows once its step is reached)
+      if (!filled[j]) return void setTimeout(() => inputs.current[j]?.focus(), 0);
     }
   };
   const enter = (i: number, v: string) => {
-    const d = v.replace(/\D/g, "").slice(-1);
+    const want = seq[i].ch.length;
+    const digits = v.replace(/\D/g, "");
+    const d = want > 1 ? digits.slice(-want) : digits.slice(-1);
     setTyped((t) => ({ ...t, [i]: d }));
     if (d && d === seq[i].ch) {
       const next = [...done];
@@ -227,9 +243,12 @@ function FillIn({ paper, multiply }: { paper: Paper; multiply: boolean }) {
   };
   const step = paper.steps[seq[at]?.step];
   const right = done.filter(Boolean).length;
+  /** a digit's crossed out once the borrow above it is written */
+  const struckNow = (m: Mark) => seq.some((b, i) => b.borrow && done[i] && b.row === m.row && b.col === m.col);
   return (
     <>
       <div className="pp-sheet">
+        {side}
         <div className="pp-grid" style={{ width: paper.cols * cell, height: (paper.rows + 0.4) * cell }}>
           {paper.bracket && <div className="pp-bracket" style={{ left: paper.bracket.col * cell - 2, top: paper.bracket.row * cell, width: paper.bracket.width * cell + 6, height: cell }} />}
           {paper.lines.map(([row, from, to, s], k) => (
@@ -239,7 +258,7 @@ function FillIn({ paper, multiply }: { paper: Paper; multiply: boolean }) {
           {paper.marks
             .filter((m) => !seq.includes(m) && (m.step === 0 || m.step < reached || (!m.small && m.step <= reached)) && (m.until === undefined || reached < m.until))
             .map((m, k) => (
-              <span key={k} className={`pp-mark${m.small ? " is-small" : ""}`} style={{ left: m.col * cell, top: m.row * cell, width: cell, height: cell }}>
+              <span key={k} className={`pp-mark${m.small ? " is-small" : ""}${m.struck !== undefined && struckNow(m) ? " is-struck" : ""}`} style={{ left: m.col * cell, top: m.row * cell, width: cell, height: cell }}>
                 {m.ch}
               </span>
             ))}
@@ -247,15 +266,16 @@ function FillIn({ paper, multiply }: { paper: Paper; multiply: boolean }) {
             <input
               key={i}
               ref={(el) => void (inputs.current[i] = el)}
-              className={`pp-box${done[i] ? " is-done" : typed[i] ? " is-wrong" : ""}${m.step > reached ? " is-ahead" : ""}${m.row === 0 && paper.bracket ? " is-answer" : ""}`}
-              style={{ left: m.col * cell + 2, top: m.row * cell + 2, width: cell - 4, height: cell - 4 }}
+              className={`pp-box${m.borrow ? " is-borrow" : ""}${done[i] ? " is-done" : (typed[i] ?? "").length >= m.ch.length ? " is-wrong" : ""}${m.step > reached ? " is-ahead" : ""}${m.borrow && m.step > reached ? " is-hidden" : ""}${!m.borrow && struckNow(m) ? " is-struck" : ""}`}
+              style={m.borrow ? { left: m.col * cell + 13, top: m.row * cell - 9, width: 19, height: 16 } : { left: m.col * cell + 2, top: m.row * cell + 2, width: cell - 4, height: cell - 4 }}
               value={done[i] ? m.ch : typed[i] ?? ""}
               readOnly={done[i]}
-              tabIndex={done[i] ? -1 : 0}
+              tabIndex={done[i] || (m.borrow && m.step > reached) ? -1 : 0}
               inputMode="numeric"
               aria-label={paper.steps[m.step]?.say}
               onFocus={() => setAt(i)}
               onChange={(e) => enter(i, e.target.value)}
+              maxLength={m.ch.length + 1}
               onKeyDown={(e) => {
                 if (e.key === "Backspace" && !done[i]) setTyped((t) => ({ ...t, [i]: "" }));
               }}
@@ -270,7 +290,7 @@ function FillIn({ paper, multiply }: { paper: Paper; multiply: boolean }) {
             {hints ? "hide hints" : "show hints"}
           </button>
         </div>
-        <div className="pp-say">{finished ? `That's it: ${paper.result}.` : hints && step ? hintOf(step.say) : "\u00a0"}</div>
+        <div className="pp-say">{finished ? `That's it: ${paper.result}.` : hints && step ? seq[at]?.hint ?? hintOf(step.say) : "\u00a0"}</div>
         <div className="pp-nav">
           {!finished && (
             <button
@@ -290,5 +310,65 @@ function FillIn({ paper, multiply }: { paper: Paper; multiply: boolean }) {
         </div>
       </div>
     </>
+  );
+}
+
+/** The divisor's multiples, listed down the left the way it's done on scrap
+ * paper — 1. 24, 2. 48, 3. 72 — a digit a box. Type across a row (it moves
+ * on by itself); each row says when it's right. */
+function Multiples({ divisor, onClose }: { divisor: number; onClose: () => void }) {
+  const width = String(divisor * 9).length;
+  const [cells, setCells] = useState<string[][]>([]);
+  const boxes = useRef<(HTMLInputElement | null)[]>([]);
+  useEffect(() => setCells([]), [divisor]);
+  const at = (r: number, c: number) => boxes.current[r * width + c];
+  const put = (r: number, c: number, v: string) =>
+    setCells((all) => {
+      const next = all.map((row) => [...row]);
+      next[r] = [...(next[r] ?? Array(width).fill(""))];
+      next[r][c] = v;
+      return next;
+    });
+  return (
+    <div className="pp-mult" title={`Multiples of ${divisor}: write them out to see which fits`}>
+      <div className="pp-mult-head">
+        × {divisor}
+        <button className="pp-link" title="Put the list away" onClick={onClose}>
+          hide
+        </button>
+      </div>
+      {Array.from({ length: 9 }, (_, r) => {
+        const row = cells[r] ?? [];
+        const value = row.join("");
+        const want = String(divisor * (r + 1));
+        const state = value === want ? "is-right" : value.length >= want.length && value !== want ? "is-wrong" : "";
+        return (
+          <div key={r} className={`pp-mult-row ${state}`}>
+            <span className="pp-mult-n">{r + 1}.</span>
+            {Array.from({ length: width }, (_, c) => (
+              <input
+                key={c}
+                ref={(el) => void (boxes.current[r * width + c] = el)}
+                value={row[c] ?? ""}
+                inputMode="numeric"
+                aria-label={`${r + 1} × ${divisor}, digit ${c + 1}`}
+                onChange={(e) => {
+                  const d = e.target.value.replace(/\D/g, "").slice(-1);
+                  put(r, c, d);
+                  if (d) (c + 1 < width ? at(r, c + 1) : at(r + 1, 0))?.focus();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Backspace" && !row[c] && c > 0) (e.preventDefault(), put(r, c - 1, ""), at(r, c - 1)?.focus());
+                  else if (e.key === "ArrowRight") at(r, c + 1)?.focus();
+                  else if (e.key === "ArrowLeft") at(r, c - 1)?.focus();
+                  else if (e.key === "ArrowDown" || e.key === "Enter") at(r + 1, c)?.focus();
+                  else if (e.key === "ArrowUp") at(r - 1, c)?.focus();
+                }}
+              />
+            ))}
+          </div>
+        );
+      })}
+    </div>
   );
 }
