@@ -619,6 +619,8 @@ export interface CalculatorBlockData extends BlockBase {
   smartPaper?: import("./paper/PaperTile").PaperState;
   /** its Flash cards tile: which tables, and how each fact is doing */
   smartFacts?: import("./drill/FactsTile").FactsState;
+  /** its Slide rule tile: where the slide and cursor are, which scales, the lesson */
+  smartSlide?: import("./sliderule/SlideRuleTile").SlideRuleState;
   ti?: TIState;
   /** the TI layout's extra-keys strip (fractions, powers…); on unless turned off */
   tiExtras?: boolean;

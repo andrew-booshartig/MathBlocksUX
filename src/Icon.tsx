@@ -83,6 +83,7 @@ const PATHS: Record<string, string> = {
   bolt: "M13 3 5 14h6l-1 7 8-11h-6z",
   electrical: "M13 3 5 14h6l-1 7 8-11h-6z",
   paper: "M6 3h9l4 4v14H6zM15 3v4h4M9 12h6M9 16h4",
+  sliderule: "M2 7h20v10H2zM2 10h20M2 14h20M6 7v2M10 7v3M14 7v2M18 7v3M12 4v16",
   facts: "M4 7h12v13H4zM8 7V4h12v13h-4M8 12l4 4M12 12l-4 4",
   check: "M5 12.5l4.5 4.5L19 7",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",

@@ -1,0 +1,288 @@
+/* Slide rule: the body, the slide, the cursor's glass and hairline */
+.sr {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  font: 13px -apple-system, "Inter", sans-serif;
+  color: var(--t-text);
+}
+
+.sr-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sr-space {
+  flex: 1;
+}
+
+.sr-switch {
+  display: inline-flex;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: var(--t-bg2);
+}
+
+.sr-switch button {
+  height: 26px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.sr-switch button.is-on {
+  background: color-mix(in srgb, var(--t-blue) 20%, transparent);
+  color: var(--t-blue);
+}
+
+.sr-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--t-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.sr-rule {
+  display: block;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+  cursor: crosshair;
+}
+
+.sr-body {
+  fill: color-mix(in srgb, var(--t-text) 6%, var(--t-bg2));
+  stroke: color-mix(in srgb, var(--t-text) 12%, transparent);
+}
+
+.sr-slide {
+  fill: color-mix(in srgb, var(--t-text) 10%, var(--t-bg1));
+  stroke: color-mix(in srgb, var(--t-text) 18%, transparent);
+  cursor: grab;
+}
+
+.sr-slide-g:active .sr-slide {
+  cursor: grabbing;
+}
+
+.sr-scale line {
+  stroke: var(--t-text);
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+  pointer-events: none;
+}
+
+.sr-scale text {
+  fill: var(--t-text);
+  font: 9px ui-monospace, "SF Mono", Menlo, monospace;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.sr-scale text.is-big {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sr-scale .sr-name {
+  fill: var(--t-faint);
+  font-size: 10px;
+  text-anchor: end;
+}
+
+/* CI runs backwards: red, as on a real rule */
+.sr-scale.is-CI line {
+  stroke: var(--t-red);
+}
+
+.sr-scale.is-CI text {
+  fill: var(--t-red);
+}
+
+.sr-glass {
+  fill: color-mix(in srgb, var(--t-blue) 7%, transparent);
+  stroke: color-mix(in srgb, var(--t-text) 25%, transparent);
+  cursor: ew-resize;
+}
+
+.sr-hair {
+  stroke: var(--t-red);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.sr-read {
+  fill: var(--t-orange);
+  font: 600 11px ui-monospace, "SF Mono", Menlo, monospace;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--t-bg1);
+  stroke-width: 3px;
+}
+
+.sr-rule:focus .sr-slide.is-last {
+  stroke: color-mix(in srgb, var(--t-blue) 60%, transparent);
+}
+
+.sr-rule:focus .sr-cursor.is-last .sr-glass {
+  stroke: var(--t-blue);
+}
+
+.sr-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 720px;
+  padding: 14px 16px;
+  border: 1px solid var(--t-line);
+  border-radius: 12px;
+  background: var(--t-bg2);
+}
+
+.sr-lessons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sr-lessons button,
+.sr-actions button,
+.sr-prob button {
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid var(--t-line);
+  border-radius: 7px;
+  background: none;
+  color: var(--t-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sr-lessons button.is-on {
+  border-color: color-mix(in srgb, var(--t-blue) 50%, var(--t-line));
+  color: var(--t-text);
+}
+
+.sr-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sr-actions button.is-primary,
+.sr-prob button.is-primary {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--t-blue) 24%, var(--t-bg3));
+  color: var(--t-text);
+}
+
+.sr-steps {
+  display: flex;
+  gap: 5px;
+}
+
+.sr-dot {
+  width: 22px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--t-line);
+}
+
+.sr-dot.is-done {
+  background: var(--t-green);
+}
+
+.sr-dot.is-now {
+  background: var(--t-blue);
+}
+
+.sr-say {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.sr-say.is-right {
+  color: var(--t-green);
+}
+
+.sr-say.is-wrong {
+  color: var(--t-red);
+}
+
+.sr-prob {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sr-q {
+  font: 500 24px ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.sr-eq {
+  color: var(--t-faint);
+  font-size: 20px;
+}
+
+.sr-answer {
+  width: 150px;
+  height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-bottom: 2px solid var(--t-line);
+  background: none;
+  color: var(--t-text);
+  font: 500 20px ui-monospace, "SF Mono", Menlo, monospace;
+  outline: none;
+}
+
+.sr-answer:focus {
+  border-bottom-color: var(--t-blue);
+}
+
+.sr-score {
+  color: var(--t-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-tip {
+  color: var(--t-faint);
+  font-size: 12px;
+}
+
+.sr-readings {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: -6px;
+  font: 13px ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--t-orange);
+}
+
+.sr-readings b {
+  color: var(--t-faint);
+  font-weight: 500;
+}
+
+.sr-reading.is-CI {
+  color: var(--t-red);
+}
+
+.sr-readings-label {
+  color: var(--t-faint);
+  font: 11px -apple-system, "Inter", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}

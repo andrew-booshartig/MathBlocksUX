@@ -5,6 +5,7 @@
  * factor). A slim keypad for the structures that are awkward to type. */
 import PaperTile from "../paper/PaperTile";
 import FactsTile from "../drill/FactsTile";
+import SlideRuleTile from "../sliderule/SlideRuleTile";
 import ElectricalTile from "../electrical/ElectricalTile";
 import Icon from "../Icon";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -1709,6 +1710,7 @@ export default function SmartCalc({
     />
   );
   // ---- Paper: long division and multiplication, a step at a time
+  const slideBody = <SlideRuleTile state={data.smartSlide ?? {}} update={(patch) => updateBlock(data.id, { smartSlide: { ...(current()?.smartSlide ?? {}), ...patch } })} />;
   const factsBody = <FactsTile state={data.smartFacts ?? {}} update={(patch) => updateBlock(data.id, { smartFacts: { ...(current()?.smartFacts ?? {}), ...patch } })} />;
   const paperBody = <PaperTile state={data.smartPaper ?? {}} update={(patch) => updateBlock(data.id, { smartPaper: { ...(current()?.smartPaper ?? {}), ...patch } })} />;
   const referenceBody = (
@@ -2176,6 +2178,7 @@ export default function SmartCalc({
             electrical: electricalBody,
             paper: paperBody,
             facts: factsBody,
+            sliderule: slideBody,
             equations: equationsBody,
           }}
         />
