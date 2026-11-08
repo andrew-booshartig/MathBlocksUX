@@ -3882,3 +3882,98 @@ body.nb-is-moving * {
   bottom: auto;
   top: calc(100% + 2px);
 }
+
+/* Insert → Symbol: a grid of them */
+.nb-format-menu.nb-format-symbols {
+  display: grid;
+  grid-template-columns: repeat(8, 30px);
+  min-width: 0;
+  gap: 1px;
+}
+
+.nb-format-menu.nb-format-symbols button {
+  justify-content: center;
+  min-width: 30px;
+  padding: 0;
+  font: 16px "KaTeX_Main", "Times New Roman", serif;
+}
+
+/* a list item's lettered marker, in the live editor */
+.cm-lp-letter {
+  color: var(--t-muted);
+}
+
+/* lettered lists on the page: a. b. c. */
+.nb-md ol.nb-letters {
+  padding-left: 1.7em;
+}
+
+.nb-md ol.nb-letters > li::marker {
+  color: var(--t-muted);
+}
+
+/* a paragraph is just writing: no bar on hover (its grip picks it, and then the bar shows) — and the
+   paragraph last written in stays picked for the keys without showing it */
+.nb-block.is-text:not(.is-picked):hover > .nb-obj-bar,
+.nb-block.is-text.is-quiet > .nb-obj-bar {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nb-block.is-quiet,
+.nb:focus .nb-block.is-quiet,
+.nb:focus-within .nb-block.is-quiet {
+  box-shadow: none !important;
+  background: none !important;
+}
+
+/* the bar on one line: narrower, the apps' names go (their icons and titles stay) */
+.nb-format {
+  container-type: inline-size;
+}
+
+@container (max-width: 1060px) {
+  .nb-format-label {
+    display: none;
+  }
+
+  .nb-format > button,
+  .nb-format > .nb-format-anchor > button {
+    min-width: 25px;
+    padding: 0 4px;
+  }
+
+  .nb-format-sep {
+    margin: 0 3px;
+  }
+}
+
+/* (its menus and the paper's color and paper pickers open over the page) */
+.nb-format {
+  position: relative;
+  z-index: 30;
+}
+
+/* page view: the writing on a sheet of paper, on a desk (Word's print layout) — the sheet is the
+   column and its margins, the length of everything on it, with an edge's shadow either side */
+.nb-page.is-sheet {
+  --nb-desk: color-mix(in srgb, var(--t-bg1) 72%, #000);
+  --nb-sheet: color-mix(in srgb, var(--t-bg2) 40%, var(--t-bg1));
+  --nb-margin: 64px;
+  background-color: var(--nb-desk);
+  background-image:
+    linear-gradient(to left, rgb(0 0 0 / 0.28), transparent),
+    linear-gradient(to right, rgb(0 0 0 / 0.28), transparent),
+    linear-gradient(var(--nb-sheet), var(--nb-sheet));
+  background-origin: content-box;
+  background-repeat: no-repeat;
+  background-attachment: local;
+  background-size:
+    10px calc(100% + 140px),
+    10px calc(100% + 140px),
+    calc(100% + 2 * var(--nb-margin)) calc(100% + 140px);
+  background-position:
+    calc(-1 * var(--nb-margin) - 10px) -20px,
+    calc(100% + var(--nb-margin) + 10px) -20px,
+    calc(-1 * var(--nb-margin)) -20px;
+}

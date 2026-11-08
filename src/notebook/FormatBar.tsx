@@ -7,9 +7,13 @@ import { redo, undo } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
 import Icon from "../Icon";
 import { writingKey } from "./writing";
+import { tabKey } from "./proseKeys";
 
-/** what starts a line: a heading's #s, a quote's >, a list's marker */
-const LEAD = /^(\s*)(#{1,6}\s+|>\s?|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+)?/;
+/** what starts a line: a heading's #s, a quote's >, a list's marker (lettered too) */
+const LEAD = /^(\s*)(#{1,6}\s+|>\s?|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+|[a-zA-Z][.)]\s+)?/;
+
+/** symbols a keyboard hasn't got, a click away (as Word's Insert → Symbol) */
+const SYMBOLS = ["×", "÷", "±", "−", "·", "√", "∛", "π", "°", "≤", "≥", "≠", "≈", "∞", "²", "³", "½", "¼", "¾", "θ", "Δ", "Ω", "μ", "Σ", "∠", "⊥", "∥", "→", "←", "⇒", "%", "‰"];
 
 const STYLES = [
   { id: "text", label: "Text", lead: "" },
@@ -26,11 +30,12 @@ function setLead(v: EditorView, lead: string, toggle = false) {
   const first = state.doc.lineAt(sel.from).number;
   const last = state.doc.lineAt(sel.to).number;
   const changes = [];
-  const already = toggle && state.doc.line(first).text.match(LEAD)?.[2] === lead;
+  const kindOf = (l?: string) => (!l ? "" : /^\d/.test(l) ? "1. " : /^[a-z][.)]/.test(l) ? "a. " : /^[A-Z][.)]/.test(l) ? "A. " : l);
+  const already = toggle && kindOf(state.doc.line(first).text.match(LEAD)?.[2]) === kindOf(lead);
   for (let n = first, k = 1; n <= last; n++, k++) {
     const line = state.doc.line(n);
     const m = line.text.match(LEAD)!;
-    const next = already ? "" : lead === "1. " ? `${k}. ` : lead;
+    const next = already ? "" : lead === "1. " ? `${k}. ` : lead === "a. " ? `${String.fromCharCode(96 + Math.min(26, k))}. ` : lead === "A. " ? `${String.fromCharCode(64 + Math.min(26, k))}. ` : lead;
     changes.push({ from: line.from + m[1].length, to: line.from + m[0].length, insert: next });
   }
   v.dispatch({ changes });
@@ -62,6 +67,8 @@ export default function FormatBar({
   onPicture,
   onTable,
   onApp,
+  align,
+  onAlign,
 }: {
   /** the text being written, if any */
   view: EditorView | null;
@@ -76,7 +83,11 @@ export default function FormatBar({
   onTable: () => void;
   /** an app block (Calculate, Work, Graph), under the text being written (or at the end), open to work in */
   onApp: (lang: "calc" | "work" | "graph" | "paper" | "math") => void;
+  /** the paragraph's alignment (the one being written, or picked) — none: nothing to align */
+  align?: "left" | "center" | "right";
+  onAlign?: (a: "left" | "center" | "right") => void;
 }) {
+  const [symbols, setSymbols] = useState(false);
   const [styles, setStyles] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const line = view ? view.state.doc.lineAt(view.state.selection.main.head).text : "";
@@ -128,15 +139,33 @@ export default function FormatBar({
         <Icon name="link" size={14} />
       </button>
       <span className="nb-format-sep" />
-      <button title="Bulleted list" onClick={() => lead("- ", true)}>
+      <button title="Bulleted list (⌘⇧8)" onClick={() => lead("- ", true)}>
         <Icon name="list" size={15} />
       </button>
-      <button title="Numbered list" onClick={() => lead("1. ", true)}>
+      <button title="Numbered list (⌘⇧7) — Enter goes on to the next number" onClick={() => lead("1. ", true)}>
         <span className="nb-format-num">1.</span>
       </button>
-      <button title="Checklist" onClick={() => lead("- [ ] ", true)}>
+      <button title="Lettered list — a. b. c." onClick={() => lead("a. ", true)}>
+        <span className="nb-format-num">a.</span>
+      </button>
+      <button title="Lettered list — A. B. C." onClick={() => lead("A. ", true)}>
+        <span className="nb-format-num">A.</span>
+      </button>
+      <button title="Checklist (⌘⇧9)" onClick={() => lead("- [ ] ", true)}>
         <Icon name="check" size={15} />
       </button>
+      <button disabled={off} title="Outdent (⇧Tab)" onClick={() => view && (tabKey(true)(view), view.focus())}>
+        <Icon name="outdent" size={15} />
+      </button>
+      <button disabled={off} title="Indent — a list item in under the one above (Tab)" onClick={() => view && (tabKey(false)(view), view.focus())}>
+        <Icon name="indent" size={15} />
+      </button>
+      <span className="nb-format-sep" />
+      {(["left", "center", "right"] as const).map((a) => (
+        <button key={a} disabled={!onAlign} className={align === a ? "is-on" : ""} title={`Align ${a}`} onClick={() => onAlign?.(a)}>
+          <Icon name={a === "left" ? "alignLeft" : a === "center" ? "alignCenter" : "alignRight"} size={15} />
+        </button>
+      ))}
       <span className="nb-format-sep" />
       <button title="A table — a spreadsheet, typed into right on the page" onClick={onTable}>
         <Icon name="table" size={15} />
@@ -147,18 +176,32 @@ export default function FormatBar({
       <button title="Math — a problem written out, typed as it reads (in a line of text, $x^2$ does it)" onClick={() => onApp("math")}>
         <span className="nb-format-num">∑</span>
       </button>
+      <span className="nb-format-anchor">
+        <button disabled={off} className={symbols ? "is-on" : ""} title="A symbol — × ÷ ± √ π ° ≤ ≥ ≈ ½ …" onClick={() => setSymbols(!symbols)}>
+          <span className="nb-format-num">Ω</span>
+        </button>
+        {symbols && view && (
+          <span className="nb-format-menu nb-format-symbols" onMouseLeave={() => setSymbols(false)}>
+            {SYMBOLS.map((c) => (
+              <button key={c} onClick={() => (insert(view, c), setSymbols(false))}>
+                {c}
+              </button>
+            ))}
+          </span>
+        )}
+      </span>
       <span className="nb-format-sep" />
       <button className="nb-format-app" title="Calculate — work it out, right on the page" onClick={() => onApp("calc")}>
-        <Icon name="calc" size={15} /> Calculate
+        <Icon name="calc" size={15} /> <span className="nb-format-label">Calculate</span>
       </button>
       <button className="nb-format-app" title="Work — solve a problem step by step, right on the page" onClick={() => onApp("work")}>
-        <Icon name="work" size={15} /> Work
+        <Icon name="work" size={15} /> <span className="nb-format-label">Work</span>
       </button>
       <button className="nb-format-app" title="Graph — right on the page" onClick={() => onApp("graph")}>
         <Icon name="graph" size={15} />
       </button>
       <button className="nb-format-app" title="Graph paper — beside what you're writing: work it out by hand, a digit a square, carries, lines, crossing out" onClick={() => onApp("paper")}>
-        <Icon name="gridpaper" size={15} /> Paper
+        <Icon name="gridpaper" size={15} /> <span className="nb-format-label">Paper</span>
       </button>
       {/* graph paper being worked on: its tools take the bar (as Word's ribbon turns to a table's) */}
       <div className="nb-format-slot" />

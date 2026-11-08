@@ -89,6 +89,8 @@ const PATHS: Record<string, string> = {
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
   table: "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14",
   gridpaper: "M4 4h16v16H4zM4 8h16M4 12h16M4 16h16M8 4v16M12 4v16M16 4v16",
+  indent: "M4 5h16M11 10h9M11 14h9M4 19h16M4 9.5l3 2.5-3 2.5",
+  outdent: "M4 5h16M11 10h9M11 14h9M4 19h16M7 9.5 4 12l3 2.5",
   // graph paper's tools
   psCross: "M8 6h8l-5 12M5 19 19 5",
   psCircle: "M12 19.5a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15zM10.5 9.5 12.5 8v8",

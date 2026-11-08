@@ -18,9 +18,46 @@ export function mathHtml(latex: string, display: boolean, print = false): string
 const safeHref = (href: string) => (/^(https?:|mailto:|#)/i.test(href.trim()) ? href.trim() : null);
 
 function makeMarked(print: boolean) {
-  const marked = new Marked({ gfm: true, breaks: false });
+  // a line typed on a line of its own reads that way — as in Word, not run into the line above
+  const marked = new Marked({ gfm: true, breaks: true });
   marked.use({
     extensions: [
+      {
+        // a. b. c. / A. B. C. — a lettered list, as Word makes one
+        name: "letterList",
+        level: "block",
+        start(src: string) {
+          const m = src.match(/(?:^|\n) {0,3}[a-zA-Z][.)][ \t]/);
+          return m ? m.index! + (m[0].startsWith("\n") ? 1 : 0) : undefined;
+        },
+        tokenizer(src: string) {
+          const m = src.match(/^( {0,3})([a-zA-Z])([.)])[ \t]+[^\n]*(?:\n(?:\1[a-zA-Z]\3[ \t]+[^\n]*|\1 {2,}\S[^\n]*))*(?:\n|$)/);
+          if (!m) return undefined;
+          const items: { text: string; n: number }[] = [];
+          for (const line of m[0].replace(/\n$/, "").split("\n")) {
+            const item = line.match(/^ {0,3}[a-zA-Z][.)][ \t]+(.*)$/);
+            if (item && line.startsWith(m[1]) && !line.slice(m[1].length).startsWith(" ")) items.push({ text: item[1], n: line.trim().toLowerCase().charCodeAt(0) - 96 });
+            // a line in under it: its own (a list nested in it keeps its place, three in from the marker)
+            else items[items.length - 1].text += "\n" + line.slice(m[1].length).replace(/^ {1,3}/, "");
+          }
+          const first = m[2];
+          const upper = first !== first.toLowerCase();
+          return {
+            type: "letterList",
+            raw: m[0],
+            upper,
+            start: first.toLowerCase().charCodeAt(0) - 96,
+            items: items.map((it) => ({ n: it.n, tokens: this.lexer.blockTokens(it.text, []) })),
+          };
+        },
+        renderer(token: Tokens.Generic) {
+          // a tight list: an item's first paragraph is its line, not a paragraph of its own
+          const items = (token.items as { n: number; tokens: Tokens.Generic[] }[])
+            .map((it) => `<li value="${it.n}">${it.tokens.map((t) => (t.type === "paragraph" || t.type === "text" ? this.parser.parseInline(t.tokens ?? []) : this.parser.parse([t]))).join("")}</li>`)
+            .join("");
+          return `<ol class="nb-letters" type="${token.upper ? "A" : "a"}"${token.start > 1 ? ` start="${token.start}"` : ""}>${items}</ol>\n`;
+        },
+      },
       {
         name: "blockMath",
         level: "block",
@@ -113,9 +150,43 @@ function makeMarked(print: boolean) {
 const screen = makeMarked(false);
 const paper = makeMarked(true);
 
+const MARKER = /^( {0,3})(?:([-*+])|(\d{1,9})[.)]|([a-z])[.)]|([A-Z])[.)])[ \t]+/;
+/** lists end where their items do: a line after one that isn't an item (or a list of another
+ * kind) starts afresh — as it looks while it's written, not run into the item above */
+export function settleLists(text: string): string {
+  const out: string[] = [];
+  let list: string | null = null;
+  let math = false;
+  for (const line of text.split("\n")) {
+    const dollars = (line.match(/\$\$/g) ?? []).length % 2 === 1;
+    if (math || dollars) {
+      if (dollars) math = !math;
+      if (list && dollars && math) (out.push(""), (list = null));
+      out.push(line);
+      continue;
+    }
+    if (!line.trim()) {
+      list = null;
+      out.push(line);
+      continue;
+    }
+    const m = line.match(MARKER);
+    if (m && m[1].length < 2) {
+      const kind = m[2] ? "bullet" : m[3] ? "num" : m[4] ? "lower" : "upper";
+      if (list && list !== kind) out.push("");
+      list = kind;
+    } else if (list && !/^\s{2,}/.test(line)) {
+      out.push("");
+      list = null;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
 /** a text block as HTML (safe to put on the page) */
 export function renderMarkdown(text: string, print = false): string {
-  const html = (print ? paper : screen).parse(text, { async: false }) as string;
+  const html = (print ? paper : screen).parse(settleLists(text), { async: false }) as string;
   // a task's box can be ticked on the page (the page writes it into the text)
   return print ? html : html.replace(/<input (checked="" )?disabled="" type="checkbox">/g, (_all, on) => `<input ${on ?? ""}type="checkbox">`);
 }

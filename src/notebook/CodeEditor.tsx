@@ -6,7 +6,7 @@
  * ⌘/ comments a line, ⌥↑ ⌥↓ move it. Esc in normal mode (or :w, :q) is
  * done editing. */
 import { useEffect, useRef, useState } from "react";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, type Extension, Prec } from "@codemirror/state";
 import { EditorView, type KeyBinding, drawSelection, highlightActiveLine, keymap, lineNumbers, placeholder as placeholderText } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentLess, indentMore, moveLineDown, moveLineUp, toggleComment } from "@codemirror/commands";
 import { HighlightStyle, StreamLanguage, type StreamParser, bracketMatching, indentUnit, syntaxHighlighting } from "@codemirror/language";
@@ -177,6 +177,8 @@ export interface CodeEditorProps {
   at?: { x: number; y: number };
   /** the caret at its start (come to from the block above) */
   fromTop?: boolean;
+  /** the caret here (a paragraph joined to the one above: where they meet) */
+  caret?: number;
   /** off its top or bottom edge (↑ on the first line, ↓ on the last; vim's k and j): on to the next block — true when there was one */
   onEdge?: (dir: "up" | "down") => boolean;
   /** told of its editor while it's open (null when it closes): the formatting bar works on it */
@@ -265,7 +267,8 @@ export default function CodeEditor(props: CodeEditorProps) {
     ];
     const extensions: Extension[] = [
       ...(p.vimKeys ? [vim({ status: true })] : []),
-      ...(p.keys ? [keymap.of(p.keys)] : []),
+      // (a text block's own keys come before the Markdown keymap's — with vim keys, after vim's)
+      ...(p.keys ? [p.vimKeys ? keymap.of(p.keys) : Prec.highest(keymap.of(p.keys))] : []),
       ...(p.markdown ? [livePreview(), keymap.of(markdownKeymap)] : []),
       keymap.of(keys),
       history(),
@@ -275,7 +278,7 @@ export default function CodeEditor(props: CodeEditorProps) {
       indentUnit.of("    "),
       EditorState.tabSize.of(4),
       numbers.current.of(p.prose ? [] : lineNumbers()),
-      ...(p.prose ? [EditorView.lineWrapping] : [highlightActiveLine()]),
+      ...(p.prose ? [EditorView.lineWrapping, EditorView.contentAttributes.of({ spellcheck: "true", autocorrect: "on", autocapitalize: "sentences" })] : [highlightActiveLine()]),
       ...(p.placeholder ? [placeholderText(p.placeholder)] : []),
       ...(p.spec || p.python ? [StreamLanguage.define(parserFor(p.spec ?? PYTHON_SPEC, !!p.python)), syntaxHighlighting(colors)] : []),
       EditorView.updateListener.of((u) => {
@@ -299,7 +302,7 @@ export default function CodeEditor(props: CodeEditorProps) {
     v.focus();
     // the caret where it was clicked (the text reads the same as it did, so that's the same place)
     const clicked = p.at && v.posAtCoords(p.at);
-    v.dispatch({ selection: { anchor: clicked ?? (p.fromTop ? 0 : v.state.doc.length) } });
+    v.dispatch({ selection: { anchor: p.caret !== undefined ? Math.min(p.caret, v.state.doc.length) : (clicked ?? (p.fromTop ? 0 : v.state.doc.length)) } });
     // ↑ on the first line, ↓ on the last (vim: k and j in normal mode): on to the block beside it
     const edge = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || !latest.current.onEdge || choicesRef.current) return;

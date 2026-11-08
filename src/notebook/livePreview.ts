@@ -153,6 +153,17 @@ function build(state: EditorState, view: EditorView): DecorationSet {
         if (name === "InlineCode" || name === "CodeText") return false;
       },
     });
+    // a list item's lines wrap under its text, not its marker (as Word's do) — lettered ones too
+    for (let pos = from; pos <= to; ) {
+      const l = state.doc.lineAt(pos);
+      const item = l.text.match(/^(\s*)([-*+]|\d{1,9}[.)]|[a-zA-Z][.)])(\s+)(\[[ xX]\]\s+)?/);
+      if (item) {
+        const width = item[0].length - (/^[-*+]$/.test(item[2]) ? 0.4 : 0);
+        out.push(Decoration.line({ class: "cm-lp-item", attributes: { style: `padding-left: calc(${width}ch + 6px); text-indent: calc(-${width}ch)` } }).range(l.from));
+        if (/^[a-zA-Z][.)]$/.test(item[2])) out.push(mark("cm-lp-letter").range(l.from + item[1].length, l.from + item[1].length + item[2].length));
+      }
+      pos = l.to + 1;
+    }
     // what Markdown's parser doesn't know: $math$, ==highlights==, #tags
     const text = state.sliceDoc(from, to);
     for (const m of text.matchAll(/(?<!\$)\$(?!\$)(?=\S)((?:\\.|[^\\$\n])+?)(?<=\S)\$(?!\d)/g)) {

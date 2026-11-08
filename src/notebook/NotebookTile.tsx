@@ -31,6 +31,7 @@ import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import PaperBlock from "./paperBlock";
+import { enterKey, listKey, tabKey } from "./proseKeys";
 import { toggleTask, writingKey } from "./writing";
 import { TableBlock, fromMarkdownTable, tableMarkdown } from "./tableBlock";
 import type { EditorView, KeyBinding } from "@codemirror/view";
@@ -39,7 +40,7 @@ import FormatBar from "./FormatBar";
 import { LINKED_LANGS, appDataFor, canLink, closeLinked, codeFor, linkedApp, linkedId, openLinked, rescopeLinked, useLinkedApps, watchLinked } from "./linked";
 import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
-import { setVimKeys, useVimKeys } from "./editorSettings";
+import { setPageView, setVimKeys, usePageView, useVimKeys } from "./editorSettings";
 import { useParts } from "../parts";
 import "./notebook.css";
 
@@ -197,6 +198,8 @@ export default function NotebookTile({
   const [draft, setDraft] = useState("");
   /** the block picked with the keys (Esc out of one, then j/k) — as in Jupyter's command mode */
   const [picked, setPicked] = useState<string | null>(null);
+  /** picked only as the block last written in (no outline, no bar) — till it's picked on purpose */
+  const [quietId, setQuietId] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   /** the last plain key, for dd */
   const lastKey = useRef({ key: "", at: 0 });
@@ -612,6 +615,7 @@ export default function NotebookTile({
   };
   useEffect(spy, [outline]); // eslint-disable-line react-hooks/exhaustive-deps
   const vimKeys = useVimKeys();
+  const pageView = usePageView();
   /** what's typed in the block being edited, as of now (an editor's callbacks run between renders) */
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -1032,6 +1036,7 @@ export default function NotebookTile({
   };
   /** a block picked (its bar and its handles); the notebook takes the keys */
   const pickBlock = (id: string | null) => {
+    setQuietId(null);
     setPicked(id);
     if (id) root.current?.focus({ preventScroll: true });
   };
@@ -1273,8 +1278,10 @@ export default function NotebookTile({
     // (the next block opened sets this again, after this)
     setTimeout(() => (fromTop.current = false), 50);
     if (!b) return;
-    // it stays picked, so the keys go on from it (with nothing else taking them)
+    // it stays picked, so the keys go on from it (with nothing else taking them) — quietly: a paragraph
+    // just written shows nothing for it (no outline, no bar), as in Word
     setPicked(id);
+    setQuietId(id);
     setTimeout(() => {
       const now = document.activeElement;
       if (!now || now === document.body) root.current?.focus({ preventScroll: true });
@@ -1351,6 +1358,41 @@ export default function NotebookTile({
   };
   /** where a text block was clicked to write in it: the caret goes there */
   const clickAt = useRef<{ x: number; y: number } | null>(null);
+  /** where the caret goes in the block opened next (two paragraphs joined: where they meet) */
+  const caretAt = useRef<number | null>(null);
+  useEffect(() => void (caretAt.current = null), [editing]);
+  /** ⌫ at a paragraph's start: it joins the one above (an empty one just goes) — as in Word */
+  const joinUp = (b: Block) => (v: EditorView) => {
+    const sel = v.state.selection.main;
+    if (!sel.empty || sel.head !== 0 || b.kind !== "text") return false;
+    const now = docRef.current;
+    if (!now) return false;
+    const at = now.blocks.findIndex((x) => x.id === b.id);
+    const prev = now.blocks[at - 1];
+    const here = draftRef.current;
+    if (!prev || prev.kind !== "text" || b.beside || b.free || prev.free || mathRowsOf(prev.text) !== null || mathRowsOf(here) !== null) return false;
+    const before = prev.text.replace(/\s+$/, "");
+    const joined = here.trim() ? before + here : before;
+    commit({ ...now, blocks: now.blocks.filter((x) => x.id !== b.id).map((x) => (x.id === prev.id ? { ...x, text: joined } : x)) });
+    caretAt.current = before.length;
+    setEditing(prev.id);
+    setPicked(prev.id);
+    setDraft(joined);
+    return true;
+  };
+  /** ⌦ at a paragraph's end: the one below joins it */
+  const joinDown = (b: Block) => (v: EditorView) => {
+    const sel = v.state.selection.main;
+    if (!sel.empty || sel.head !== v.state.doc.length || b.kind !== "text") return false;
+    const now = docRef.current;
+    if (!now) return false;
+    const at = now.blocks.findIndex((x) => x.id === b.id);
+    const next = now.blocks[at + 1];
+    if (!next || next.kind !== "text" || next.beside || next.free || b.free || mathRowsOf(next.text) !== null || mathRowsOf(draftRef.current) !== null) return false;
+    commit({ ...now, blocks: now.blocks.filter((x) => x.id !== next.id) });
+    v.dispatch({ changes: { from: sel.head, insert: next.text.replace(/^\s+/, "") }, selection: { anchor: sel.head } });
+    return true;
+  };
   /** a text block's own keys: ⌘B ⌘I ⌘E ⌘K ⌘⇧X ⌘⇧H, and Enter or Tab taking what / asked for */
   const proseKeys = (b: Block): KeyBinding[] => {
     const wrapWith =
@@ -1376,8 +1418,14 @@ export default function NotebookTile({
       { key: "Mod-k", run: wrapWith("k") },
       { key: "Mod-Shift-x", run: wrapWith("x", true) },
       { key: "Mod-Shift-h", run: wrapWith("h", true) },
-      { key: "Enter", run: slashPick },
-      { key: "Tab", run: slashPick },
+      { key: "Enter", run: (v) => slashPick() || enterKey(v) },
+      { key: "Tab", run: (v) => slashPick() || tabKey(false)(v) },
+      { key: "Shift-Tab", run: tabKey(true) },
+      { key: "Mod-Shift-7", run: listKey("num") },
+      { key: "Mod-Shift-8", run: listKey("bullet") },
+      { key: "Mod-Shift-9", run: listKey("task") },
+      { key: "Backspace", run: joinUp(b) },
+      { key: "Delete", run: joinDown(b) },
     ];
   };
   /** a picture pasted into a text block's editor */
@@ -1670,6 +1718,9 @@ export default function NotebookTile({
                 </button>
                 <button className="nb-pop-item" onClick={() => (setMenu(false), print())}>
                   <Icon name="print" size={14} /> Print or save as PDF
+                </button>
+                <button className={`nb-pop-item nb-vim-toggle${pageView ? " is-on" : ""}`} title="The page as a sheet of paper on a desk, as Word shows it — or the plain page" onClick={() => (setMenu(false), setPageView(!pageView))}>
+                  <Icon name="check" size={14} /> Page view {pageView ? "on" : "off"}
                 </button>
                 <button className={`nb-pop-item nb-vim-toggle${vimKeys ? " is-on" : ""}`} title="Vim in code cells and text, set up like Neovim: Space is the leader (Space r runs), :w is done, yanks go to the clipboard" onClick={() => (setMenu(false), setVimKeys(!vimKeys))}>
                   <Icon name="check" size={14} /> Vim keys {vimKeys ? "on" : "off"}
@@ -1964,7 +2015,7 @@ export default function NotebookTile({
     const t = e.target as HTMLElement;
     if (t.closest("button, a, input, textarea, select, math-field, .cm-editor, [contenteditable], .nb-obj-bar, .nb-gutter, .nb-size, .nb-insert, .nb-folded, .sheet")) return;
     // graph paper is written on where it is: picked (its bar shows), never dragged by a stroke on it
-    if (t.closest(".ps-paper, .nb-paper-grow")) return void setPicked(b.id);
+    if (t.closest(".ps-paper, .nb-paper-grow")) return void (setPicked(b.id), setQuietId(b.id));
     press.current = { id: b.id, already: picked === b.id };
     pickBlock(b.id);
     // placed freely: dragged anywhere (a graph's plot and an output's text excepted — the grip moves those)
@@ -2159,6 +2210,8 @@ export default function NotebookTile({
     if (!el) return;
     const fit = () => {
       el.style.setProperty("--nb-room", `${Math.max(0, Math.min(240, parseFloat(getComputedStyle(el).paddingLeft) - 30))}px`);
+      // (page view: the sheet's own color — the page's background is the desk)
+      if (el.classList.contains("is-sheet")) return el.style.setProperty("--nb-paper", "var(--nb-sheet)");
       // the page's own color (a free block in front of the text is filled with it)
       for (let up: HTMLElement | null = el; up; up = up.parentElement) {
         const c = getComputedStyle(up).backgroundColor;
@@ -2171,7 +2224,7 @@ export default function NotebookTile({
     const watch = new ResizeObserver(fit);
     watch.observe(el);
     return () => watch.disconnect();
-  }, [view, !!doc]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, !!doc, pageView]); // eslint-disable-line react-hooks/exhaustive-deps
   // pictures in text (![](Name.assets/…)): read from the notebook's folder once on the page
   useEffect(() => {
     for (const img of page.current?.querySelectorAll<HTMLImageElement>("img[data-asset]:not([src])") ?? []) {
@@ -2184,6 +2237,24 @@ export default function NotebookTile({
           .catch(() => img.replaceWith(Object.assign(document.createElement("span"), { className: "nb-missing", textContent: "(a picture that's gone)" })));
     }
   });
+  /** a click on the page around the writing: the paragraph level with it (the caret as near as it goes), else the end */
+  const writeNear = (x: number, y: number) => {
+    const blocks = docRef.current?.blocks ?? [];
+    for (const el of page.current?.querySelectorAll<HTMLElement>("[data-block]") ?? []) {
+      const r = el.getBoundingClientRect();
+      if (y < r.top || y > r.bottom) continue;
+      const b = blocks.find((x) => x.id === el.dataset.block);
+      if (b?.kind !== "text" || b.free) return;
+      clickAt.current = { x: Math.max(r.left + 12, Math.min(r.right - 4, x)), y };
+      return startEditing(b);
+    }
+    const last = blocks[blocks.length - 1];
+    if (last && last.kind === "text" && !last.free && !last.beside && mathRowsOf(last.text) === null && y > (page.current?.querySelector(`[data-block="${last.id}"]`)?.getBoundingClientRect().bottom ?? 0)) {
+      fromTop.current = false;
+      return startEditing(last);
+    }
+    if (last || !blocks.length) addBlock({ lang: "text", start: "" });
+  };
   /** a picked block alone on its line: its edges, to drag */
   const sizeHandles = (b: Block) => {
     const side = b.wrap ?? b.align ?? "left";
@@ -2199,7 +2270,7 @@ export default function NotebookTile({
   const blockView = (b: Block, calcAt: number, inRow = false): ReactNode => {
     const isEditing = editing === b.id;
     const isPicked = picked === b.id && !isEditing;
-    const marks = `${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}${isPicked ? " is-picked" : ""}`;
+    const marks = `${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}${isPicked ? " is-picked" : ""}${isPicked && quietId === b.id ? " is-quiet" : ""}`;
     if (b.kind === "text") {
       // / at the start of a new line: what to put here instead
       const slash = isEditing && /^\/[\w ]*$/.test(draft) ? draft.slice(1).toLowerCase() : null;
@@ -2211,7 +2282,7 @@ export default function NotebookTile({
             <MathBlockLive text={draft} onChange={type} onDone={() => finishEditing()} />
           ) : isEditing ? (
             // written as it reads (live preview): the Markdown shows only where the caret is
-            <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys={vimKeys} prose markdown keys={proseKeys(b)} onPaste={pasteInto} at={clickAt.current ?? undefined} fromTop={fromTop.current} onEdge={onEdge(b)} onView={setTextView} />
+            <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys={vimKeys} prose markdown keys={proseKeys(b)} onPaste={pasteInto} at={clickAt.current ?? undefined} caret={caretAt.current ?? undefined} fromTop={fromTop.current} onEdge={onEdge(b)} onView={setTextView} />
           ) : (
             <div
               className="nb-md"
@@ -2444,6 +2515,8 @@ export default function NotebookTile({
 
   /** a key in the notebook, nothing being edited: j/k pick, Enter edits, a/b add, dd deletes… */
   const commandKey = (e: React.KeyboardEvent) => {
+    // moving about with the keys: the block picked shows
+    if (["j", "k", "ArrowUp", "ArrowDown"].includes(e.key)) setQuietId(null);
     if (e.key === "Escape" && (barMenu || (inserting && !inserting.replace))) {
       setBarMenu(null);
       setInserting(null);
@@ -2505,6 +2578,11 @@ export default function NotebookTile({
     return false;
   };
 
+  // the paragraph the toolbar aligns: the one being written, else the one picked
+  const alignTarget = (() => {
+    const b = doc?.blocks.find((x) => x.id === (editing ?? picked));
+    return b && b.kind === "text" && !b.free ? b : null;
+  })();
   let calcAt = 0;
   return (
     <div
@@ -2527,7 +2605,7 @@ export default function NotebookTile({
           return;
         }
         // ⌘F: find in this notebook (the editor's own search, in vim, is /)
-        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "f" && !(e.target as HTMLElement).closest?.(".cm-editor")) {
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "f" && !(e.target as HTMLElement).closest?.(".nb-block:not(.is-text) .cm-editor")) {
           e.preventDefault();
           startFinding();
           return;
@@ -2657,7 +2735,11 @@ export default function NotebookTile({
         <div className="nb-main">
         {libraryOpen && <Library listing={listing} current={name ?? null} onOpen={(n) => (setView("doc"), onOpen(n))} onNew={() => setView("new")} />}
         <div className="nb-center">
-        <FormatBar view={textView} onUndo={() => notebookUndo(false)} onRedo={() => notebookUndo(true)} onNew={(start) => addBlock({ lang: "text", start })} onPicture={keepPicture} onTable={() => {
+        <FormatBar
+          view={textView}
+          align={alignTarget ? (alignTarget.align as "center" | "right" | undefined) ?? "left" : undefined}
+          onAlign={alignTarget ? (a) => place(alignTarget, { align: a === "left" ? undefined : a, wrap: undefined, wide: undefined }) : undefined}
+          onUndo={() => notebookUndo(false)} onRedo={() => notebookUndo(true)} onNew={(start) => addBlock({ lang: "text", start })} onPicture={keepPicture} onTable={() => {
             // (what's being written is kept first)
             const at = editingRef.current;
             finishEditing();
@@ -2671,11 +2753,17 @@ export default function NotebookTile({
             setTimeout(() => insertBlock({ lang, start: lang === "work" ? "" : kind.start, beside: lang === "paper" && !!here }, here), 0);
           }} />
         <div
-          className="nb-page"
+          className={`nb-page${pageView ? " is-sheet" : ""}`}
           ref={page}
           onScroll={spy}
           // a press on the page around the blocks: nothing picked
           onPointerDown={(e) => !(e.target as HTMLElement).closest("[data-block], .nb-insert, .nb-end, .nb-add") && setPicked(null)}
+          // a click on the page itself (its margin, the space under the writing): writing there, as in Word
+          onClick={(e) => {
+            const t = e.target as HTMLElement;
+            if (editing || (t !== e.currentTarget && !t.classList.contains("nb-end"))) return;
+            writeNear(e.clientX, e.clientY);
+          }}
         >
           {header}
           {rowsOf(doc.blocks).map((row) => {
@@ -2713,7 +2801,6 @@ export default function NotebookTile({
               </div>
             );
           })}
-          {!doc.blocks.length && <div className="nb-empty">An empty page — click below to write, or + for an app.</div>}
           {/* the end of the page: click to write on; + for anything else */}
           <div className="nb-end">
             <button className={`nb-gutter-btn nb-end-add${inserting?.after === null && !inserting.replace ? " is-on" : ""}`} title="Add something — text, math, an app, code" onClick={() => setInserting(inserting?.after === null && !inserting.replace ? null : { after: null })}>
