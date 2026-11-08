@@ -568,3 +568,13 @@
   font-size: 12px;
   cursor: pointer;
 }
+
+.nb-paper-bar {
+  flex-wrap: wrap;
+}
+
+.nb-paper-keys {
+  color: var(--t-faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}

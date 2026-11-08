@@ -21,17 +21,20 @@ export default function PaperBlock({ id, code, onChange }: { id: string; code: s
         </div>
       </div>
       <div className="nb-paper-bar">
-        <div className="pp-switch is-small" title="Keys: _ a line under · ) or | a bracket's side · x crosses out · ⇧digit a carry · * × · / ÷ · - − · ⌘Z undo">
+        <div className="pp-switch is-small" title="Keys: _ a line under · | or ⌥\ a bracket's side · x crosses out · ⌥digit a carry · * × · / ÷ · - − · ⌘Z undo">
           <button className={tool === "write" ? "is-on" : ""} title="Write: digits, + − × ÷ = ( ) and letters, a square each" onClick={() => pick("write")}>
             Write
           </button>
-          <button className={tool === "carry" ? "is-on" : ""} title="Carry: small, at the top of the square (or hold ⇧ as you type a digit)" onClick={() => pick("carry")}>
+          <button className={tool === "carry" ? "is-on" : ""} title="Carry: small, at the top of the square (or hold ⌥ as you type a digit)" onClick={() => pick("carry")}>
             Carry
           </button>
           <button className={tool === "line" ? "is-on" : ""} title="Line: drag along under squares, or down their left edges (back over one rubs it out)" onClick={() => pick("line")}>
             Line
           </button>
         </div>
+        <span className="nb-paper-keys" title="On the square you're on: ⌥ and a digit writes a carry · ⌥X crosses it out · ⌥- a line under it · ⌥\ a bracket's side down its left edge (again takes it off). Also: _ draws a line and moves on, | a bracket's side, * × / ÷ - −, ⌘Z undo">
+          {"⌥digit carry · ⌥X cross out · ⌥− line · ⌥\\ bracket"}
+        </span>
         <button className="pp-quiet" onClick={() => (sheet.clear(), box.current?.focus())}>
           Clear
         </button>

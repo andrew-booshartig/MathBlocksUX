@@ -256,15 +256,20 @@ export function useSheet(
     }
     const arrows: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
     if (arrows[e.key]) return void (e.preventDefault(), move(...arrows[e.key]));
-    // a carry: ⇧ or ⌥ and a digit, or any digit with the Carry tool — small, at the square's top
-    if (/^Digit\d$/.test(e.code) && (e.shiftKey || e.altKey || tool === "carry")) {
+    // ⌥ marks the square you're on, staying on it: ⌥x crosses it out, ⌥- a line under it, ⌥\ a line down its left edge (a bracket's side) — again, it goes
+    if (e.altKey && !e.shiftKey) {
+      const mark = e.code === "KeyX" ? ([crossed, setCrossed] as const) : e.code === "Minus" ? ([under, setUnder] as const) : e.code === "Backslash" ? ([walls, setWalls] as const) : null;
+      if (mark) return void (e.preventDefault(), toggle(mark[0], mark[1], k));
+    }
+    // a carry: ⌥ and a digit (or ⇧, on the problem's sheet — on an open one ⇧ writes ( ) × %), or any digit with the Carry tool — small, at the square's top
+    if (/^Digit\d$/.test(e.code) && ((e.shiftKey && !opts.open) || e.altKey || tool === "carry")) {
       e.preventDefault();
       snap();
       setSmall((s) => ({ ...s, [k]: ((s[k] ?? "") + e.code.slice(-1)).slice(-2) }));
       return onEdit?.();
     }
-    // | or ) : the bracket's side — a line down this square's left edge (again, it goes)
-    if (e.key === "|" || (opts.open && e.key === ")")) return void (e.preventDefault(), toggle(walls, setWalls, k));
+    // | : the bracket's side — a line down this square's left edge (again, it goes)
+    if (e.key === "|") return void (e.preventDefault(), toggle(walls, setWalls, k));
     const ch = opts.open ? (OPEN_SIGN[e.key] ?? (OPEN_CHAR.test(e.key) ? e.key : null)) : /^[\d.]$/.test(e.key) ? e.key : null;
     if (ch && !fixed(cur.r, cur.c)) {
       e.preventDefault();
@@ -503,7 +508,7 @@ function Scratch({ paper, divide, side, tool, onTool, onShow }: { paper: Paper; 
               <span className="pp-verdict is-wrong">{checked.answer ? `${checked.answer} isn't it` : "No answer written yet"}{divide ? " (the answer goes over the bracket)" : " (the answer is the lowest row)"} — digits where they usually go are marked.</span>
             )
           ) : (
-            <span className="pp-keys">arrows move · Enter ⇧Enter next / last row · Tab the other sheet · drag or _ line · ⇧digit carry · x cross out · ⌘Z undo</span>
+            <span className="pp-keys">arrows move · Enter ⇧Enter next / last row · Tab the other sheet · drag or _ line · ⇧digit carry · x cross out · ⌥X ⌥− ⌥\ this square · ⌘Z undo</span>
           )}
         </div>
         <div className="pp-nav">
