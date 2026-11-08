@@ -346,3 +346,17 @@ def test_a_saved_value_with_nothing_in_it_is_left_out():
 
     out = op_smart({"latex": "F = m g", "angle": "deg", "vars": {"m": "5/2", "g": "981/100", "F": None}})
     assert out["kind"] == "assign" and "981" in out["result_latex"]
+
+
+def test_feet_and_inches_as_a_tape_reads():
+    # ft and in in, ft and in out — the inches a mixed number
+    r = op_smart({"latex": r"\frac{27\,\mathrm{ft}+6.75\,\mathrm{in}}{3}"})
+    assert r["result_latex"] == r"9\,\mathrm{ft}\;2\tfrac{1}{4}\,\mathrm{in}"
+    # side by side, as it's said: added
+    assert op_smart({"latex": r"27\,\mathrm{ft}\,6\frac{3}{4}\,\mathrm{in}"})["result_latex"] == r"27\,\mathrm{ft}\;6\tfrac{3}{4}\,\mathrm{in}"
+    # → ft in from anything
+    assert op_smart({"latex": r"100\,\mathrm{in}\to\mathrm{ft}\,\mathrm{in}"})["result_latex"] == r"8\,\mathrm{ft}\;4\,\mathrm{in}"
+    # off a sixteenth: the nearest one, marked ≈
+    assert op_smart({"latex": r"\frac{10\,\mathrm{ft}+1\,\mathrm{in}}{3}"})["result_latex"] == r"\approx 3\,\mathrm{ft}\;4\tfrac{5}{16}\,\mathrm{in}"
+    # feet alone stay feet
+    assert op_smart({"latex": r"10\,\mathrm{ft}\cdot 3"})["result_latex"] == r"30\,\mathrm{ft}"

@@ -345,7 +345,7 @@ def _convert_line(req: dict, left: str, right: str) -> dict:
     fact at a time (the Reference sheet's way) — each step's amount shown"""
     from .reference import _number, op_refconvert, read_units
 
-    worked = op_smart({**req, "latex": left, "ans": None})
+    worked = op_smart({**req, "latex": left, "ans": None, "as_is": True})
     if worked.get("kind") != "value":
         # 3kg: a unit written right against its number reads as letters
         stuck = next((m for m in re.finditer(r"(\d)([A-Za-z]+)", left) if units.find(m.group(2))), None)
@@ -382,6 +382,60 @@ def _convert_line(req: dict, left: str, right: str) -> dict:
         "decimal_latex": decimal and f"{float(result):.10g}\\,{_units_latex(read_units(target_text))}",
         "ans": result_latex,
         "steps": steps if len(steps) > 1 else None,
+        # (the amount itself, exact — for feet and inches)
+        "amount": str(result),
+    }
+
+
+# feet and inches, as a tape measure reads: 9 ft 2¼ in
+_FT = r"(?:\\mathrm\{ft\}|\\text\{ft\}|(?<![A-Za-z\\])ft(?![A-Za-z]))"
+_IN = r"(?:\\mathrm\{in\}|\\text\{in\}|(?<![A-Za-z\\])in(?![A-Za-z]))"
+_GAP = r"(?:\\[,;: ]|~|\s)*"
+_NUM = r"\d+(?:\.\d+)?"
+# 27 ft 6¾ in (side by side, as it's said): the two added — 27 ft + 6¾ in, kept together
+_FT_IN = re.compile(rf"({_NUM}{_GAP}{_FT}){_GAP}({_NUM}{_GAP}(?:\\[dt]?frac\{{\d+\}}\{{\d+\}}{_GAP})?{_IN})")
+_FT_THEN_IN = re.compile(r"^\s*(?:\\mathrm\{|\\text\{)?(ft|feet|foot)\}?" + _GAP + r"(?:\\mathrm\{|\\text\{)?(in|inch|inches)\}?\s*$")
+
+
+def _ft_in_together(latex: str) -> str:
+    return _FT_IN.sub(lambda m: f"\\left({m.group(1)}+{m.group(2)}\\right)", latex)
+
+
+def _mentions_ft_and_in(latex: str) -> bool:
+    return bool(re.search(_FT, latex)) and bool(re.search(_IN, latex))
+
+
+def _ft_in_line(req: dict, left: str, arrow: bool) -> dict:
+    """a length in feet and inches, the inches a mixed number in sixteenths
+    (a tape's marks) — exact when it lands on one, else ≈ the nearest"""
+    out = _convert_line(req, left, "\\mathrm{in}")
+    inches = sympy.Rational(sympy.sympify(out.pop("amount")))
+    sign = "-" if inches < 0 else ""
+    inches = abs(inches)
+    feet = int(inches // 12)
+    rest = inches - 12 * feet
+    exact = rest.q in (1, 2, 4, 8, 16)
+    shown = rest if exact else sympy.Rational(round(rest * 16), 16)
+    if shown == 12:
+        feet, shown = feet + 1, sympy.Rational(0)
+
+    def mixed(r):
+        whole, part = int(r // 1), r - int(r // 1)
+        if not part:
+            return str(whole)
+        return f"{whole if whole else ''}\\tfrac{{{part.p}}}{{{part.q}}}"
+
+    parts = ([f"{feet}\\,\\mathrm{{ft}}"] if feet else []) + ([f"{mixed(shown)}\\,\\mathrm{{in}}"] if shown or not feet else [])
+    reading = sign + "\\;".join(parts)
+    total_ft = float(inches) / 12
+    worked = out["input_latex"].rsplit(" \\to ", 1)[0]
+    return {
+        **out,
+        "input_latex": f"{worked} \\to \\mathrm{{ft}}\\,\\mathrm{{in}}" if arrow else worked,
+        "result_latex": reading if exact else f"\\approx {reading}",
+        "decimal": f"{sign}{total_ft:.6g} ft" + ("" if exact else f" · {sign}{float(inches):.6g} in"),
+        "decimal_latex": f"{sign}{total_ft:.10g}\\,\\mathrm{{ft}}",
+        "ans": f"{sign}{sympy.latex(inches)}\\,\\mathrm{{in}}",
     }
 
 
@@ -477,12 +531,23 @@ def _smart(req: dict) -> dict:
         if not ans:
             raise MathInputError("there's no answer yet to use as Ans")
         latex = _ANS.sub(lambda _: f"\\left({ans}\\right)", latex)
+    # 27 ft 6¾ in: one length (the two added)
+    latex = _ft_in_together(latex)
     # 50 mm³/cm² → cm³/cm²: worked out, then put in the new units
     arrow = _ARROW.split(latex)
     if len(arrow) > 2:
         raise MathInputError("one → per line")
     if len(arrow) == 2:
+        # → ft in: feet and inches, as a tape reads
+        if _FT_THEN_IN.match(arrow[1]):
+            return _ft_in_line(req, arrow[0], True)
         return _convert_line(req, arrow[0], arrow[1])
+    # feet and inches in, feet and inches out
+    if _mentions_ft_and_in(latex) and "=" not in latex and not req.get("as_is"):
+        try:
+            return _ft_in_line(req, latex, False)
+        except MathInputError:
+            pass
     # two equations at once — 2x + y = 7, x − y = 2 — a system: solved
     # together, by substitution or by elimination
     parts = _system_parts(latex)
