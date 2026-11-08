@@ -649,6 +649,19 @@ export default function SmartCalc({
 
   /** Work out a line — or redo an earlier one (another action, or because a
    * variable it uses changed). */
+  /** a length's answer read as a tape reads it — 9 ft 2¼ in — the line itself made "… → ft in", in place */
+  const FT_IN = "\\to \\mathrm{ft}\\,\\mathrm{in}";
+  const isLength = (r: SmartResult) => {
+    const t = r.result_latex ?? "";
+    return r.kind === "value" && /\\mathrm\{(?:ft|in|yd|mi|m|cm|mm|km)\}(?!\s*\^)/.test(t) && !/\\mathrm\{ft\}.*\\mathrm\{in\}/.test(t) && !/\\(?:frac|dfrac)\{[^}]*\\mathrm|\/|\\mathrm\{(?:s|h|min)\}/.test(t.replace(/^\\frac\{-?\d+\}\{\d+\}/, ""));
+  };
+  const toFtIn = (entry: SmartEntry) => {
+    const latex = `${entry.latex.split(/\\to(?![A-Za-z])|->|→/)[0].trim()} ${FT_IN}`;
+    mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, vars }).then(
+      (result) => save((current()?.smart ?? []).map((e) => (e.id === entry.id ? { ...e, latex, result } : e))),
+      (err) => setError(String(err).replace(/^Error:\s*/, "")),
+    );
+  };
   const run = (latex: string, action?: SmartAction, replace?: string, useVars = vars) =>
     mathRequest<SmartResult>({ op: "smart", latex, angle: data.angle, ans, action, vars: useVars }).then(
       (result) => {
@@ -1953,6 +1966,11 @@ export default function SmartCalc({
                         {o.label}
                       </button>
                     ))}
+                    {isLength(r) && (
+                      <button className="chip" title="Say it in feet and inches, the inches a fraction — as a tape reads" onClick={() => toFtIn(entry)}>
+                        → ft in
+                      </button>
+                    )}
                     {!!r.steps?.length && (
                       <button className="chip" onClick={() => setOpenSteps(openSteps === entry.id ? null : entry.id)}>
                         {openSteps === entry.id ? "Hide steps" : "Steps"}
