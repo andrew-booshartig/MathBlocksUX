@@ -2512,7 +2512,7 @@ export default function NotebookTile({
       tabIndex={-1}
       onKeyDownCapture={(e) => {
         // ⌘Z / ⌘⇧Z: the notebook's changes (a field or the code editor undoes its own typing)
-        const inField = (e.target as HTMLElement).closest?.("input, textarea, .cm-editor, math-field, [contenteditable], .sheet");
+        const inField = (e.target as HTMLElement).closest?.("input, textarea, .cm-editor, math-field, [contenteditable], .sheet, .pp-scratch");
         if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "z" && !inField) {
           e.preventDefault();
           notebookUndo(e.shiftKey);

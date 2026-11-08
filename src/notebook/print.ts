@@ -4,6 +4,7 @@
  * printer colors, number lines, and what Python printed and drew. Math is
  * MathML — every browser draws it, no fonts or internet needed. */
 import { readTable } from "./tableBlock";
+import { type Shape, curvePath, reach } from "../paper/shapes";
 import { evaluate } from "../sheet/formula";
 import { Plotly } from "../PlotlyChart";
 import { mathRequest } from "../mathSidecar";
@@ -204,7 +205,7 @@ ${body.join("\n")}
 
 /** graph paper as printed: light squares, what's written on them */
 function paperPicture(code: string): string {
-  let j: { cells?: Record<string, string>; small?: Record<string, string>; under?: string[]; crossed?: string[]; walls?: string[] } = {};
+  let j: { cells?: Record<string, string>; small?: Record<string, string>; under?: string[]; crossed?: string[]; walls?: string[]; shapes?: Shape[] } = {};
   try {
     j = JSON.parse(code || "{}");
   } catch {
@@ -212,7 +213,7 @@ function paperPicture(code: string): string {
   }
   const C = 22;
   const pos = (k: string) => k.split(",").map(Number) as [number, number];
-  const all = [...Object.keys(j.cells ?? {}), ...Object.keys(j.small ?? {}), ...(j.under ?? []), ...(j.walls ?? [])].map(pos);
+  const all = [...[...Object.keys(j.cells ?? {}), ...Object.keys(j.small ?? {}), ...(j.under ?? []), ...(j.walls ?? [])].map(pos), ...(j.shapes ?? []).map(reach).map(([r, c]) => [Math.ceil(r) - 1, Math.ceil(c) - 1] as [number, number])];
   const rows = Math.max(4, ...all.map(([r]) => r + 2));
   const cols = Math.max(6, ...all.map(([, c]) => c + 2));
   const crossed = new Set(j.crossed ?? []);
@@ -226,6 +227,11 @@ function paperPicture(code: string): string {
   for (const k of j.walls ?? []) {
     const [r, c] = pos(k);
     out.push(`<line x1="${c * C}" y1="${r * C}" x2="${c * C}" y2="${(r + 1) * C}" stroke="#222" stroke-width="1.6"/>`);
+  }
+  for (const sh of j.shapes ?? []) {
+    if (sh.k === "seg") out.push(`<line x1="${sh.a[1] * C}" y1="${sh.a[0] * C}" x2="${sh.b[1] * C}" y2="${sh.b[0] * C}" stroke="#222" stroke-width="1.6" stroke-linecap="round"/>`);
+    else if (sh.k === "dot") out.push(`<circle cx="${sh.p[1] * C}" cy="${sh.p[0] * C}" r="2.6" fill="#222"/>`);
+    else out.push(`<path d="${curvePath(sh.pts, C)}" fill="none" stroke="#222" stroke-width="1.6" stroke-linecap="round"/>`);
   }
   for (const [k, v] of Object.entries(j.cells ?? {})) {
     if (!v) continue;

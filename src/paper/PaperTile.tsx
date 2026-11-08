@@ -4,11 +4,13 @@
  * problem on it — as in a test — checked when you say. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Paper, longDivision, longMultiplication } from "./steps";
+import { type Pt, type Shape, curvePath, distTo, reach, snapPt } from "./shapes";
 import "./paper.css";
 
 type How = "show" | "free";
 /** what the pointer and digits do on a sheet: write, write carries (small, at a square's top), or draw lines */
-type Tool = "write" | "carry" | "line";
+/** what a click does: write (and type), carry, line (under squares / down edges); on an open sheet also draw a line from point to point, a point, a curve through points, erase what's drawn */
+type Tool = "write" | "carry" | "line" | "draw" | "point" | "curve" | "erase";
 
 export interface PaperState {
   mode?: "divide" | "multiply";
@@ -152,7 +154,7 @@ const at2 = (r: number, c: number) => `${r},${c}`;
 export const CELL = 30;
 
 /** what's written on a sheet: digits (and signs) by square, small ones over them, lines under squares, crossings out, and walls — a line down a square's left edge (a division bracket's side) */
-export type Ink = { cells: Record<string, string>; small: Record<string, string>; under: Set<string>; crossed: Set<string>; walls: Set<string> };
+export type Ink = { cells: Record<string, string>; small: Record<string, string>; under: Set<string>; crossed: Set<string>; walls: Set<string>; shapes: Shape[] };
 const KEPT = new Map<string, Ink & { cur: { r: number; c: number } }>();
 
 /** what an open sheet takes as writing: digits, the signs of arithmetic, letters for labels (x crosses out; * writes ×, / ÷, - −) */
@@ -181,18 +183,22 @@ export function useSheet(
   const [under, setUnder] = useState<Set<string>>(was?.under ?? new Set());
   const [crossed, setCrossed] = useState<Set<string>>(was?.crossed ?? new Set());
   const [walls, setWalls] = useState<Set<string>>(was?.walls ?? new Set());
+  // drawn over the squares: lines, curves, dots (see shapes.ts) — and a curve being plotted, point by point
+  const [shapes, setShapes] = useState<Shape[]>(was?.shapes ?? []);
+  const [plotting, setPlotting] = useState<Pt[]>([]);
+  const [drawing, setDrawing] = useState<{ a: Pt; b: Pt } | null>(null);
   const [cur, setCur] = useState((was && "cur" in was ? (was as { cur: { r: number; c: number } }).cur : undefined) ?? start);
-  useEffect(() => void KEPT.set(keep, { cells, small, under, crossed, walls, cur }), [keep, cells, small, under, crossed, walls, cur]);
+  useEffect(() => void KEPT.set(keep, { cells, small, under, crossed, walls, shapes, cur }), [keep, cells, small, under, crossed, walls, shapes, cur]);
   const first = useRef(true);
   useEffect(() => {
     if (first.current) return void (first.current = false);
-    opts.onInk?.({ cells, small, under, crossed, walls });
-  }, [cells, small, under, crossed, walls]); // eslint-disable-line react-hooks/exhaustive-deps
+    opts.onInk?.({ cells, small, under, crossed, walls, shapes });
+  }, [cells, small, under, crossed, walls, shapes]); // eslint-disable-line react-hooks/exhaustive-deps
   // ⌘Z / Ctrl+Z: one thing written at a time (a digit, a carry, a line, a crossing out) — ⇧ to redo
   const past = useRef<Ink[]>([]);
   const ahead = useRef<Ink[]>([]);
   const snap = () => {
-    past.current.push({ cells, small, under, crossed, walls });
+    past.current.push({ cells, small, under, crossed, walls, shapes });
     if (past.current.length > 300) past.current.shift();
     ahead.current = [];
   };
@@ -202,13 +208,14 @@ export function useSheet(
     setUnder(ink.under);
     setCrossed(ink.crossed);
     setWalls(ink.walls);
+    setShapes(ink.shapes);
     onEdit?.();
   };
   const undo = (redo: boolean) => {
     const from = redo ? ahead.current : past.current;
     const ink = from.pop();
     if (!ink) return;
-    (redo ? past.current : ahead.current).push({ cells, small, under, crossed, walls });
+    (redo ? past.current : ahead.current).push({ cells, small, under, crossed, walls, shapes });
     put(ink);
   };
   const clear = () => {
@@ -218,6 +225,8 @@ export function useSheet(
     setUnder(new Set());
     setCrossed(new Set());
     setWalls(new Set());
+    setShapes([]);
+    setPlotting([]);
     setCur(start);
     onEdit?.();
   };
@@ -242,6 +251,12 @@ export function useSheet(
       const here = e.currentTarget as HTMLElement;
       const other = [...(here.closest(".pp")?.querySelectorAll<HTMLElement>(".pp-scratch") ?? [])].find((x) => x !== here);
       return void other?.focus();
+    }
+    // a curve being plotted: Enter draws it through its points, Esc lets it go
+    if (plotting.length && (e.key === "Enter" || e.key === "Escape")) {
+      e.preventDefault();
+      e.stopPropagation();
+      return e.key === "Enter" ? finishCurve() : setPlotting([]);
     }
     if (e.key === "Enter") {
       e.preventDefault();
@@ -321,7 +336,72 @@ export function useSheet(
     setUnder(next);
     onEdit?.();
   };
+  const pointAt = (e: React.MouseEvent) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    return snapPt(e.clientX - box.left, e.clientY - box.top, CELL);
+  };
+  const finishCurve = (pts = plotting) => {
+    setPlotting([]);
+    if (pts.length < 2) return;
+    snap();
+    setShapes((sh) => [...sh, { k: "curve", pts }]);
+    onEdit?.();
+  };
+  // switching away from Curve: what's plotted is drawn
+  useEffect(() => {
+    if (tool !== "curve" && plotting.length) finishCurve();
+  }, [tool]); // eslint-disable-line react-hooks/exhaustive-deps
   const onMouseDown = (e: React.MouseEvent) => {
+    if (tool === "draw") {
+      // (followed past the sheet's edge too — it grows to hold what's drawn)
+      const el = e.currentTarget as HTMLElement;
+      const a = pointAt(e);
+      let b = a;
+      setDrawing({ a, b });
+      const move = (ev: MouseEvent) => {
+        const box = el.getBoundingClientRect();
+        b = snapPt(ev.clientX - box.left, ev.clientY - box.top, CELL);
+        setDrawing({ a, b });
+      };
+      const up = () => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", up);
+        setDrawing(null);
+        if (a[0] === b[0] && a[1] === b[1]) return;
+        snap();
+        setShapes((sh) => [...sh, { k: "seg", a, b }]);
+        onEdit?.();
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", up);
+      return;
+    }
+    if (tool === "point") {
+      const p = pointAt(e);
+      snap();
+      const there = shapes.findIndex((s) => s.k === "dot" && s.p[0] === p[0] && s.p[1] === p[1]);
+      setShapes(there >= 0 ? shapes.filter((_, i) => i !== there) : [...shapes, { k: "dot", p }]);
+      return onEdit?.();
+    }
+    if (tool === "curve") {
+      const p = pointAt(e);
+      // a double-click (or Enter) ends it
+      if (e.detail >= 2) return finishCurve(plotting);
+      const last = plotting[plotting.length - 1];
+      if (!last || last[0] !== p[0] || last[1] !== p[1]) setPlotting([...plotting, p]);
+      return;
+    }
+    if (tool === "erase") {
+      const box = e.currentTarget.getBoundingClientRect();
+      const p: Pt = [(e.clientY - box.top) / CELL, (e.clientX - box.left) / CELL];
+      const near = shapes.map((s, i) => [distTo(s, p), i] as const).filter(([d]) => d < 0.4).sort((x, y) => x[0] - y[0])[0];
+      if (near) {
+        snap();
+        setShapes(shapes.filter((_, i) => i !== near[1]));
+        onEdit?.();
+      }
+      return;
+    }
     const p = cellAt(e);
     setCur(p);
     drag.current = { ...p, erase: under.has(at2(p.r, p.c)), base: under, wallBase: walls, moved: false };
@@ -342,9 +422,10 @@ export function useSheet(
     .filter((k) => cells[k])
     .map((k) => k.split(",").map(Number));
   // (`spare`: the room kept past what's written, and past the cursor)
+  const drawn = [...shapes.map(reach), ...plotting].map(([r, c]) => [Math.ceil(r), Math.ceil(c)]);
   const size = (minRows: number, minCols: number, spare = 2, pastCursor = spare) => ({
-    rows: Math.max(minRows, cur.r + 1 + pastCursor, ...used.map(([r]) => r + 1 + spare)),
-    cols: Math.max(minCols, cur.c + 1 + pastCursor, ...used.map(([, c]) => c + 1 + spare)),
+    rows: Math.max(minRows, cur.r + 1 + pastCursor, ...used.map(([r]) => r + 1 + spare), ...drawn.map(([r]) => r + spare)),
+    cols: Math.max(minCols, cur.c + 1 + pastCursor, ...used.map(([, c]) => c + 1 + spare), ...drawn.map(([, c]) => c + spare)),
   });
   /** what's written: the digits (a class for each, if wanted), lines, small ones, the cursor */
   const ink = (cls: (k: string, v: string) => string = () => "") => (
@@ -377,6 +458,24 @@ export function useSheet(
             </span>
           );
         })}
+      {(shapes.length > 0 || plotting.length > 0 || drawing) && (
+        <svg className="pp-draw" aria-hidden>
+          {shapes.map((sh, i) =>
+            sh.k === "seg" ? (
+              <line key={i} x1={sh.a[1] * CELL} y1={sh.a[0] * CELL} x2={sh.b[1] * CELL} y2={sh.b[0] * CELL} />
+            ) : sh.k === "dot" ? (
+              <circle key={i} className="is-dot" cx={sh.p[1] * CELL} cy={sh.p[0] * CELL} r={3.5} />
+            ) : (
+              <path key={i} d={curvePath(sh.pts, CELL)} />
+            ),
+          )}
+          {drawing && <line className="is-now" x1={drawing.a[1] * CELL} y1={drawing.a[0] * CELL} x2={drawing.b[1] * CELL} y2={drawing.b[0] * CELL} />}
+          {plotting.length > 1 && <path className="is-now" d={curvePath(plotting, CELL)} />}
+          {plotting.map(([r, c], i) => (
+            <circle key={`p${i}`} className="is-plot" cx={c * CELL} cy={r * CELL} r={3} />
+          ))}
+        </svg>
+      )}
       <div className="pp-cursor" style={{ left: cur.c * CELL, top: cur.r * CELL, width: CELL, height: CELL }} />
     </>
   );
@@ -387,14 +486,14 @@ export type { Tool };
 /** an ink as it's kept in a file */
 export function writeInk(ink: Ink): string {
   const pick = (o: Record<string, string>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v));
-  return JSON.stringify({ cells: pick(ink.cells), small: pick(ink.small), under: [...ink.under], crossed: [...ink.crossed], walls: [...ink.walls] });
+  return JSON.stringify({ cells: pick(ink.cells), small: pick(ink.small), under: [...ink.under], crossed: [...ink.crossed], walls: [...ink.walls], shapes: ink.shapes });
 }
 export function readInk(text: string): Ink {
   try {
     const j = JSON.parse(text || "{}");
-    return { cells: j.cells ?? {}, small: j.small ?? {}, under: new Set(j.under ?? []), crossed: new Set(j.crossed ?? []), walls: new Set(j.walls ?? []) };
+    return { cells: j.cells ?? {}, small: j.small ?? {}, under: new Set(j.under ?? []), crossed: new Set(j.crossed ?? []), walls: new Set(j.walls ?? []), shapes: j.shapes ?? [] };
   } catch {
-    return { cells: {}, small: {}, under: new Set(), crossed: new Set(), walls: new Set() };
+    return { cells: {}, small: {}, under: new Set(), crossed: new Set(), walls: new Set(), shapes: [] };
   }
 }
 

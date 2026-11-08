@@ -578,3 +578,42 @@
   font-size: 11.5px;
   white-space: nowrap;
 }
+
+/* drawn over the squares: lines, curves and dots from grid point to grid point */
+.pp-draw {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: var(--t-text);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pp-draw .is-dot {
+  fill: var(--t-text);
+  stroke: none;
+}
+
+.pp-draw .is-now {
+  stroke: var(--t-orange);
+}
+
+.pp-draw .is-plot {
+  fill: var(--t-orange);
+  stroke: none;
+}
+
+.nb-paper.is-draw .pp-grid,
+.nb-paper.is-point .pp-grid,
+.nb-paper.is-curve .pp-grid {
+  cursor: crosshair;
+}
+
+.nb-paper.is-erase .pp-grid {
+  cursor: cell;
+}
