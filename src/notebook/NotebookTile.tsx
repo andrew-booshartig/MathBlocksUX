@@ -1252,6 +1252,7 @@ export default function NotebookTile({
     // (a table, or graph paper, is typed into where it is: nothing to open)
     if (kind.lang === "paper") {
       setEditing(null);
+      setQuietId(id);
       return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${id}"] .pp-scratch`)?.focus(), 60);
     }
     if (kind.lang === "table") return setEditing(null);
@@ -2088,7 +2089,7 @@ export default function NotebookTile({
           <Icon name={icon} size={13} /> {label}
           {flat && <span className="nb-obj-tag" title="Kept as a picture — not worked out or drawn again">picture</span>}
         </span>
-        {cell && !flat && (LINKED_LANGS[cell.lang] && canLink() ? (
+        {cell && !flat && cell.lang !== "paper" && (LINKED_LANGS[cell.lang] && canLink() ? (
           <button className={`is-text${openInAppNow(b) ? " is-on" : ""}`} title={openInAppNow(b) ? "It's open in its app — bring it forward" : `Open it in ${label} — the app itself, beside the page (or double-click it)`} onClick={() => openBlock(b)}>
             <Icon name="arrow" size={13} /> {openInAppNow(b) ? "Open" : "Open"}
           </button>

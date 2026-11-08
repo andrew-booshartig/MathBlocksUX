@@ -174,8 +174,8 @@ const NOTE_MAX: Record<NoteName, number> = { small: 3, pow: 4, sub: 3 };
 const sign = (ch: string) => OPEN_SIGN[ch] ?? ch;
 
 export type Mode = "write" | "carry" | "pow" | "sub";
-export type Tool = "write" | "line" | "draw" | "arrow" | "point" | "curve" | "erase";
-export type Action = "cross" | "circle" | "box" | "under" | "wall" | "point" | "clear";
+export type Tool = "write" | "line" | "draw" | "arrow" | "point" | "curve" | "erase" | "axes";
+export type Action = "cross" | "circle" | "box" | "under" | "wall" | "point" | "bracket" | "clear";
 
 export interface SheetOptions {
   /** what's written is kept by this while the app runs */
@@ -214,6 +214,10 @@ export function useSheet(o: SheetOptions) {
   const [pen, setPen] = useState<Hue | null>(null);
   const [marker, setMarker] = useState<Hue>("yellow");
   const [dash, setDash] = useState(false);
+  /** writing right to left — an answer worked from the ones column (addition, multiplication) */
+  const [rtl, setRtl] = useState(false);
+  /** the sheet's size as last drawn (axes reach its edges) */
+  const shown = useRef({ rows: 10, cols: 12 });
   const [focused, setFocused] = useState(false);
   /** an exponent being written (after ^): its square */
   const [powAt, setPowAt] = useState<string | null>(null);
@@ -293,11 +297,21 @@ export function useSheet(o: SheetOptions) {
   };
   const apply = (a: Action) => {
     if (a === "clear") return commit((i) => cleared(i, targets(), multi() ? rect() : undefined));
+    if (a === "bracket") {
+      // long division's bracket over what's selected (the dividend): a line over it, and its side down the left
+      const R = rect();
+      const top = R.r0 > 0 ? keysIn({ r0: R.r0 - 1, r1: R.r0 - 1, c0: R.c0, c1: R.c1 }) : [];
+      const side = keysIn({ ...R, c1: R.c0 });
+      return commit((i) => {
+        const on = !(top.every((k) => i.under.has(k)) && side.every((k) => i.walls.has(k)));
+        return withSet(withSet(i, "under", top, on), "walls", side, on);
+      });
+    }
     const set: SetName = a === "cross" ? "crossed" : a === "circle" ? "circled" : a === "box" ? "boxed" : a === "under" ? "under" : a === "wall" ? "walls" : "points";
     toggle(set, keysFor(a));
   };
   const has = (a: Action) => {
-    if (a === "clear") return false;
+    if (a === "clear" || a === "bracket") return false;
     const set: SetName = a === "cross" ? "crossed" : a === "circle" ? "circled" : a === "box" ? "boxed" : a === "under" ? "under" : a === "wall" ? "walls" : "points";
     const keys = keysFor(a);
     return keys.length > 0 && keys.every((k) => ink[set].has(k));
@@ -635,6 +649,18 @@ export function useSheet(o: SheetOptions) {
       );
       return;
     }
+    if (tool === "axes") {
+      // axes through the point clicked, out to the sheet's edges, an arrow at each end
+      const o = pointAt(e);
+      const { rows, cols } = shown.current;
+      const ends: Pt[] = [
+        [o[0], cols - 0.5],
+        [o[0], 0.5],
+        [0.5, o[1]],
+        [rows - 0.5, o[1]],
+      ];
+      return commit((i) => ({ ...i, shapes: [...i.shapes, ...ends.filter((p) => p[0] !== o[0] || p[1] !== o[1]).map((b): Shape => ({ k: "seg", a: o, b, arrow: true, ...(pen ? { hue: pen } : {}) }))] }));
+    }
     if (tool === "point") {
       const p = pointAt(e);
       return commit((i) => {
@@ -741,8 +767,10 @@ export function useSheet(o: SheetOptions) {
     // the problem's sheet: ⇧ and a digit is a carry too
     if (!opts.current.open && e.shiftKey && /^Digit\d$/.test(e.code)) return void (e.preventDefault(), note("small", e.code.slice(-1)));
     // an exponent being written, after ^
+    // (an exponent is a number or a letter — a minus first; a sign after it is back on the line: 3^2+4^2)
     if (powAt) {
-      if (key.length === 1 && NOTE_CHAR.test(key)) return void (e.preventDefault(), note("pow", sign(key), powAt));
+      const sofar = inkRef.current.pow[powAt] ?? "";
+      if (key.length === 1 && (/^[0-9a-zA-Z.]$/.test(key) || (key === "-" && !sofar))) return void (e.preventDefault(), note("pow", sign(key), powAt));
       if (key === "Backspace") return void (e.preventDefault(), inkRef.current.pow[powAt] ? unnote("pow", powAt) : setPowAt(null));
       setPowAt(null);
       if (key === " ") return void e.preventDefault();
@@ -775,11 +803,11 @@ export function useSheet(o: SheetOptions) {
     if (ch && !e.altKey) {
       e.preventDefault();
       setEnd(null);
-      if (fixedKey(here)) return move(0, 1);
+      if (fixedKey(here)) return move(0, rtl ? -1 : 1);
       commit((i) => writeGlyph(i, here, ch!));
-      return move(0, 1);
+      return move(0, rtl ? -1 : 1);
     }
-    if (key === " ") return void (e.preventDefault(), setEnd(null), move(0, 1));
+    if (key === " ") return void (e.preventDefault(), setEnd(null), move(0, rtl ? -1 : 1));
     if (key === "Backspace" || key === "Delete") {
       e.preventDefault();
       if (multi()) return void (apply("clear"), setEnd(null));
@@ -787,8 +815,9 @@ export function useSheet(o: SheetOptions) {
       const filled = (k: string) => MAPS.some((m) => m !== "fill" && m !== "color" && i[m][k]) || i.crossed.has(k) || i.circled.has(k) || i.boxed.has(k) || i.points.has(k);
       if (key === "Delete") return commit((x) => cleared(x, [here]));
       // ⌫: what's in this square, else back one and what's there
-      const target = filled(here) ? here : K(cur.r, Math.max(0, cur.c - 1));
-      if (target !== here) move(0, -1);
+      // (right to left: back is to the right)
+      const target = filled(here) ? here : K(cur.r, Math.max(0, cur.c + (rtl ? 1 : -1)));
+      if (target !== here) move(0, rtl ? 1 : -1);
       // (a decimal point goes first, then the digit)
       if (target !== here && i.points.has(target)) return commit((x) => withSet(x, "points", [target], false));
       commit((x) => {
@@ -816,10 +845,12 @@ export function useSheet(o: SheetOptions) {
   const size = (minRows: number, minCols: number, spare = 2) => {
     const x = extent();
     const e = end ?? cur;
-    return {
+    const out = {
       rows: Math.max(minRows, x.rows + spare, cur.r + 1 + spare, e.r + 1 + spare),
       cols: Math.max(minCols, x.cols + spare, cur.c + 1 + spare, e.c + 1 + spare),
     };
+    shown.current = out;
+    return out;
   };
 
   // ---- what's on it, drawn
@@ -957,10 +988,12 @@ export function useSheet(o: SheetOptions) {
         {item("Line under", "_", () => apply("under"), has("under"))}
         {item("Bracket side", "|", () => apply("wall"), has("wall"))}
         {item("Decimal point", ".", () => apply("point"), has("point"))}
+        {item("Long-division bracket over it", "", () => apply("bracket"))}
         <div className="ps-menu-sep" />
         {item("Write a carry", "⌥ digit", () => setMode("carry"), mode === "carry")}
         {item("Write an exponent", "^", () => setMode("pow"), mode === "pow")}
         {item("Write a subscript", "", () => setMode("sub"), mode === "sub")}
+        {item("Write right to left", "", () => setRtl(!rtl), rtl)}
         <div className="ps-menu-sep" />
         <div className="ps-menu-row">
           <span className="ps-menu-label">Highlight</span>
@@ -1008,6 +1041,8 @@ export function useSheet(o: SheetOptions) {
     marker,
     dash,
     setDash,
+    rtl,
+    setRtl,
     paint,
     apply,
     has,
@@ -1031,6 +1066,7 @@ const TOOLS: { tool: Tool; icon: string; title: string }[] = [
   { tool: "arrow", icon: "ray", title: "Arrow — a straight line with a head (an axis)" },
   { tool: "point", icon: "psDot", title: "Point — click a grid point to plot a dot (again takes it off)" },
   { tool: "curve", icon: "psCurve", title: "Curve — click points along it, then Enter or double-click: a smooth curve through them (Esc lets it go)" },
+  { tool: "axes", icon: "psAxes", title: "Axes — click where they cross: an x and a y axis out to the sheet's edges" },
   { tool: "erase", icon: "eraser", title: "Eraser — click or drag over what's drawn or written" },
 ];
 
@@ -1081,6 +1117,7 @@ export function SheetPad({ s, look, onLook, children }: { s: Sheet; look?: Look;
       <span className="ps-pad-group" title="What typing writes in a square">
         {modes.map(([m, title, body]) => btn(m, title, s.mode === m && s.tool === "write", () => (s.setTool("write"), s.setMode(m)), body, "is-text"))}
       </span>
+      {btn("rtl", "Write right to left — an answer worked from the ones column (addition, multiplication)", s.rtl, () => s.setRtl(!s.rtl), <Icon name="psRtl" size={16} />)}
       <span className="ps-pad-sep" />
       {btn("cross", `Cross out (${s.open ? "⌥X" : "X"})`, s.has("cross"), () => s.apply("cross"), <Icon name="psCross" size={16} />)}
       {btn("circle", "Circle (⌥O)", s.has("circle"), () => s.apply("circle"), <Icon name="psCircle" size={16} />)}
@@ -1088,6 +1125,7 @@ export function SheetPad({ s, look, onLook, children }: { s: Sheet; look?: Look;
       {btn("under", "Line under (_ or ⌥−)", s.has("under"), () => s.apply("under"), <Icon name="psUnder" size={16} />)}
       {btn("wall", "Bracket side — a line down the left edge (| or ⌥\\)", s.has("wall"), () => s.apply("wall"), <Icon name="psWall" size={16} />)}
       {btn("point", "Decimal point on the square's corner (. after a digit, or ⌥.)", s.has("point"), () => s.apply("point"), <span className="ps-pad-math">.5</span>)}
+      {btn("bracket", "Long-division bracket — over the dividend selected (a line over it, its side down the left)", false, () => s.apply("bracket"), <Icon name="psBracket" size={16} />)}
       <span className="ps-pad-sep" />
       <span className="ps-pad-anchor">
         <button className={pop === "ink" ? "is-on" : ""} title="Ink color — for what's written and drawn next (and what's selected)" onMouseDown={keep} onClick={() => setPop(pop === "ink" ? null : "ink")}>

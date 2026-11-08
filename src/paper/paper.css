@@ -767,6 +767,7 @@
 }
 
 .ps-paper.is-tool-draw,
+.ps-paper.is-tool-axes,
 .ps-paper.is-tool-arrow,
 .ps-paper.is-tool-point,
 .ps-paper.is-tool-curve {
@@ -1019,4 +1020,21 @@
 /* a problem's digit crossed out on the Paper tile's sheet (a borrow) */
 .pp-mark.is-given-crossed {
   opacity: 0.45;
+}
+
+/* in the notebook's bar, narrower: the pad's buttons closer (all of them on one line) */
+@container (max-width: 1060px) {
+  .nb-format .ps-pad button {
+    min-width: 24px;
+    padding: 0 3px;
+  }
+
+  .nb-format .ps-pad-group button.is-text {
+    padding: 0 5px;
+    font-size: 12px;
+  }
+
+  .nb-format .ps-pad-sep {
+    margin: 0 2px;
+  }
 }

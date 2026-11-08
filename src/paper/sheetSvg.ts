@@ -8,8 +8,9 @@ const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 export function sheetSvg(code: string, C = 22): string {
   const { ink, look } = readInk(code);
-  let rows = 4;
-  let cols = 6;
+  // as long as it was made on the page, and across the printed page (narrowed to its column there)
+  let rows = Math.max(4, look.rows ?? 6);
+  let cols = 30;
   const see = (r: number, c: number) => ((rows = Math.max(rows, r + 2)), (cols = Math.max(cols, c + 2)));
   for (const m of ["cells", "small", "pow", "sub", "fill"] as const) for (const k of Object.keys(ink[m])) see(...RC(k));
   for (const s of ["under", "walls", "crossed", "circled", "boxed", "points"] as const) for (const k of ink[s]) see(...RC(k));
@@ -73,5 +74,5 @@ export function sheetSvg(code: string, C = 22): string {
   }
 
 
-  return `<svg class="paper" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${out.join("")}</svg>`;
+  return `<svg class="paper" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="max-width:100%;height:auto" xmlns="http://www.w3.org/2000/svg">${out.join("")}</svg>`;
 }
