@@ -160,6 +160,8 @@ export default function FormatBar({
       <button className="nb-format-app" title="Graph paper — beside what you're writing: work it out by hand, a digit a square, carries, lines, crossing out" onClick={() => onApp("paper")}>
         <Icon name="gridpaper" size={15} /> Paper
       </button>
+      {/* graph paper being worked on: its tools take the bar (as Word's ribbon turns to a table's) */}
+      <div className="nb-format-slot" />
       <input
         ref={file}
         type="file"

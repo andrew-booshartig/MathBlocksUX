@@ -5,7 +5,18 @@
  * given (Catmull–Rom), so plotted points become a graph, and three close
  * ones a division bracket's curve. */
 export type Pt = [number, number];
-export type Shape = { k: "seg"; a: Pt; b: Pt } | { k: "dot"; p: Pt } | { k: "curve"; pts: Pt[] };
+/** a drawn thing's pen: its color (the ink's own when none), dashed (an asymptote, a guide), an arrowhead at a line's end (an axis) */
+export type Pen = { hue?: string; dash?: boolean; arrow?: boolean };
+export type Shape = ({ k: "seg"; a: Pt; b: Pt } | { k: "dot"; p: Pt } | { k: "curve"; pts: Pt[] }) & Pen;
+
+/** the points a shape is drawn through */
+export const pointsOf = (s: Shape): Pt[] => (s.k === "dot" ? [s.p] : s.k === "seg" ? [s.a, s.b] : s.pts);
+
+/** a shape moved by dr rows and dc columns */
+export function shifted(s: Shape, dr: number, dc: number): Shape {
+  const m = (p: Pt): Pt => [p[0] + dr, p[1] + dc];
+  return s.k === "dot" ? { ...s, p: m(s.p) } : s.k === "seg" ? { ...s, a: m(s.a), b: m(s.b) } : { ...s, pts: s.pts.map(m) };
+}
 
 /** a point on the grid nearest (x, y) px: to the half square */
 export const snapPt = (x: number, y: number, cell: number): Pt => [Math.max(0, Math.round((y / cell) * 2) / 2), Math.max(0, Math.round((x / cell) * 2) / 2)];
@@ -45,6 +56,6 @@ export function distTo(s: Shape, p: Pt): number {
 
 /** the farthest row and column a shape reaches */
 export const reach = (s: Shape): Pt => {
-  const ps = s.k === "dot" ? [s.p] : s.k === "seg" ? [s.a, s.b] : s.pts;
+  const ps = pointsOf(s);
   return [Math.max(...ps.map((p) => p[0])), Math.max(...ps.map((p) => p[1]))];
 };

@@ -3691,6 +3691,15 @@ body.nb-is-moving * {
   border-bottom: 1px solid var(--t-line);
 }
 
+/* graph paper's own tools, in the bar while it's being worked on */
+.nb-format-slot:empty {
+  display: none;
+}
+
+.nb-format:has(> .nb-format-slot:not(:empty)) > :not(.nb-format-slot) {
+  display: none !important;
+}
+
 .nb-format button {
   display: inline-flex;
   align-items: center;

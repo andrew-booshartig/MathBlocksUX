@@ -1963,6 +1963,8 @@ export default function NotebookTile({
     if (e.button !== 0 || editing === b.id) return;
     const t = e.target as HTMLElement;
     if (t.closest("button, a, input, textarea, select, math-field, .cm-editor, [contenteditable], .nb-obj-bar, .nb-gutter, .nb-size, .nb-insert, .nb-folded, .sheet")) return;
+    // graph paper is written on where it is: picked (its bar shows), never dragged by a stroke on it
+    if (t.closest(".ps-paper, .nb-paper-grow")) return void setPicked(b.id);
     press.current = { id: b.id, already: picked === b.id };
     pickBlock(b.id);
     // placed freely: dragged anywhere (a graph's plot and an output's text excepted — the grip moves those)
