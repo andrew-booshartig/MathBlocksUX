@@ -9,12 +9,12 @@ import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type Look, SheetPad, paperClass, readInk, useSheet, writeInk } from "../paper/sheet";
 
-export default function PaperBlock({ id, code, onChange }: { id: string; code: string; onChange: (code: string) => void }) {
+export default function PaperBlock({ id, code, onChange, onLeave }: { id: string; code: string; onChange: (code: string) => void; onLeave?: (dir: "up") => boolean }) {
   const [start] = useState(() => readInk(code));
   const [look, setLookState] = useState<Look>(start.look);
   const lookRef = useRef(look);
   const cell = look.size ?? 30;
-  const sheet = useSheet({ keep: `nb:${id}`, start: { r: 1, c: 1 }, init: start.ink, open: true, cell, onInk: (ink) => onChange(writeInk(ink, lookRef.current)) });
+  const sheet = useSheet({ keep: `nb:${id}`, start: { r: 1, c: 1 }, init: start.ink, open: true, cell, onLeave, onInk: (ink) => onChange(writeInk(ink, lookRef.current)) });
   const setLook = (next: Look) => {
     lookRef.current = next;
     setLookState(next);

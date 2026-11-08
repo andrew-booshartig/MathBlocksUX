@@ -194,6 +194,8 @@ export interface SheetOptions {
   fixed?: (r: number, c: number) => boolean;
   /** the squares' size, px */
   cell?: number;
+  /** ↑ on the top row: out of the sheet, to what's above it (true when there was somewhere to go) */
+  onLeave?: (dir: "up") => boolean;
 }
 
 export type Sheet = ReturnType<typeof useSheet>;
@@ -742,6 +744,7 @@ export function useSheet(o: SheetOptions) {
       e.preventDefault();
       setPowAt(null);
       const [dr, dc] = arrows[key];
+      if (key === "ArrowUp" && cur.r === 0 && !e.shiftKey && opts.current.onLeave?.("up")) return;
       if (e.shiftKey) {
         const base = end ?? cur;
         return setEnd({ r: Math.max(0, base.r + dr), c: Math.max(0, base.c + dc) });

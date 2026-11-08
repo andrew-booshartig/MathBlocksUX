@@ -50,13 +50,13 @@ export function sheetSvg(code: string, C = 22): string {
     const x = c * C;
     const y = r * C;
     const v = ink.cells[k];
-    const shift = ink.pow[k] ? -C * 0.08 : 0;
+    const shift = ink.pow[k] ? -C * 0.1 : 0;
     if (v) out.push(`<text x="${x + C / 2 + shift}" y="${y + C * 0.72}" text-anchor="middle" font-size="${C * 0.66}" font-family="${font}" fill="${color}"${ink.crossed.has(k) ? ' fill-opacity="0.45"' : ""}>${esc(v)}</text>`);
     if (ink.small[k]) {
       const over = !!v;
-      out.push(`<text x="${over ? x + C * 0.07 : x + C / 2}" y="${over ? y + C * 0.32 : y + C * 0.52}" text-anchor="${over ? "start" : "middle"}" font-size="${C * (over ? 0.34 : 0.4)}" font-weight="600" font-family="${font}" fill="${INK.blue}">${esc(ink.small[k])}</text>`);
+      out.push(`<text x="${over ? x + C * 0.07 : x + C / 2}" y="${over ? y + C * 0.32 : y + C * 0.8}" text-anchor="${over ? "start" : "middle"}" font-size="${C * (over ? 0.34 : 0.4)}" font-weight="600" font-family="${font}" fill="${INK.blue}">${esc(ink.small[k])}</text>`);
     }
-    if (ink.pow[k]) out.push(`<text x="${x + C * 0.96}" y="${y + C * 0.36}" text-anchor="end" font-size="${C * 0.36}" font-family="${font}" fill="${color}">${esc(ink.pow[k])}</text>`);
+    if (ink.pow[k]) out.push(`<text x="${x + C * 0.91}" y="${y + C * 0.36}" text-anchor="end" font-size="${C * 0.36}" font-family="${font}" fill="${color}">${esc(ink.pow[k])}</text>`);
     if (ink.sub[k]) out.push(`<text x="${x + C * 0.95}" y="${y + C * 0.94}" text-anchor="end" font-size="${C * 0.32}" font-family="${font}" fill="${color}">${esc(ink.sub[k])}</text>`);
     if (ink.crossed.has(k)) out.push(`<line x1="${x + C * 0.16}" y1="${y + C * 0.84}" x2="${x + C * 0.84}" y2="${y + C * 0.16}" stroke="${INK.red}" stroke-width="1.5"/>`);
     if (ink.circled.has(k)) out.push(`<circle cx="${x + C / 2}" cy="${y + C / 2}" r="${C * 0.42}" fill="none" stroke="${color}" stroke-width="1.3"/>`);

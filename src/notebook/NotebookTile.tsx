@@ -1354,7 +1354,21 @@ export default function NotebookTile({
     if (next.kind === "text" || codeLanguage(next) || (next.kind === "cell" && next.lang === "python")) {
       fromTop.current = dir === "down";
       setTimeout(() => startEditing(next), 0);
+    } else if (next.kind === "cell" && next.lang === "paper") {
+      // graph paper: written on where it is — the cursor into it
+      setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${next.id}"] .ps-paper`)?.focus(), 0);
     } else pickBlock(next.id);
+    return true;
+  };
+  /** ↑ off graph paper's top row: on to the block above it (written in, when it's text) */
+  const leavePaper = (b: Block) => {
+    const blocks = docRef.current?.blocks ?? [];
+    const prev = blocks[blocks.findIndex((x) => x.id === b.id) - 1];
+    if (!prev) return false;
+    if (prev.kind === "text" || codeLanguage(prev)) {
+      fromTop.current = false;
+      startEditing(prev);
+    } else pickBlock(prev.id);
     return true;
   };
   /** where a text block was clicked to write in it: the caret goes there */
@@ -2391,7 +2405,7 @@ export default function NotebookTile({
         // a spreadsheet, typed into right on the page
         <TableBlock id={b.id} code={b.code} info={b.info} onChange={(code) => updateBlock(b.id, { code })} onInfo={(info) => updateBlock(b.id, { info })} onRemove={() => removeBlock(b.id)} />
       ) : b.lang === "paper" ? (
-        <PaperBlock id={b.id} code={b.code} onChange={(code) => updateBlock(b.id, { code })} />
+        <PaperBlock id={b.id} code={b.code} onChange={(code) => updateBlock(b.id, { code })} onLeave={() => leavePaper(b)} />
       ) : b.lang === "numberline" ? (
         <NumberLineCell code={isEditing ? draft : b.code} />
       ) : b.lang === "work" ? (

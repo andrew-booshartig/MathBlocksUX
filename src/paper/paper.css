@@ -506,7 +506,7 @@
 
 /* an exponent beside it: the digit makes a little room */
 .ps-sq.has-pow .ps-g {
-  transform: translateX(calc(var(--cell) * -0.08));
+  transform: translateX(calc(var(--cell) * -0.1));
 }
 
 /* a carry: small, top left, in the carry color (never the digit's) */
@@ -520,10 +520,10 @@
 }
 
 .ps-sq:not(.has-g) .ps-carry {
-  /* over an empty square (a carry above a column): in its middle, a little higher */
+  /* in an empty square (a carry over a column): low in it, just over the digit it's carried to */
   left: 0;
   right: 0;
-  top: calc(var(--cell) * 0.22);
+  top: calc(var(--cell) * 0.46);
   text-align: center;
   font-size: calc(var(--cell) * 0.4);
 }
@@ -531,8 +531,8 @@
 /* an exponent: top right, raised, in the digit's own ink */
 .ps-pow {
   position: absolute;
-  top: calc(var(--cell) * 0.04);
-  right: calc(var(--cell) * 0.04);
+  top: calc(var(--cell) * 0.05);
+  right: calc(var(--cell) * 0.09);
   font: 500 calc(var(--cell) * 0.36) / 1 var(--ps-family);
 }
 
