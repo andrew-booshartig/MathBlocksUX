@@ -1750,7 +1750,8 @@ export default function NotebookTile({
     const want = pendingFocus.current;
     if (want?.id === id) {
       pendingFocus.current = null;
-      setTimeout(() => h.focus(want.at), 0);
+      // (the editor there then — one made, taken down and made again, as React's checks do, is the last)
+      setTimeout(() => runs.current.get(id)?.focus(want.at), 0);
     }
   };
   /** a new block, open to work in (graph paper: its cursor in it; a table's typed into where it is) */
@@ -1769,14 +1770,29 @@ export default function NotebookTile({
   /** something put in the writing where the caret is: an empty line (or the / typed) is its place, else it goes
    * under the caret's line — the writing splits there. Beside: next to the paragraph the caret's in (graph paper by
    * the problem). In a tab: open in its app, beside the notebook, too */
-  const insertAtCaret = (id: string, kind: { lang: string; start: string }, how: { beside?: boolean; tab?: boolean } = {}) => {
+  const insertAtCaret = (id: string, kind: { lang: string; start: string }, how: { beside?: boolean; tab?: boolean; atEnd?: boolean } = {}) => {
     const now = docRef.current;
     if (!now) return;
     setInserting(null);
     const run = now.blocks.find((x) => x.id === id) ?? null;
     const v = runs.current.get(id)?.view;
     const text = v?.state.doc.toString() ?? (run?.kind === "text" ? run.text : "");
-    const head = v?.state.selection.main.head ?? text.length;
+    // (no caret in it: at its end)
+    const head = how.atEnd || !v ? text.length : v.state.selection.main.head;
+    if (how.atEnd && kind.lang === "text") {
+      // a style or a list with no caret anywhere: a new paragraph at the end, starting so
+      const begin = () => {
+        const w = runs.current.get(id)?.view;
+        if (!w) return;
+        const t = w.state.doc.toString();
+        const add = `${t.trim() ? "\n\n" : ""}${kind.start}`;
+        w.focus();
+        w.dispatch({ changes: { from: t.length, insert: add }, selection: { anchor: t.length + add.length }, scrollIntoView: true });
+      };
+      if (runs.current.has(id)) begin();
+      else setTimeout(begin, 30);
+      return;
+    }
     const lineFrom = text.lastIndexOf("\n", head - 1) + 1;
     const nl = text.indexOf("\n", head);
     const lineTo = nl < 0 ? text.length : nl;
@@ -1826,7 +1842,7 @@ export default function NotebookTile({
     finishEditing();
     const here = at && docRef.current?.blocks.some((x) => x.id === at) ? at : null;
     if (here) return void setTimeout(() => insertBlock({ ...kind, beside: how.beside }, here), 0);
-    insertAtCaret(writingAtEnd(), kind, how);
+    insertAtCaret(writingAtEnd(), kind, { ...how, atEnd: true });
   };
   writingApi.current = {
     joinUp,
