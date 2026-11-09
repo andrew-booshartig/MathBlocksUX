@@ -268,7 +268,7 @@ export default function SmartCalc({
     setLinkedDock(
       (_app, near) => {
         if (!dock.current) return false;
-        dock.current.float(_app.id, near);
+        dock.current.beside(_app.id, near);
         return true;
       },
       (id) => dock.current?.closePanel(id),

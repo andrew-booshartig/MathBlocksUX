@@ -533,8 +533,8 @@ export interface CalcDockHandle {
   layout: () => object | null;
   /** the zone in use fills the window (or everything comes back) */
   fill: () => void;
-  /** a notebook block's app, in a window of its own beside `near` (the block, on the screen) */
-  float: (id: string, near?: DOMRect) => void;
+  /** a notebook block's app, in a tab beside the notebook (side by side with it — in the zone its other apps are in, if one is open) */
+  beside: (id: string, near?: DOMRect) => void;
   /** a tile closed by id, whatever it is */
   closePanel: (id: string) => void;
 }
@@ -614,13 +614,28 @@ export default function CalcDock({
       const group = api.current?.activeGroup;
       if (group && group.api.location.type === "grid") toggleMaximize(group.api);
     },
-    float: (id, near) => {
+    beside: (id, near) => {
       const a = api.current;
       if (!a) return;
       const open = a.getPanel(id);
       if (open) {
         open.api.setActive();
         glow(open.group);
+        return;
+      }
+      // a tab beside the notebook: in the zone to its side that holds its apps already, else a zone of its own there
+      const nb = a.getPanel("notebook");
+      const home = nb?.group;
+      if (home && home.api.location.type === "grid") {
+        const theirs = a.groups.find((g) => g !== home && g.api.location.type === "grid" && g.panels.some((p) => p.id.startsWith("nbapp:")));
+        if (theirs) a.addPanel({ id, component: "tile", title: tileOf(id).title, position: { referenceGroup: theirs } });
+        else {
+          a.addPanel({ id, component: "tile", title: tileOf(id).title, position: { referenceGroup: home, direction: "right" } });
+          // (the notebook keeps the larger share)
+          a.getPanel(id)?.group.api.setSize({ width: Math.round(Math.min(620, a.width * 0.42)) });
+        }
+        const panel = a.getPanel(id);
+        if (panel) glow(panel.group);
         return;
       }
       // beside the block: to its right if there's room, else its left, else over the page's right side

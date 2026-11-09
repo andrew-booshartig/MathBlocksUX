@@ -38,7 +38,8 @@ import { enterKey, listKey, tabKey, wrapKey } from "./proseKeys";
 import { TableBlock, fromMarkdownTable, tableMarkdown } from "./tableBlock";
 import type { EditorView, KeyBinding } from "@codemirror/view";
 import Library, { QuickOpen } from "./Library";
-import FormatBar from "./FormatBar";
+import FormatBar, { type NotebookType } from "./FormatBar";
+import { DEFAULT_SIZE, TYPE_KEYS, fontCss } from "./fonts";
 import { LINKED_LANGS, appDataFor, canLink, closeLinked, codeFor, linkedApp, linkedId, openLinked, rescopeLinked, useLinkedApps, watchLinked } from "./linked";
 import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
@@ -582,6 +583,8 @@ export default function NotebookTile({
   const [caret, setCaret] = useState<{ id: string; top: number; left: number; bottom: number; empty: boolean; slash: string | null } | null>(null);
   /** the / menu: the item picked with ↑ ↓ */
   const [slashAt, setSlashAt] = useState(0);
+  /** a font (or size) pointed at in the bar's menu: shown on the page till it's let go */
+  const [previewType, setPreviewType] = useState<Partial<NotebookType> | null>(null);
   /** writing after the last object: there to be written in (a block once it's typed in), with this id */
   const endId = useRef(blockId());
   /** the caret wanted in writing not on the page yet (just made): where, once its editor is */
@@ -1673,7 +1676,7 @@ export default function NotebookTile({
     const b = now?.blocks.find((x) => x.id === id);
     if (!now || !b || b.kind !== "text") return;
     if (!b.text.trim()) {
-      if (!b.free) commit({ ...now, blocks: joinWriting(now.blocks.filter((x) => x.id !== id)) });
+      commit({ ...now, blocks: joinWriting(now.blocks.filter((x) => x.id !== id)) });
       return;
     }
     const parts = parseBlocks(b.text);
@@ -2248,7 +2251,7 @@ export default function NotebookTile({
     <div className="nb-header">
       {headerOpen ? (
         <div className="nb-header-form">
-          {[...HEADER_FIELDS, ...doc.meta.filter(([k]) => !HEADER_FIELDS.some(([f]) => f === k.toLowerCase()) && k !== "template" && !SWITCH_KEYS.includes(k.toLowerCase())).map(([k]) => [k, k] as [string, string])].map(([key, label]) => (
+          {[...HEADER_FIELDS, ...doc.meta.filter(([k]) => !HEADER_FIELDS.some(([f]) => f === k.toLowerCase()) && k !== "template" && !SWITCH_KEYS.includes(k.toLowerCase()) && !TYPE_KEYS.includes(k.toLowerCase())).map(([k]) => [k, k] as [string, string])].map(([key, label]) => (
             <label key={key} className="nb-field">
               <span>{label}</span>
               <input
@@ -2361,12 +2364,13 @@ export default function NotebookTile({
     commit({ ...now, blocks: [...now.blocks.slice(0, end + 1), copy, ...now.blocks.slice(end + 1)] });
     pickBlock(copy.id);
   };
-  /** open it: work in the app (a picture made live first) */
+  /** open it: work in the app right where it is, on the page (a picture made live first) — its bar opens it in a tab beside the notebook */
   const openBlock = (b: Block) => {
     // a table (graph paper) is worked in where it is
     if (b.kind === "cell" && (b.lang === "table" || b.lang === "paper")) return;
     if (b.kind === "cell" && flatOf(b)) unflatten(b);
-    if (openInApp(b)) return;
+    // (open in its tab already: that's where it's worked in)
+    if (openInAppNow(b)) return void openInApp(b);
     startEditing(b);
   };
   // ---- linked apps: an app block opens in its real app (its tile, floating beside the page), not a copy of it here
@@ -2447,10 +2451,11 @@ export default function NotebookTile({
     // a graph pans under the pointer, and an output's text is there to select: those move by the grip
     if (!t.closest(".nb-graph, .js-plotly-plot, pre, .nb-py-out, .nb-code")) beginMove(e, b.id, false);
   };
+  /** a click on an app (not a drag): worked in, right there — its grip picks it, its bar (on hover) has the rest */
   const objectClick = (b: Block) => {
     const p = press.current;
     press.current = null;
-    if (p?.id === b.id && p.already && !movedRef.current && editing !== b.id) openBlock(b);
+    if (p?.id === b.id && !movedRef.current && editing !== b.id && !b.free) openBlock(b);
   };
   /** + to add under it, and the grip: drag it anywhere, or click it to pick it */
   const gutter = (b: Block) => (
@@ -2474,7 +2479,7 @@ export default function NotebookTile({
       {inserting?.after === b.id && !inserting.replace && insertMenu(b.id)}
     </span>
   );
-  const [barMenu, setBarMenu] = useState<{ id: string; which: "flat" | "more" } | null>(null);
+  const [barMenu, setBarMenu] = useState<{ id: string; which: "flat" | "more" | "lang" } | null>(null);
   // a menu open (a bar's, or +): a press anywhere else puts it away
   useEffect(() => {
     if (!barMenu && !(inserting && !inserting.replace)) return;
@@ -2509,15 +2514,16 @@ export default function NotebookTile({
           <Icon name={icon} size={13} /> {label}
           {flat && <span className="nb-obj-tag" title="Kept as a picture — not worked out or drawn again">picture</span>}
         </span>
-        {cell && !flat && cell.lang !== "paper" && (LINKED_LANGS[cell.lang] && canLink() ? (
-          <button className={`is-text${openInAppNow(b) ? " is-on" : ""}`} title={openInAppNow(b) ? "It's open in its app — bring it forward" : `Open it in ${label} — the app itself, beside the page (or double-click it)`} onClick={() => openBlock(b)}>
-            <Icon name="arrow" size={13} /> {openInAppNow(b) ? "Open" : "Open"}
-          </button>
-        ) : (
-          <button title={code ? "Edit its code (click the code, or Enter)" : "Work in it (double-click it, or Enter)"} onClick={() => startEditing(b)}>
+        {cell && !flat && cell.lang !== "paper" && cell.lang !== "table" && !openInAppNow(b) && (
+          <button title={code ? "Edit its code (click the code, or Enter)" : "Work in it, right here (double-click it, or Enter)"} onClick={() => startEditing(b)}>
             <Icon name="pen" size={14} />
           </button>
-        ))}
+        )}
+        {cell && !flat && LINKED_LANGS[cell.lang] && canLink() && (
+          <button className={`is-text${openInAppNow(b) ? " is-on" : ""}`} title={openInAppNow(b) ? "It's open in its tab — bring it forward" : `${label} in a tab beside the notebook — side by side with the page; what's done there is kept here`} onClick={() => openInApp(b)}>
+            <Icon name="splitRight" size={13} /> Beside
+          </button>
+        )}
         {cell && runnable(cell) && !flat && (
           <button title="Run it (⇧⏎ when it's picked)" onClick={() => runBlock(cell, cell.code)}>
             <Icon name="run" size={13} />
@@ -2880,7 +2886,24 @@ export default function NotebookTile({
     const codePanel = isCode && !flat && (
       <div className="nb-code-panel">
         <div className="nb-code-head">
-          <span className="nb-code-lang">{label}</span>
+          {/* its language: changed here (the code stays) */}
+          <span className="nb-obj-anchor">
+            <button className="nb-code-lang is-pick" title="Its language — change it" onClick={() => setBarMenu(barMenu?.id === b.id && barMenu.which === "lang" ? null : { id: b.id, which: "lang" })}>
+              {label} <Icon name="chevron" size={11} />
+            </button>
+            {barMenu?.id === b.id && barMenu.which === "lang" && (
+              <span className="nb-obj-menu nb-lang-menu">
+                {[{ id: "python", label: "Python" }, ...allLanguages].map((l) => (
+                  <button key={l.id} className={l.id === b.lang ? "is-on" : ""} onClick={() => (setBarMenu(null), updateBlock(b.id, { lang: l.id }))}>
+                    {l.label}
+                  </button>
+                ))}
+              </span>
+            )}
+          </span>
+          <button className={`nb-vim-chip${vimKeys ? " is-on" : ""}`} title={vimKeys ? "Vim keys on — as your Neovim has them: Space r runs, :w is done, yanks go to the clipboard (click to turn off)" : "Vim keys off — click for Vim, set up like your Neovim"} onClick={() => setVimKeys(!vimKeys)}>
+            VIM
+          </button>
           {b.lang === "python" && (
             <span className="nb-count" title={py[b.code]?.count ? `Run ${py[b.code]!.count} in this Python` : "Not run yet"}>
               [{running.has(b.code) ? "*" : (py[b.code]?.count ?? " ")}]
@@ -3041,6 +3064,30 @@ export default function NotebookTile({
     return false;
   };
 
+  /** the notebook's type (its header's font, heading font, font size) */
+  const docType: NotebookType = { body: doc ? metaValue(doc, "font") : "", heading: doc ? metaValue(doc, "heading font") : "", size: (doc && Number(metaValue(doc, "font size"))) || DEFAULT_SIZE };
+  const shownType: NotebookType = { ...docType, ...(previewType ?? {}) } as NotebookType;
+  const typeStyle = {
+    ...(shownType.body ? { "--nb-font": fontCss(shownType.body) } : {}),
+    ...(shownType.heading ? { "--nb-head-font": fontCss(shownType.heading) } : {}),
+    "--nb-size": `${(shownType.size * 4) / 3}px`,
+  } as CSSProperties;
+  /** the notebook's type changed (an empty one: back to the app's own) */
+  const setType = (t: Partial<NotebookType>) => {
+    let d = docRef.current;
+    if (!d) return;
+    const keys: [keyof NotebookType, string][] = [
+      ["body", "font"],
+      ["heading", "heading font"],
+      ["size", "font size"],
+    ];
+    for (const [k, key] of keys) {
+      if (!(k in t)) continue;
+      const v = t[k];
+      d = v && !(k === "size" && v === DEFAULT_SIZE) ? setMeta(d, key, String(v)) : { ...d, meta: d.meta.filter(([m]) => m.toLowerCase() !== key) };
+    }
+    commit(d);
+  };
   /** the blocks on the page: the notebook's, and writing at the end when the last isn't writing — there's always somewhere to write */
   const shown: Block[] = (() => {
     const blocks = doc?.blocks ?? [];
@@ -3219,10 +3266,15 @@ export default function NotebookTile({
             // (graph paper: beside the paragraph being written — the problem on the left, its working on the right)
             insertHere({ lang, start: lang === "work" ? "" : kind.start }, { beside: lang === "paper" });
           }}
+          type={docType}
+          onType={setType}
+          onPreviewType={setPreviewType}
+          onRefocus={() => lastView.current?.focus()}
         />
         <div
           className={`nb-page${pageView ? " is-sheet" : ""}`}
           ref={page}
+          style={typeStyle}
           onScroll={spy}
           // a press on the page around the blocks: nothing picked
           onPointerDown={(e) => !(e.target as HTMLElement).closest("[data-block], .nb-insert, .nb-end, .nb-add") && setPicked(null)}

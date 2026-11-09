@@ -1,13 +1,15 @@
-/** The formatting bar, as every text editor has one: undo, the paragraph's
- * style, bold and its kin, links, lists, a table, a picture, math. It works
- * on the text being written (its live preview); with nothing being written,
- * a style or a list starts a new paragraph at the end. */
-import { useRef, useState } from "react";
+/** The formatting bar, as Word's ribbon has it: undo, the paragraph's
+ * style, the notebook's fonts (any on this Mac — the writing's and the
+ * headings' apart) and size, bold and its kin, links, lists, alignment, a
+ * table, a picture, math, a symbol — and the apps, put in where the caret
+ * is. It works on the writing the caret's in (its live preview); with no
+ * caret anywhere, a style or a list starts a new paragraph at the end. */
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { redo, undo } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
 import Icon from "../Icon";
-import { writingKey } from "./writing";
-import { tabKey } from "./proseKeys";
+import { tabKey, wrapKey } from "./proseKeys";
+import { APPLE_FONTS, DEFAULT_SIZE, SIZES, fontCss, recentFonts, rememberFont, useFonts } from "./fonts";
 
 /** what starts a line: a heading's #s, a quote's >, a list's marker (lettered too) */
 const LEAD = /^(\s*)(#{1,6}\s+|>\s?|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+|[a-zA-Z][.)]\s+)?/;
@@ -16,11 +18,13 @@ const LEAD = /^(\s*)(#{1,6}\s+|>\s?|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+|[a-
 const SYMBOLS = ["×", "÷", "±", "−", "·", "√", "∛", "π", "°", "≤", "≥", "≠", "≈", "∞", "²", "³", "½", "¼", "¾", "θ", "Δ", "Ω", "μ", "Σ", "∠", "⊥", "∥", "→", "←", "⇒", "%", "‰"];
 
 const STYLES = [
-  { id: "text", label: "Text", lead: "" },
+  { id: "text", label: "Normal text", lead: "" },
   { id: "h1", label: "Heading 1", lead: "# " },
   { id: "h2", label: "Heading 2", lead: "## " },
   { id: "h3", label: "Heading 3", lead: "### " },
+  { id: "h4", label: "Heading 4", lead: "#### " },
   { id: "quote", label: "Quote", lead: "> " },
+  { id: "callout", label: "Callout", lead: "> [!note] " },
 ];
 
 /** each selected line's lead made `lead` (or taken off, when it's that already) */
@@ -35,21 +39,12 @@ function setLead(v: EditorView, lead: string, toggle = false) {
   for (let n = first, k = 1; n <= last; n++, k++) {
     const line = state.doc.line(n);
     const m = line.text.match(LEAD)!;
+    // (a callout's [!note] goes with its >)
+    const callout = m[2]?.startsWith(">") ? (line.text.slice(m[0].length).match(/^\[!\w+\][+-]?\s*/)?.[0].length ?? 0) : 0;
     const next = already ? "" : lead === "1. " ? `${k}. ` : lead === "a. " ? `${String.fromCharCode(96 + Math.min(26, k))}. ` : lead === "A. " ? `${String.fromCharCode(64 + Math.min(26, k))}. ` : lead;
-    changes.push({ from: line.from + m[1].length, to: line.from + m[0].length, insert: next });
+    changes.push({ from: line.from + m[1].length, to: line.from + m[0].length + callout, insert: next });
   }
   v.dispatch({ changes });
-  v.focus();
-}
-
-function wrapWith(v: EditorView, key: string, shift = false) {
-  const sel = v.state.selection.main;
-  // (a selection from the line's start leaves its # or list marker outside: **inside** them)
-  const line = v.state.doc.lineAt(sel.from);
-  const lead = line.text.match(LEAD)![0].length;
-  const from = sel.from - line.from < lead && sel.to > line.from + lead ? line.from + lead : sel.from;
-  const edit = writingKey({ key, metaKey: true, ctrlKey: false, shiftKey: shift, altKey: false }, v.state.doc.toString(), from, sel.to);
-  if (edit) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: edit.value }, selection: { anchor: edit.start, head: edit.end } });
   v.focus();
 }
 
@@ -57,6 +52,125 @@ function insert(v: EditorView, text: string, caret = text.length) {
   const at = v.state.selection.main;
   v.dispatch({ changes: { from: at.from, to: at.to, insert: text }, selection: { anchor: at.from + caret } });
   v.focus();
+}
+
+/** the notebook's type: its writing's font and its headings' (none: the app's own), the writing's size in points */
+export interface NotebookType {
+  body: string;
+  heading: string;
+  size: number;
+}
+
+/** Font ▾: any font on this Mac — for the writing, or for the headings (the one the caret's in, to start with) */
+function FontMenu({ type, heading, onType, onPreview, onClose }: { type: NotebookType; heading: boolean; onType: (t: Partial<NotebookType>) => void; onPreview: (t: Partial<NotebookType> | null) => void; onClose: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [forHeadings, setForHeadings] = useState(heading);
+  const [find, setFind] = useState("");
+  const all = useFonts(open);
+  const current = forHeadings ? type.heading : type.body;
+  const shown = (heading ? type.heading || type.body : type.body) || "San Francisco";
+  const box = useRef<HTMLSpanElement>(null);
+  const close = () => {
+    setOpen(false);
+    setFind("");
+    onPreview(null);
+    onClose();
+  };
+  // a press anywhere else puts it away
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => !box.current?.contains(e.target as Node) && close();
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  });
+  const pick = (name: string) => {
+    if (name) rememberFont(name);
+    onType(forHeadings ? { heading: name } : { body: name });
+    close();
+  };
+  const q = find.trim().toLowerCase();
+  const match = (n: string) => !q || n.toLowerCase().includes(q);
+  const recent = recentFonts().filter(match);
+  const apple = APPLE_FONTS.map((f) => f.name).filter(match);
+  const rest = all.filter(match);
+  const item = (name: string, label = name) => (
+    <button
+      key={`${label}:${name}`}
+      className={`nb-font-item${current === name ? " is-on" : ""}`}
+      style={{ fontFamily: name ? fontCss(name) : undefined }}
+      onMouseEnter={() => onPreview(forHeadings ? { heading: name } : { body: name })}
+      onClick={() => pick(name)}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <span className="nb-format-anchor" ref={box}>
+      <button className="nb-format-font" title={heading ? "The headings' font — any on this Mac" : "The writing's font — any on this Mac"} style={{ fontFamily: fontCss(shown) }} onClick={() => (open ? close() : (setForHeadings(heading), setOpen(true)))}>
+        <span className="nb-format-font-name">{shown}</span> <Icon name="chevron" size={12} />
+      </button>
+      {open && (
+        <span className="nb-format-menu nb-font-menu" onMouseLeave={() => onPreview(null)}>
+          <span className="nb-font-for">
+            <button className={!forHeadings ? "is-on" : ""} onClick={() => setForHeadings(false)}>
+              Text
+            </button>
+            <button className={forHeadings ? "is-on" : ""} onClick={() => setForHeadings(true)}>
+              Headings
+            </button>
+          </span>
+          <input
+            className="nb-font-find"
+            autoFocus
+            value={find}
+            placeholder="Find a font"
+            spellCheck={false}
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => setFind(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") close();
+              if (e.key === "Enter") {
+                const first = [...apple, ...rest][0];
+                if (first) pick(first);
+              }
+            }}
+          />
+          <span className="nb-font-list">
+            {forHeadings && !q && item("", "Same as the text")}
+            {!q && !forHeadings && type.body && item("", "The app's own (San Francisco)")}
+            {recent.length > 0 && !q && <span className="nb-font-title">Recent</span>}
+            {!q && recent.map((n) => item(n))}
+            {apple.length > 0 && <span className="nb-font-title">Apple</span>}
+            {apple.map((n) => item(n))}
+            {rest.length > 0 && <span className="nb-font-title">On this Mac</span>}
+            {rest.map((n) => item(n))}
+            {!apple.length && !rest.length && <span className="nb-font-none">No font called “{find}”</span>}
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Size ▾: the writing's size, in points (the headings go with it) */
+function SizeMenu({ size, onType, onPreview }: { size: number; onType: (t: Partial<NotebookType>) => void; onPreview: (t: Partial<NotebookType> | null) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="nb-format-anchor">
+      <button className="nb-format-size" title="The writing's size (points)" onClick={() => setOpen(!open)}>
+        {size} <Icon name="chevron" size={12} />
+      </button>
+      {open && (
+        <span className="nb-format-menu nb-size-menu" onMouseLeave={() => (setOpen(false), onPreview(null))}>
+          {SIZES.map((s) => (
+            <button key={s} className={s === size ? "is-on" : ""} onMouseEnter={() => onPreview({ size: s })} onClick={() => (setOpen(false), onPreview(null), onType({ size: s }))}>
+              {s}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
 }
 
 export default function FormatBar({
@@ -69,6 +183,10 @@ export default function FormatBar({
   onApp,
   align,
   onAlign,
+  type,
+  onType,
+  onPreviewType,
+  onRefocus,
 }: {
   /** the text being written, if any */
   view: EditorView | null;
@@ -79,23 +197,32 @@ export default function FormatBar({
   onNew: (start: string) => void;
   /** a picture file chosen: kept with the notebook, its Markdown back */
   onPicture: (file: File) => Promise<string | null>;
-  /** a spreadsheet, under the text being written (or at the end) */
+  /** a spreadsheet, where the caret is */
   onTable: () => void;
-  /** an app block (Calculate, Work, Graph), under the text being written (or at the end), open to work in */
+  /** an app (Calculate, Work, Graph, graph paper) or math, where the caret is, open to work in */
   onApp: (lang: "calc" | "work" | "graph" | "paper" | "math") => void;
-  /** the paragraph's alignment (the one being written, or picked) — none: nothing to align */
+  /** the paragraph's alignment (the one the caret's in) — none: nothing to align */
   align?: "left" | "center" | "right";
   onAlign?: (a: "left" | "center" | "right") => void;
+  /** the notebook's type, and changing it (a font tried — pointed at in its menu — shows on the page till it's let go) */
+  type: NotebookType;
+  onType: (t: Partial<NotebookType>) => void;
+  onPreviewType: (t: Partial<NotebookType> | null) => void;
+  /** the caret back in the writing (after a menu that took it: the font's search) */
+  onRefocus: () => void;
 }) {
   const [symbols, setSymbols] = useState(false);
   const [styles, setStyles] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const line = view ? view.state.doc.lineAt(view.state.selection.main.head).text : "";
-  const current = STYLES.find((s) => s.lead && line.startsWith(s.lead) && !line.startsWith(`${s.lead.trim()}#`)) ?? STYLES[0];
+  const current = useMemo(() => [...STYLES].reverse().find((s) => s.lead && line.startsWith(s.lead) && (s.id !== "quote" || !/^>\s?\[!/.test(line)) && !line.startsWith(`${s.lead.trim()}#`)) ?? STYLES[0], [line]);
+  const inHeading = current.id.startsWith("h");
   const off = !view;
   // (a press on the bar keeps the text's caret where it is)
   const keep = (e: React.MouseEvent) => e.preventDefault();
   const lead = (l: string, toggle = false) => (view ? setLead(view, l, toggle) : onNew(l));
+  const wrap = (key: string, shift = false) => view && (wrapKey(key, shift)(view), view.focus());
+  const headStyle = (id: string): CSSProperties => (id.startsWith("h") ? { fontFamily: fontCss(type.heading || type.body || "San Francisco") } : id === "text" ? { fontFamily: fontCss(type.body || "San Francisco") } : {});
   return (
     <div className="nb-format" onMouseDown={keep}>
       <button title="Undo (⌘Z)" onClick={() => (view ? (undo(view), view.focus()) : onUndo())}>
@@ -110,32 +237,37 @@ export default function FormatBar({
           {current.label} <Icon name="chevron" size={12} />
         </button>
         {styles && (
-          <span className="nb-format-menu" onMouseLeave={() => setStyles(false)}>
+          <span className="nb-format-menu nb-style-menu" onMouseLeave={() => setStyles(false)}>
             {STYLES.map((s) => (
-              <button key={s.id} className={`is-${s.id}`} onClick={() => (setStyles(false), lead(s.lead))}>
+              <button key={s.id} className={`is-${s.id}${current.id === s.id ? " is-on" : ""}`} style={headStyle(s.id)} onClick={() => (setStyles(false), lead(s.lead))}>
                 {s.label}
               </button>
             ))}
           </span>
         )}
       </span>
+      <FontMenu type={type} heading={inHeading} onType={onType} onPreview={onPreviewType} onClose={onRefocus} />
+      <SizeMenu size={type.size || DEFAULT_SIZE} onType={onType} onPreview={onPreviewType} />
       <span className="nb-format-sep" />
-      <button disabled={off} title="Bold (⌘B)" onClick={() => view && wrapWith(view, "b")}>
+      <button disabled={off} title="Bold (⌘B)" onClick={() => wrap("b")}>
         <b>B</b>
       </button>
-      <button disabled={off} title="Italic (⌘I)" onClick={() => view && wrapWith(view, "i")}>
+      <button disabled={off} title="Italic (⌘I)" onClick={() => wrap("i")}>
         <i>I</i>
       </button>
-      <button disabled={off} title="Strikethrough (⌘⇧X)" onClick={() => view && wrapWith(view, "x", true)}>
+      <button disabled={off} title="Underline (⌘U)" onClick={() => wrap("u")}>
+        <u>U</u>
+      </button>
+      <button disabled={off} title="Strikethrough (⌘⇧X)" onClick={() => wrap("x", true)}>
         <s>S</s>
       </button>
-      <button disabled={off} title="Code (⌘E)" onClick={() => view && wrapWith(view, "e")}>
-        <Icon name="source" size={14} />
-      </button>
-      <button disabled={off} title="Highlight (⌘⇧H)" onClick={() => view && wrapWith(view, "h", true)}>
+      <button disabled={off} title="Highlight (⌘⇧H)" onClick={() => wrap("h", true)}>
         <span className="nb-format-mark">H</span>
       </button>
-      <button disabled={off} title="Link (⌘K)" onClick={() => view && wrapWith(view, "k")}>
+      <button disabled={off} title="Code (⌘E)" onClick={() => wrap("e")}>
+        <Icon name="source" size={14} />
+      </button>
+      <button disabled={off} title="Link (⌘K) — [[a note]] links another notebook" onClick={() => wrap("k")}>
         <Icon name="link" size={14} />
       </button>
       <span className="nb-format-sep" />
@@ -191,16 +323,16 @@ export default function FormatBar({
         )}
       </span>
       <span className="nb-format-sep" />
-      <button className="nb-format-app" title="Calculate — work it out, right on the page" onClick={() => onApp("calc")}>
+      <button className="nb-format-app" title="Calculate — work it out, right where the caret is" onClick={() => onApp("calc")}>
         <Icon name="calc" size={15} /> <span className="nb-format-label">Calculate</span>
       </button>
-      <button className="nb-format-app" title="Work — solve a problem step by step, right on the page" onClick={() => onApp("work")}>
+      <button className="nb-format-app" title="Work — a problem solved step by step, right where the caret is" onClick={() => onApp("work")}>
         <Icon name="work" size={15} /> <span className="nb-format-label">Work</span>
       </button>
-      <button className="nb-format-app" title="Graph — right on the page" onClick={() => onApp("graph")}>
+      <button className="nb-format-app" title="Graph — right where the caret is" onClick={() => onApp("graph")}>
         <Icon name="graph" size={15} />
       </button>
-      <button className="nb-format-app" title="Graph paper — beside what you're writing: work it out by hand, a digit a square, carries, lines, crossing out" onClick={() => onApp("paper")}>
+      <button className="nb-format-app" title="Graph paper — beside the paragraph the caret's in: worked by hand, a digit a square, carries, lines, crossing out" onClick={() => onApp("paper")}>
         <Icon name="gridpaper" size={15} /> <span className="nb-format-label">Paper</span>
       </button>
       {/* graph paper being worked on: its tools take the bar (as Word's ribbon turns to a table's) */}

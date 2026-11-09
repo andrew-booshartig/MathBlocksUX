@@ -4275,3 +4275,220 @@ body.nb-is-moving * {
   border-right: 3px solid var(--t-blue);
   background: color-mix(in srgb, var(--t-blue) 7%, transparent);
 }
+
+/* ==== the bar's type: the style gallery, Font ▾ (any font on this Mac), Size ▾ ==== */
+.nb-format-style {
+  min-width: 118px !important;
+}
+
+.nb-style-menu {
+  min-width: 220px;
+}
+
+.nb-style-menu button {
+  height: auto !important;
+  min-height: 30px;
+  padding: 4px 10px !important;
+  color: var(--t-text);
+}
+
+.nb-style-menu button.is-on {
+  background: color-mix(in srgb, var(--t-blue) 16%, transparent);
+}
+
+.nb-style-menu .is-h1 {
+  font-size: 21px !important;
+  font-weight: 650;
+}
+
+.nb-style-menu .is-h2 {
+  font-size: 18px !important;
+  font-weight: 650;
+}
+
+.nb-style-menu .is-h3 {
+  font-size: 15.5px !important;
+  font-weight: 650;
+}
+
+.nb-style-menu .is-h4 {
+  font-size: 14px !important;
+  font-weight: 650;
+  color: var(--t-subtle) !important;
+}
+
+.nb-style-menu .is-callout {
+  border-left: 3px solid var(--t-blue) !important;
+  border-radius: 0 6px 6px 0 !important;
+  background: color-mix(in srgb, var(--t-blue) 9%, transparent);
+}
+
+.nb-format-font {
+  max-width: 150px;
+  min-width: 112px !important;
+  justify-content: space-between !important;
+  border: 1px solid var(--t-line) !important;
+}
+
+.nb-format-font-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.nb-format-size {
+  min-width: 46px !important;
+  justify-content: space-between !important;
+  margin-left: 4px;
+  border: 1px solid var(--t-line) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.nb-font-menu {
+  width: 280px;
+  padding: 6px;
+  gap: 4px;
+}
+
+.nb-font-for {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--t-bg1);
+}
+
+.nb-font-for > button {
+  flex: 1;
+  height: 26px !important;
+  justify-content: center !important;
+  color: var(--t-muted) !important;
+}
+
+.nb-font-for > button.is-on {
+  background: var(--t-bg3) !important;
+  color: var(--t-text) !important;
+}
+
+.nb-font-find {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--t-line);
+  border-radius: 8px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font: 13px -apple-system, "Inter", sans-serif;
+  outline: none;
+}
+
+.nb-font-find:focus {
+  border-color: color-mix(in srgb, var(--t-blue) 70%, var(--t-line));
+}
+
+.nb-font-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 380px;
+  overflow-y: auto;
+}
+
+.nb-font-title {
+  padding: 8px 8px 3px;
+  font: 650 10.5px -apple-system, "Inter", sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-faint);
+}
+
+.nb-font-item {
+  flex: 0 0 auto;
+  justify-content: flex-start !important;
+  height: 32px !important;
+  padding: 0 10px !important;
+  font-size: 16px !important;
+  color: var(--t-text) !important;
+  white-space: nowrap;
+  overflow: hidden;
+  /* (the long list is drawn as it's scrolled to) */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 32px;
+}
+
+.nb-font-item.is-on {
+  background: color-mix(in srgb, var(--t-blue) 16%, transparent) !important;
+}
+
+.nb-font-none {
+  padding: 10px;
+  font: 13px -apple-system, "Inter", sans-serif;
+  color: var(--t-muted);
+}
+
+.nb-size-menu {
+  min-width: 64px;
+}
+
+.nb-size-menu button {
+  justify-content: center !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.nb-size-menu button.is-on {
+  background: color-mix(in srgb, var(--t-blue) 16%, transparent);
+}
+
+/* the bar, narrower: the font's name shorter */
+@container (max-width: 1180px) {
+  .nb-format-font {
+    min-width: 90px !important;
+    max-width: 110px;
+  }
+}
+
+/* a code cell's head: its language (changed there) and Vim */
+.nb-code-lang.is-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.nb-code-lang.is-pick:hover {
+  background: color-mix(in srgb, var(--t-text) 8%, transparent);
+}
+
+.nb-lang-menu {
+  left: 0;
+  right: auto;
+  top: calc(100% + 4px);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.nb-lang-menu .is-on {
+  color: var(--t-blue);
+}
+
+.nb-vim-chip {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--t-line);
+  border-radius: 5px;
+  background: none;
+  color: var(--t-faint);
+  font: 600 10px ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.nb-vim-chip.is-on {
+  border-color: color-mix(in srgb, var(--t-green, #98c379) 60%, transparent);
+  background: color-mix(in srgb, var(--t-green, #98c379) 14%, transparent);
+  color: var(--t-green, #98c379);
+}

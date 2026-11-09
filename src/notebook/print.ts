@@ -17,6 +17,7 @@ import { languageOf, matlabOutput } from "./languages";
 import { cellKindOf } from "../plugins";
 import { invoke } from "@tauri-apps/api/core";
 import { renderMarkdown } from "./markdown";
+import { fontCss } from "./fonts";
 
 const escape = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -83,6 +84,10 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
   const meta = [metaValue(doc, "course"), metaValue(doc, "instructor")].filter(Boolean).join(" · ");
   const date = metaValue(doc, "date") || todayLabel();
   const o = printSwitches(doc);
+  // the notebook's own type (its header's): on paper too
+  const bodyFont = metaValue(doc, "font") ? fontCss(metaValue(doc, "font")) : '"Iowan Old Style", "Palatino", Georgia, serif';
+  const headFont = metaValue(doc, "heading font") ? fontCss(metaValue(doc, "heading font")) : bodyFont;
+  const size = Math.round(((Number(metaValue(doc, "font size")) || 12) * 4) / 3);
   let calcAt = 0;
   const pieces = new Map<Block, string>();
   for (const b of doc.blocks) {
@@ -154,7 +159,9 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
 <style>
   :root { color-scheme: light; }
   @page { margin: 0.75in; }
-  body { font: 16px/1.55 "Iowan Old Style", "Palatino", Georgia, serif; color: #1d2330; background: #fff; max-width: 720px; margin: 36px auto; padding: 0 24px; }
+  body { font: ${size}px/1.55 ${bodyFont}; color: #1d2330; background: #fff; max-width: 720px; margin: 36px auto; padding: 0 24px; }
+  h1, h2, h3, h4, header .title { font-family: ${headFont}; }
+  .nb-aligned > :first-child { margin-top: 0; }
   .hint { font: 13px -apple-system, Helvetica, sans-serif; color: #5b6475; background: #f3f4f6; border-radius: 8px; padding: 8px 12px; margin-bottom: 24px; }
   header { border-bottom: 2px solid #1d2330; padding-bottom: 8px; margin-bottom: 22px; }
   .head-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
