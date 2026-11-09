@@ -40,6 +40,7 @@ export function writingKey(e: { key: string; metaKey: boolean; ctrlKey: boolean;
     if (k === "e" && !e.shiftKey) return wrap(value, start, end, "`");
     if (k === "x" && e.shiftKey) return wrap(value, start, end, "~~");
     if (k === "h" && e.shiftKey) return wrap(value, start, end, "==");
+    if (k === "u" && !e.shiftKey) return wrap(value, start, end, "<u>", "</u>");
     if (k === "k" && !e.shiftKey) {
       // [what's selected](|) — the caret where the address goes
       const sel = value.slice(start, end) || "link";

@@ -59,6 +59,19 @@ function makeMarked(print: boolean) {
         },
       },
       {
+        // <!-- matrixlab: align center --> the line before a paragraph: the paragraph aligned so
+        name: "aligned",
+        level: "block",
+        start: (src: string) => src.match(/^<!--\s*matrixlab:\s*align/m)?.index,
+        tokenizer(src: string) {
+          const m = src.match(/^<!--\s*matrixlab:\s*align\s+(left|center|right)\s*-->[^\S\n]*\n((?:[^\n]*\S[^\n]*(?:\n|$))+)/);
+          return m ? { type: "aligned", raw: m[0], align: m[1], tokens: this.lexer.blockTokens(m[2], []) } : undefined;
+        },
+        renderer(token: Tokens.Generic) {
+          return `<div class="nb-aligned" style="text-align: ${token.align}">${this.parser.parse(token.tokens ?? [])}</div>\n`;
+        },
+      },
+      {
         name: "blockMath",
         level: "block",
         start: (src: string) => src.match(/^\$\$/m)?.index,
@@ -118,7 +131,8 @@ function makeMarked(print: boolean) {
     ],
     renderer: {
       // no HTML of its own: shown as the text it is
-      html: ({ text }: Tokens.HTML | Tokens.Tag) => escape(text),
+      // underline, sub- and superscripts (Markdown's way to them is HTML), and a comment (hidden) — any other HTML is shown as its text
+      html: ({ text }: Tokens.HTML | Tokens.Tag) => (/^<\/?(u|sub|sup)>$/i.test(text.trim()) ? text.trim().toLowerCase() : /^<br\s*\/?>$/i.test(text.trim()) ? "<br>" : /^<!--[\s\S]*-->\s*$/.test(text) ? "" : escape(text)),
       link({ href, title, tokens }: Tokens.Link) {
         const inner = this.parser.parseInline(tokens);
         const to = safeHref(href);

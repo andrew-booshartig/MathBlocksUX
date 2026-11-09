@@ -1013,6 +1013,8 @@ export default function SmartCalc({
     if (tab !== "calc" && !tiled) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
+      // (in the notebook, ⌘B is bold and ⌘E is code — the writing's)
+      if ((e.target as HTMLElement | null)?.closest?.(".nb")) return;
       const key = e.key.toLowerCase();
       if (key === "b") setSideOpen(!sideOpen);
       else if (key === "e") setEqOpen(!eqOpen);

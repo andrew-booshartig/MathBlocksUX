@@ -107,6 +107,28 @@ const unquote = (v: string) => {
 /** quoted when YAML would read it differently (a colon, a leading #…) */
 const quote = (v: string) => (/^[\s#&*!|>'"%@`-]|: |\s$|^$/.test(v) ? JSON.stringify(v) : v);
 
+/** a paragraph that's only display math ($$ … $$, one or more): a Math object, worked in as math */
+export const isMathText = (text: string) => {
+  const t = text.trim();
+  return t.startsWith("$$") && t.replace(/\$\$[\s\S]*?\$\$\s*/g, "") === "";
+};
+/** a paragraph that's only a Markdown table: a table object (a spreadsheet once it's worked in) */
+export const isTableText = (text: string) => {
+  const lines = text.trim().split("\n");
+  return lines.length >= 2 && lines.every((l) => /^\s*\|.*\|\s*$/.test(l)) && /^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$/.test(lines[1]);
+};
+/** an object on the page written as text (math, a table) — not writing, which runs on from paragraph to paragraph */
+export const isObjectText = (text: string) => isMathText(text) || isTableText(text);
+/** writing: text that isn't an object — one editor, paragraph after paragraph, as a page in Word is */
+export const isProse = (b: Block) => b.kind === "text" && !isObjectText(b.text);
+/** a paragraph's alignment, written in the writing (a comment the line before it, which other Markdown
+ * editors don't show): <!-- matrixlab: align center --> */
+export const ALIGN_LINE = /^<!--\s*matrixlab:\s*align\s+(left|center|right)\s*-->\s*$/;
+/** a block of writing of its own starts here (a text box's neighbor, a row's first) */
+const BLOCK_START = "<!-- matrixlab: block -->";
+/** placed writing (a text box, text in a row or flowed around…) is a paragraph */
+const placesText = (p: Placement) => !!(p.beside || p.width || p.wrap || p.free || p.wide || p.align || p.height);
+
 export function parseNotebook(text: string): NotebookDoc {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const meta: [string, string][] = [];
@@ -121,52 +143,149 @@ export function parseNotebook(text: string): NotebookDoc {
       i = end + 1;
     }
   }
-  const blocks: Block[] = [];
-  let text_: string[] = [];
-  // a placement comment: for the block after it
-  let place: Placement = {};
-  const push = (b: Block) => {
-    blocks.push({ ...b, ...place });
-    place = {};
-  };
-  const flush = () => {
-    const t = text_.join("\n").replace(/^\n+|\s+$/g, "");
-    if (t) push({ id: blockId(), kind: "text", text: t });
-    text_ = [];
+  return { meta, blocks: blocksOf(lines.slice(i)) };
+}
+
+/** a piece of a notebook (writing, as typed) as its blocks — no header to look for */
+export const parseBlocks = (text: string): Block[] => blocksOf(text.replace(/\r\n?/g, "\n").split("\n"));
+
+function blocksOf(lines: string[]): Block[] {
+  let i = 0;
+  // the file in pieces: fences (cells), placement comments, paragraphs ($$ … $$ over several lines is one, blank lines and all)
+  type Chunk = { k: "fence"; lang: string; info: string; code: string } | { k: "place"; words: string; line: string } | { k: "para"; text: string };
+  const chunks: Chunk[] = [];
+  let para: string[] = [];
+  const endPara = () => {
+    const t = para.join("\n").replace(/^\n+|\s+$/g, "");
+    if (t) chunks.push({ k: "para", text: t });
+    para = [];
   };
   let inMath = false;
   for (; i < lines.length; i++) {
     const line = lines[i];
     const fence = !inMath && line.match(/^(`{3,}|~{3,})\s*([\w-]*)\s*(.*)$/);
     if (fence) {
-      flush();
+      endPara();
       const close = new RegExp(`^${fence[1][0] === "`" ? "`" : "~"}{${fence[1].length},}\\s*$`);
       const code: string[] = [];
       for (i++; i < lines.length && !close.test(lines[i]); i++) code.push(lines[i]);
-      push({ id: blockId(), kind: "cell", lang: fence[2].toLowerCase(), info: fence[3].trim(), code: code.join("\n") });
+      chunks.push({ k: "fence", lang: fence[2].toLowerCase(), info: fence[3].trim(), code: code.join("\n") });
       continue;
     }
     const placed = !inMath && line.match(PLACEMENT);
     if (placed) {
-      flush();
-      place = readPlacement(placed[1]);
+      endPara();
+      chunks.push({ k: "place", words: placed[1], line: line.trim() });
       continue;
     }
-    // $$ … $$ over several lines is one piece, blank lines and all
     const dollars = (line.match(/\$\$/g) ?? []).length;
     if (dollars % 2 === 1) inMath = !inMath;
-    if (!inMath && !line.trim()) flush();
-    else text_.push(line);
+    if (!inMath && !line.trim()) endPara();
+    else para.push(line);
   }
-  flush();
-  return { meta, blocks };
+  endPara();
+
+  // …put together: paragraphs of writing run on into one block (one editor, as a page is); an object
+  // (math, a table) or a cell is a block of its own; a placement is for the block after it
+  const blocks: Block[] = [];
+  /** each block of writing's paragraphs, and whether it started at a comment of its own (not run on from what was above) */
+  const paras = new Map<string, string[]>();
+  const started = new Set<string>();
+  let run: { id: string; paras: string[]; place: Placement; single: boolean } | null = null;
+  let place: Placement = {};
+  let marked = false;
+  const endRun = () => {
+    const r = run;
+    run = null;
+    if (!r?.paras.length) return;
+    blocks.push({ id: r.id, kind: "text", text: r.paras.join("\n\n"), ...r.place });
+    paras.set(r.id, r.paras);
+  };
+  const startRun = () => {
+    const r = { id: blockId(), paras: [] as string[], place, single: placesText(place) };
+    if (marked || placesText(place)) started.add(r.id);
+    place = {};
+    marked = false;
+    run = r;
+    return r;
+  };
+  const push = (b: Block) => {
+    endRun();
+    // (a file written before writing ran on: a block put beside the paragraph above — that paragraph is the row's, not all the writing above it)
+    const prev = blocks[blocks.length - 1];
+    const prevParas = prev && paras.get(prev.id);
+    if (place.beside && prev?.kind === "text" && prevParas && prevParas.length > 1 && !started.has(prev.id) && !placesText(prev)) {
+      prev.text = prevParas.slice(0, -1).join("\n\n");
+      blocks.push({ id: blockId(), kind: "text", text: prevParas[prevParas.length - 1] });
+    }
+    blocks.push({ ...b, ...place });
+    place = {};
+    marked = false;
+  };
+  for (let k = 0; k < chunks.length; k++) {
+    const c = chunks[k];
+    if (c.k === "fence") {
+      push({ id: blockId(), kind: "cell", lang: c.lang, info: c.info, code: c.code });
+      continue;
+    }
+    if (c.k === "place") {
+      const next = chunks[k + 1];
+      // a paragraph's alignment, written in the writing: it stays there (for the paragraph after it)
+      if (ALIGN_LINE.test(c.line) && !Object.keys(place).length && next?.k === "para" && !isObjectText(next.text)) {
+        chunks[k + 1] = { k: "para", text: `${c.line}\n${next.text}` };
+        continue;
+      }
+      endRun();
+      place = readPlacement(c.words);
+      marked = true;
+      continue;
+    }
+    if (isObjectText(c.text)) {
+      const prev = blocks[blocks.length - 1];
+      // math right after math: its rows, one Math block
+      if (!run && !marked && !Object.keys(place).length && isMathText(c.text) && prev?.kind === "text" && isMathText(prev.text) && !placesText(prev)) {
+        prev.text = `${prev.text}\n\n${c.text}`;
+        continue;
+      }
+      push({ id: blockId(), kind: "text", text: c.text });
+      continue;
+    }
+    const r = run ?? startRun();
+    r.paras.push(c.text);
+    // a text box, text in a row…: a paragraph of its own
+    if (r.single) endRun();
+  }
+  endRun();
+  return blocks;
+}
+const isProseText = (text: string) => !isObjectText(text);
+
+/** writing next to writing (two blocks of it that needn't be): one block — unless one's placed, or starts a row */
+export function joinWriting(blocks: Block[]): Block[] {
+  const out: Block[] = [];
+  for (let k = 0; k < blocks.length; k++) {
+    const b = blocks[k];
+    const prev = out[out.length - 1];
+    if (prev && prev.kind === "text" && b.kind === "text" && isProseText(prev.text) && isProseText(b.text) && !placesText(prev) && !placesText(b) && !blocks[k + 1]?.beside) {
+      out[out.length - 1] = { ...prev, text: [prev.text.replace(/\s+$/, ""), b.text.replace(/^\s+/, "")].filter(Boolean).join("\n\n") };
+      continue;
+    }
+    out.push(b);
+  }
+  return out;
 }
 
 export function writeNotebook(doc: NotebookDoc): string {
   const head = doc.meta.length ? `---\n${doc.meta.map(([k, v]) => `${k}: ${quote(v)}`).join("\n")}\n---\n\n` : "";
-  const body = doc.blocks
-    .map((b) => {
-      if (b.kind === "text") return b.text.trim() ? `${placementLine(b)}${b.text.replace(/\s+$/, "")}` : "";
+  const written = doc.blocks.filter((b) => b.kind !== "text" || b.text.trim());
+  const body = written
+    .map((b, k) => {
+      if (b.kind === "text") {
+        const prev = written[k - 1];
+        // writing after writing (or math after math), each a block of its own: a comment between, so it reads back as it was
+        const apart = !placementLine(b) && prev?.kind === "text" && ((isProseText(prev.text) && isProseText(b.text)) || (isMathText(prev.text) && isMathText(b.text)));
+        return `${apart ? `${BLOCK_START}\n` : ""}${placementLine(b)}${b.text.replace(/\s+$/, "")}`;
+      }
       // a fence longer than any run of backticks inside it
       const longest = Math.max(2, ...(b.code.match(/`+/g) ?? []).map((r) => r.length));
       const fence = "`".repeat(longest + 1);

@@ -5,6 +5,31 @@
  * Tab is a tab's worth of space — never 4 spaces that would make the line
  * code); ⌘⇧7 / ⌘⇧8 / ⌘⇧9 a numbered, bulleted or checklist line. */
 import type { EditorView } from "@codemirror/view";
+import { writingKey } from "./writing";
+
+/** the text made `value` (selected start…end), changed only where it differs — the rest of it, and its undo, left be */
+export function applyEdit(v: EditorView, value: string, start: number, end: number) {
+  const now = v.state.doc.toString();
+  let a = 0;
+  while (a < now.length && a < value.length && now[a] === value[a]) a++;
+  let b = 0;
+  while (b < now.length - a && b < value.length - a && now[now.length - 1 - b] === value[value.length - 1 - b]) b++;
+  v.dispatch({ changes: { from: a, to: now.length - b, insert: value.slice(a, value.length - b) }, selection: { anchor: start, head: end }, scrollIntoView: true });
+}
+
+/** ⌘B ⌘I ⌘U ⌘E ⌘K ⌘⇧X ⌘⇧H: what's selected wrapped (a selection from a line's start leaves its # or list marker outside) */
+export function wrapKey(key: string, shift = false) {
+  return (v: EditorView): boolean => {
+    const sel = v.state.selection.main;
+    const line = v.state.doc.lineAt(sel.from);
+    const lead = line.text.match(/^(\s*)(#{1,6}\s+|>\s?|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+|[a-zA-Z][.)]\s+)?/)![0].length;
+    const from = sel.from - line.from < lead && sel.to > line.from + lead ? line.from + lead : sel.from;
+    const edit = writingKey({ key, metaKey: true, ctrlKey: false, shiftKey: shift, altKey: false }, v.state.doc.toString(), from, sel.to);
+    if (!edit) return false;
+    applyEdit(v, edit.value, edit.start, edit.end);
+    return true;
+  };
+}
 
 /** a list item's start: its indent, its marker, the space after (and a task's box) */
 export const ITEM = /^(\s*)([-*+]|\d{1,9}[.)]|[a-zA-Z][.)])(\s+)(\[[ xX]\]\s+)?/;

@@ -83,8 +83,9 @@ function block(t: Token): string {
 }
 
 function text(markdown: string): string {
-  // $$ … $$ isn't Markdown: kept whole, the rest read by marked's own reader
+  // $$ … $$ isn't Markdown: kept whole, the rest read by marked's own reader (a paragraph's alignment comment left out)
   return markdown
+    .replace(/^<!--\s*matrixlab:[^\n]*-->[^\S\n]*\n?/gm, "")
     .split(/(\$\$[\s\S]+?\$\$)/)
     .map((part) => {
       if (/^\$\$[\s\S]+\$\$$/.test(part)) return `\\[\n${part.slice(2, -2).trim()}\n\\]`;

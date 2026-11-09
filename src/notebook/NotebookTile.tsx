@@ -17,7 +17,7 @@ import Icon from "../Icon";
 import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
 import { type CalcLine, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, VarsRecord, WhenSeen, WorkCell, WorkCellEditor, drawEverything, numberOf, parseVars, plots, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
-import { type Block, type CellLang, type NotebookDoc, type Placement, PRINT_SWITCHES, blockId, metaValue, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
+import { type Block, type CellLang, type NotebookDoc, type Placement, PRINT_SWITCHES, blockId, isMathText, isProse, isTableText, joinWriting, metaValue, parseBlocks, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
 import { setNotebookInbox } from "./inbox";
 import { notebookLatex } from "./latex";
 import { renderMarkdown } from "./markdown";
@@ -29,10 +29,12 @@ import { highlightCode, highlightWithError } from "./highlight";
 import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
+import TextRun, { type RunHandle } from "./TextRun";
+import { alignmentAt, rememberPicture, setAlignment } from "./livePreview";
+import { type SectionApi, sectionTools } from "./sectionTools";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import PaperBlock from "./paperBlock";
-import { enterKey, listKey, tabKey } from "./proseKeys";
-import { toggleTask, writingKey } from "./writing";
+import { enterKey, listKey, tabKey, wrapKey } from "./proseKeys";
 import { TableBlock, fromMarkdownTable, tableMarkdown } from "./tableBlock";
 import type { EditorView, KeyBinding } from "@codemirror/view";
 import Library, { QuickOpen } from "./Library";
@@ -133,6 +135,19 @@ function FlatPicture({ path, fill = false }: { path: string; fill?: boolean }) {
     <div className="nb-cell-wait">…</div>
   );
 }
+/** the paragraph at a place in writing: its lines, from the blank line (or heading) above to the one below */
+function paragraphAt(doc: { lineAt: (p: number) => { number: number; from: number; to: number; text: string }; line: (n: number) => { from: number; to: number; text: string }; lines: number }, pos: number) {
+  const here = doc.lineAt(pos);
+  const heading = (t: string) => /^#{1,6}\s/.test(t);
+  let a = here.number;
+  let b = here.number;
+  if (here.text.trim() && !heading(here.text)) {
+    while (a > 1 && doc.line(a - 1).text.trim() && !heading(doc.line(a - 1).text)) a--;
+    while (b < doc.lines && doc.line(b + 1).text.trim() && !heading(doc.line(b + 1).text)) b++;
+  }
+  return { from: doc.line(a).from, to: doc.line(b).to };
+}
+
 /** where a cell's output is kept: Python's by its code, any other language's by both */
 const outKey = (lang: string, code: string) => (lang === "python" ? code : `${lang}\u0001${code}`);
 
@@ -243,7 +258,9 @@ export default function NotebookTile({
   const currentFound = finding && found.length ? found[((finding.at % found.length) + found.length) % found.length] : null;
   useEffect(() => {
     if (!currentFound) return;
-    document.querySelector(`[data-block="${currentFound.id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const run = runs.current.get(currentFound.id);
+    if (run && finding) run.show(currentFound.index, currentFound.index + finding.find.length);
+    else document.querySelector(`[data-block="${currentFound.id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [currentFound?.id, currentFound?.index]); // eslint-disable-line react-hooks/exhaustive-deps
   const startFinding = () => {
     setFinding((f) => f ?? { find: "", replace: "", at: 0, replacing: false });
@@ -396,7 +413,7 @@ export default function NotebookTile({
       if (saving) return;
       const m = await invoke<number>("notebook_modified", { name }).catch(() => 0);
       if (!m || m === lastModified.current) return;
-      if (editing || view === "source") setElsewhere(true);
+      if (editing || focusedRunRef.current || view === "source") setElsewhere(true);
       else {
         await load(name);
         setNotice("Updated — it was saved in another editor");
@@ -495,7 +512,7 @@ export default function NotebookTile({
   const outline = useMemo(
     () =>
       (doc?.blocks ?? []).flatMap((b) =>
-        b.kind === "text" ? [...b.text.matchAll(/^(#{1,4})\s+(.+)$/gm)].map((m) => ({ id: b.id, level: m[1].length, text: m[2].replace(/[*_`$]/g, "") })) : [],
+        b.kind === "text" ? [...b.text.matchAll(/^(#{1,4})\s+(.+)$/gm)].map((m) => ({ id: b.id, at: m.index!, level: m[1].length, text: m[2].replace(/[*_`$]/g, "") })) : [],
       ),
     [doc],
   );
@@ -552,6 +569,29 @@ export default function NotebookTile({
   };
   /** the text being written (its editor), for the formatting bar */
   const [textView, setTextView] = useState<EditorView | null>(null);
+  /** the writing's editors (one for each run of writing between objects), by block */
+  const runs = useRef(new Map<string, RunHandle>());
+  /** the writing with the caret in it */
+  const [focusedRun, setFocusedRunState] = useState<string | null>(null);
+  const focusedRunRef = useRef<string | null>(null);
+  const setFocusedRun = (id: string | null) => {
+    focusedRunRef.current = id;
+    setFocusedRunState(id);
+  };
+  /** the caret in the writing: its line's place (for the + beside an empty line, and a / menu under it) */
+  const [caret, setCaret] = useState<{ id: string; top: number; left: number; bottom: number; empty: boolean; slash: string | null } | null>(null);
+  /** the / menu: the item picked with ↑ ↓ */
+  const [slashAt, setSlashAt] = useState(0);
+  /** writing after the last object: there to be written in (a block once it's typed in), with this id */
+  const endId = useRef(blockId());
+  /** the caret wanted in writing not on the page yet (just made): where, once its editor is */
+  const pendingFocus = useRef<{ id: string; at?: { x: number; y: number } | number | "start" | "end" } | null>(null);
+  /** the caret into a run of writing — where clicked, a place, its start or end */
+  const focusRun = (id: string, at?: { x: number; y: number } | number | "start" | "end") => {
+    const run = runs.current.get(id);
+    if (run) run.focus(at);
+    else pendingFocus.current = { id, at };
+  };
   /** a picture chosen from the formatting bar: kept with the notebook */
   const keepPicture = async (f: File) => {
     if (!name) return null;
@@ -563,6 +603,7 @@ export default function NotebookTile({
     try {
       const path = await invoke<string>("flat_save", { notebook: name, dataUrl: url });
       flatPictures.set(path, url);
+      rememberPicture(path, url);
       return `![](${encodeURI(path)})`;
     } catch (err) {
       setNotice(`Couldn't keep that picture: ${errorText(err)}`);
@@ -572,7 +613,7 @@ export default function NotebookTile({
   /** ⌘P: go to a note */
   const [quickOpen, setQuickOpen] = useState(false);
   /** the words written (text blocks') */
-  const wordCount = useMemo(() => (doc?.blocks ?? []).reduce((n, b) => n + (b.kind === "text" ? (b.text.replace(/[#*_`>$=[\]()-]/g, " ").match(/\S+/g)?.length ?? 0) : 0), 0), [doc]);
+  const wordCount = useMemo(() => (doc?.blocks ?? []).reduce((n, b) => n + (b.kind === "text" ? (b.text.replace(/<!--[\s\S]*?-->/g, " ").replace(/[#*_`>$=[\]()-]/g, " ").match(/\S+/g)?.length ?? 0) : 0), 0), [doc]);
   /** the library (every note) beside the page — remembered */
   const [libraryOpen, setLibraryOpenState] = useState(() => {
     try {
@@ -601,15 +642,13 @@ export default function NotebookTile({
       if (!box) return;
       const top = box.getBoundingClientRect().top + 90;
       let at = -1;
-      const seen = new Set<string>();
       outline.forEach((h, i) => {
-        if (seen.has(h.id)) return;
-        seen.add(h.id);
-        const el = box.querySelector(`[data-block="${h.id}"]`);
-        if (el && el.getBoundingClientRect().top <= top) at = i;
+        const run = runs.current.get(h.id);
+        const y = run ? run.top(h.at) : box.querySelector(`[data-block="${h.id}"]`)?.getBoundingClientRect().top;
+        if (y !== null && y !== undefined && y <= top) at = i;
       });
       // scrolled to the very end: the last heading
-      if (box.scrollTop + box.clientHeight >= box.scrollHeight - 4 && outline.length) at = Math.max(at, outline.findIndex((h) => h.id === outline[outline.length - 1].id));
+      if (box.scrollTop + box.clientHeight >= box.scrollHeight - 4 && outline.length) at = outline.length - 1;
       setHereAt(at);
     });
   };
@@ -851,30 +890,46 @@ export default function NotebookTile({
     drawEverything(true);
     for (let t = 0; t < 40 && !ids.every((id) => plots.get(id)); t++) await new Promise((r) => setTimeout(r, 150));
   };
-  /** a section: the blocks under a header, down to the next header as big (or bigger) — its own and its subsections' */
-  const sectionOf = (b: Block) => {
+  /** a section: the apps under a heading (its place in its writing), down to the next heading as big (or bigger) — its own and its subsections' */
+  const sectionCells = (id: string, at: number) => {
     const blocks = docRef.current?.blocks ?? [];
-    const at = blocks.findIndex((x) => x.id === b.id);
-    const head = b.kind === "text" ? b.text.match(/^(#{1,6})\s/m) : null;
-    if (at < 0 || !head) return [];
+    const k = blocks.findIndex((x) => x.id === id);
+    const b = blocks[k];
+    const head = b?.kind === "text" ? b.text.slice(at).match(/^(#{1,6})\s/) : null;
+    if (!b || b.kind !== "text" || !head) return [];
     const level = head[1].length;
+    // a heading as big further on in the same writing: the section ends there, before any app
+    if ([...b.text.slice(at + head[0].length).matchAll(/^(#{1,6})\s/gm)].some((m) => m[1].length <= level)) return [];
     const out: Block[] = [];
-    for (const x of blocks.slice(at + 1)) {
-      const h = x.kind === "text" ? x.text.match(/^(#{1,6})\s/m) : null;
-      if (h && h[1].length <= level) break;
+    for (const x of blocks.slice(k + 1)) {
+      if (x.kind === "text") {
+        if ([...x.text.matchAll(/^(#{1,6})\s/gm)].some((m) => m[1].length <= level)) break;
+        continue;
+      }
       out.push(x);
     }
     return out;
   };
   /** bounce in place, as a DAW does: every app block in the section kept as its picture — the
    * section stays as it looks, and nothing in it is worked out or drawn again (⌘Z, or unflatten, brings it back) */
-  const bounceSection = async (b: Block) => {
-    const cells = sectionOf(b).filter((x) => x.kind === "cell" && !flatOf(x));
+  const bounceSection = async (id: string, at: number) => {
+    const cells = sectionCells(id, at).filter((x) => x.kind === "cell" && !flatOf(x));
     if (!cells.length) return setNotice("Nothing in this section to bounce — its blocks are flattened already");
     for (const x of cells) await flatten(x, "png");
     setNotice(`Bounced — ${cells.length} block${cells.length === 1 ? "" : "s"} kept as pictures (unflatten any, or ⌘Z)`);
   };
-  const unbounceSection = (b: Block) => sectionOf(b).forEach((x) => flatOf(x) && unflatten(x));
+  const unbounceSection = (id: string, at: number) => sectionCells(id, at).forEach((x) => flatOf(x) && unflatten(x));
+  /** what a heading's tools (in the writing) ask of its section */
+  const sectionApi = useRef<SectionApi>({ has: () => ({ live: 0, flat: 0 }), bounce: () => {}, unbounce: () => {} });
+  sectionApi.current = {
+    has: (id, at) => {
+      const cells = sectionCells(id, at).filter((x) => x.kind === "cell");
+      const flat = cells.filter((x) => flatOf(x)).length;
+      return { live: cells.length - flat, flat };
+    },
+    bounce: (id, at) => void bounceSection(id, at),
+    unbounce: unbounceSection,
+  };
   /** a calc or variables block rendered down to text: its lines and answers as math (⌘Z brings the block back) */
   const toLatex = (b: Block, calcAt: number) => {
     if (b.kind !== "cell") return;
@@ -1012,7 +1067,9 @@ export default function NotebookTile({
           commit({ ...now, blocks });
         },
       });
-    commit({ ...doc, blocks: doc.blocks.filter((b) => b.id !== id) });
+    const rest = doc.blocks.filter((b) => b.id !== id);
+    // (the writing either side of it one again — unless one of them has the caret)
+    commit({ ...doc, blocks: focusedRunRef.current ? rest : joinWriting(rest) });
   };
   const moveBlock = (id: string, by: number) => {
     if (!doc) return;
@@ -1051,12 +1108,42 @@ export default function NotebookTile({
     return out;
   };
   type Side = "before" | "after" | "left" | "right";
-  /** moved: above or below a block (on a line of its own), or beside it (sharing its row) */
-  const placeBlock = (id: string, target: string, side: Side) => {
+  /** moved: above or below a block (on a line of its own), or beside it (sharing its row) — dropped on writing,
+   * above, below or beside the paragraph it was dropped on (the writing splits there) */
+  const placeBlock = (id: string, target: string, side: Side, para?: { from: number; to: number }) => {
     const now = docRef.current;
     if (!now || id === target) return;
     const moving = now.blocks.find((b) => b.id === id);
     if (!moving) return;
+    if (target === endId.current && !now.blocks.some((b) => b.id === target)) {
+      // (the writing at the end, not written in yet: the end of the notebook)
+      const rest = detach(now.blocks, id);
+      return commit({ ...now, blocks: [...rest, { ...moving, beside: undefined } as Block] });
+    }
+    const onto = now.blocks.find((b) => b.id === target);
+    if (para && onto && isProse(onto) && onto.kind === "text") {
+      const wasInRow = !!moving.beside || !!now.blocks[now.blocks.findIndex((b) => b.id === id) + 1]?.beside;
+      const rest = detach(now.blocks, id);
+      const text = onto.text;
+      const before = text.slice(0, para.from).replace(/\s+$/, "");
+      const mid = text.slice(para.from, para.to).trim();
+      const after = text.slice(para.to).replace(/^\s+/, "");
+      const { id: _i, kind: _k, text: _t, ...place } = onto;
+      const P = (bid: string, t: string, extra: Partial<Block> = {}) => ({ ...extra, id: bid, kind: "text", text: t }) as Block;
+      const item = { ...moving, beside: undefined, ...(wasInRow ? { width: undefined } : {}) } as Block;
+      const loose = { width: undefined, wrap: undefined, wide: undefined, align: undefined, free: undefined };
+      let pieces: Block[];
+      if (side === "before")
+        pieces = [...(before ? [P(onto.id, before, place)] : []), item, P(before ? blockId() : onto.id, [mid, after].filter(Boolean).join("\n\n"), before ? {} : place)];
+      else if (side === "after") pieces = [P(onto.id, [before, mid].filter(Boolean).join("\n\n"), place), item, ...(after ? [P(blockId(), after)] : [])];
+      else {
+        // beside the paragraph: it and what's dropped, a row
+        const pid = before ? blockId() : onto.id;
+        const row = side === "right" ? [P(pid, mid), { ...item, ...loose, beside: true } as Block] : [{ ...item, ...loose } as Block, P(pid, mid, { beside: true })];
+        pieces = [...(before ? [P(onto.id, before, place)] : []), ...row, ...(after ? [P(blockId(), after)] : [])];
+      }
+      return commit({ ...now, blocks: joinWriting(rest.flatMap((b) => (b.id === target ? pieces : [b]))) });
+    }
     const wasInRow = !!moving.beside || !!now.blocks[now.blocks.findIndex((b) => b.id === id) + 1]?.beside;
     let rest = detach(now.blocks, id);
     const row = rowsOf(rest).find((r) => r.some((b) => b.id === target));
@@ -1084,7 +1171,7 @@ export default function NotebookTile({
   };
   /** moving a block: where it would land */
   const [moving, setMoving] = useState<string | null>(null);
-  const [dropBlock, setDropBlock] = useState<{ id: string; side: Side } | null>(null);
+  const [dropBlock, setDropBlock] = useState<{ id: string; side: Side; top?: number; height?: number } | null>(null);
   /** a block taken by its grip (or picked, by itself) and dragged: it follows to where it's let go */
   const movedRef = useRef(false);
   const beginMove = (e: ReactPointerEvent, id: string, grip: boolean) => {
@@ -1093,7 +1180,7 @@ export default function NotebookTile({
     const x0 = e.clientX;
     const y0 = e.clientY;
     let started = false;
-    let target: { id: string; side: Side } | null = null;
+    let target: { id: string; side: Side; para?: { from: number; to: number } } | null = null;
     let scroll = 0;
     const ticker = window.setInterval(() => scroll && page.current?.scrollBy({ top: scroll }), 16);
     const move = (ev: PointerEvent) => {
@@ -1117,6 +1204,21 @@ export default function NotebookTile({
       }
       const r = el.getBoundingClientRect();
       const edge = Math.min(110, r.width * 0.22);
+      // over writing: the paragraph under the pointer is where it goes (above, below, or beside it)
+      const run = runs.current.get(over);
+      if (run && docRef.current?.blocks.some((b) => b.id === over && isProse(b))) {
+        const v = run.view;
+        const pos = v.posAtCoords({ x: ev.clientX, y: ev.clientY }, false);
+        const para = paragraphAt(v.state.doc, pos);
+        const top = v.lineBlockAt(para.from).top + v.documentTop;
+        const bottom = v.lineBlockAt(para.to).bottom + v.documentTop;
+        const side: Side = ev.clientX < r.left + edge ? "left" : ev.clientX > r.right - edge ? "right" : ev.clientY < (top + bottom) / 2 ? "before" : "after";
+        if (target?.id !== over || target.side !== side || target.para?.from !== para.from) {
+          target = { id: over, side, para };
+          setDropBlock({ id: over, side, top: top - r.top, height: bottom - top });
+        }
+        return;
+      }
       const side: Side = ev.clientX < r.left + edge ? "left" : ev.clientX > r.right - edge ? "right" : ev.clientY < r.top + r.height / 2 ? "before" : "after";
       if (target?.id !== over || target.side !== side) {
         target = { id: over, side };
@@ -1135,13 +1237,13 @@ export default function NotebookTile({
         if (grip) pickBlock(id);
         return;
       }
-      if (target) placeBlock(id, target.id, target.side);
+      if (target) placeBlock(id, target.id, target.side, target.para);
       pickBlock(id);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
   };
-  const dropMark = (id: string) => (dropBlock?.id === id ? ` is-drop-${dropBlock.side}` : "") + (moving === id ? " is-moving" : "");
+  const dropMark = (id: string) => (dropBlock?.id === id && dropBlock.top === undefined ? ` is-drop-${dropBlock.side}` : "") + (moving === id ? " is-moving" : "");
   /** a block placed freely, being dragged: where it is, and the helper lines it's snapped to */
   const [freeDrag, setFreeDrag] = useState<{ id: string; x: number; y: number; guides: number[] } | null>(null);
   const beginFreeMove = (e: ReactPointerEvent, b: Block) => {
@@ -1228,11 +1330,25 @@ export default function NotebookTile({
     window.addEventListener("pointerup", up);
   };
   /** the + menu: what to add, and where (under a block; at the end; in place of an empty one) */
-  const [inserting, setInserting] = useState<{ after: string | null; replace?: string } | null>(null);
+  const [inserting, setInserting] = useState<{ after: string | null; replace?: string; atCaret?: boolean } | null>(null);
   const insertBlock = (kind: { lang: string; start: string; beside?: boolean }, after: string | null, replace?: string) => {
     const now = docRef.current;
     if (!now) return;
     setInserting(null);
+    // writing (a heading too): into the writing under it — the writing that's there, or new writing
+    if (kind.lang === "text" && !replace) {
+      let at = after ? now.blocks.findIndex((b) => b.id === after) : now.blocks.length - 1;
+      while (now.blocks[at + 1]?.beside) at++;
+      const next = now.blocks[at + 1];
+      if (next && isProse(next) && !next.beside && !next.free) {
+        if (kind.start) updateBlock(next.id, { text: `${kind.start}\n\n${(next as { text: string }).text}` });
+        return focusRun(next.id, kind.start.length);
+      }
+      if (!next && !after) return focusRun(writingAtEnd(), "end");
+      const id = blockId();
+      commit({ ...now, blocks: [...now.blocks.slice(0, at + 1), { id, kind: "text", text: kind.start }, ...now.blocks.slice(at + 1)] });
+      return focusRun(id, "end");
+    }
     const id = blockId();
     const block: Block = kind.lang === "text" || kind.lang === "math" ? { id, kind: "text", text: kind.start } : { id, kind: "cell", lang: kind.lang, info: "", code: kind.start, ...(kind.beside && after ? { beside: true } : {}) };
     let blocks: Block[];
@@ -1259,12 +1375,32 @@ export default function NotebookTile({
     setEditing(id);
     setDraft(kind.start);
   };
-  const addBlock = (kind: { lang: string; start: string }) => insertBlock(kind, null);
   const startEditing = (b: Block) => {
+    // writing: the caret into it (where clicked, where two paragraphs met, its start or end)
+    if (isProse(b)) {
+      if (editing) finishEditing();
+      const at = clickAt.current ?? caretAt.current ?? (fromTop.current ? "start" : "end");
+      clickAt.current = null;
+      caretAt.current = null;
+      fromTop.current = false;
+      return focusRun(b.id, at);
+    }
+    // a table written as Markdown: a spreadsheet, worked in where it is
+    if (b.kind === "text" && isTableText(b.text) && fromMarkdownTable(b.text) !== null) {
+      const now = docRef.current!;
+      commit({ ...now, blocks: now.blocks.map((x) => (x.id === b.id ? ({ id: x.id, kind: "cell", lang: "table", info: "", code: fromMarkdownTable(b.text)!, beside: x.beside, width: x.width } as Block) : x)) });
+      return;
+    }
     if (editing && editing !== b.id) finishEditing();
     setEditing(b.id);
     setPicked(b.id);
     setDraft(b.kind === "text" ? b.text : b.code);
+  };
+  /** the writing at the end of the notebook (made, when the last thing is an object): its id */
+  const writingAtEnd = () => {
+    const blocks = docRef.current?.blocks ?? [];
+    const last = blocks[blocks.length - 1];
+    return last && isProse(last) && !last.free && !last.beside ? last.id : endId.current;
   };
   /** done editing a block: kept (an empty text block goes) */
   const finishEditing = (only?: string) => {
@@ -1349,9 +1485,19 @@ export default function NotebookTile({
     const blocks = docRef.current?.blocks ?? [];
     const at = blocks.findIndex((x) => x.id === b.id);
     const next = blocks[dir === "down" ? at + 1 : at - 1];
-    if (!next) return false;
+    if (!next) {
+      // ↓ off the last object: the writing after it (there's always somewhere to write)
+      if (dir === "down" && !isProse(b)) {
+        finishEditing();
+        setTimeout(() => focusRun(writingAtEnd(), "start"), 0);
+        return true;
+      }
+      return false;
+    }
     finishEditing();
-    if (next.kind === "text" || codeLanguage(next) || (next.kind === "cell" && next.lang === "python")) {
+    if (isProse(next)) {
+      setTimeout(() => focusRun(next.id, dir === "down" ? "start" : "end"), 0);
+    } else if (next.kind === "text" || codeLanguage(next) || (next.kind === "cell" && next.lang === "python")) {
       fromTop.current = dir === "down";
       setTimeout(() => startEditing(next), 0);
     } else if (next.kind === "cell" && next.lang === "paper") {
@@ -1365,7 +1511,8 @@ export default function NotebookTile({
     const blocks = docRef.current?.blocks ?? [];
     const prev = blocks[blocks.findIndex((x) => x.id === b.id) - 1];
     if (!prev) return false;
-    if (prev.kind === "text" || codeLanguage(prev)) {
+    if (isProse(prev)) focusRun(prev.id, "end");
+    else if (prev.kind === "text" || codeLanguage(prev)) {
       fromTop.current = false;
       startEditing(prev);
     } else pickBlock(prev.id);
@@ -1376,73 +1523,307 @@ export default function NotebookTile({
   /** where the caret goes in the block opened next (two paragraphs joined: where they meet) */
   const caretAt = useRef<number | null>(null);
   useEffect(() => void (caretAt.current = null), [editing]);
-  /** ⌫ at a paragraph's start: it joins the one above (an empty one just goes) — as in Word */
-  const joinUp = (b: Block) => (v: EditorView) => {
+  /** ⌫ at the start of writing: after writing of its own (a text box, a row's), joined to it; after an
+   * object, the object's picked — as Word selects a picture — and ⌫ again deletes it */
+  const joinUp = (id: string, v: EditorView) => {
     const sel = v.state.selection.main;
-    if (!sel.empty || sel.head !== 0 || b.kind !== "text") return false;
+    if (!sel.empty || sel.head !== 0) return false;
     const now = docRef.current;
     if (!now) return false;
-    const at = now.blocks.findIndex((x) => x.id === b.id);
-    const prev = now.blocks[at - 1];
-    const here = draftRef.current;
-    if (!prev || prev.kind !== "text" || b.beside || b.free || prev.free || mathRowsOf(prev.text) !== null || mathRowsOf(here) !== null) return false;
-    const before = prev.text.replace(/\s+$/, "");
-    const joined = here.trim() ? before + here : before;
-    commit({ ...now, blocks: now.blocks.filter((x) => x.id !== b.id).map((x) => (x.id === prev.id ? { ...x, text: joined } : x)) });
-    caretAt.current = before.length;
-    setEditing(prev.id);
-    setPicked(prev.id);
-    setDraft(joined);
-    return true;
-  };
-  /** ⌦ at a paragraph's end: the one below joins it */
-  const joinDown = (b: Block) => (v: EditorView) => {
-    const sel = v.state.selection.main;
-    if (!sel.empty || sel.head !== v.state.doc.length || b.kind !== "text") return false;
-    const now = docRef.current;
-    if (!now) return false;
-    const at = now.blocks.findIndex((x) => x.id === b.id);
-    const next = now.blocks[at + 1];
-    if (!next || next.kind !== "text" || next.beside || next.free || b.free || mathRowsOf(next.text) !== null || mathRowsOf(draftRef.current) !== null) return false;
-    commit({ ...now, blocks: now.blocks.filter((x) => x.id !== next.id) });
-    v.dispatch({ changes: { from: sel.head, insert: next.text.replace(/^\s+/, "") }, selection: { anchor: sel.head } });
-    return true;
-  };
-  /** a text block's own keys: ⌘B ⌘I ⌘E ⌘K ⌘⇧X ⌘⇧H, and Enter or Tab taking what / asked for */
-  const proseKeys = (b: Block): KeyBinding[] => {
-    const wrapWith =
-      (key: string, shift = false) =>
-      (v: EditorView) => {
-        const sel = v.state.selection.main;
-        const edit = writingKey({ key, metaKey: true, ctrlKey: false, shiftKey: shift, altKey: false }, v.state.doc.toString(), sel.from, sel.to);
-        if (!edit) return false;
-        v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: edit.value }, selection: { anchor: edit.start, head: edit.end } });
-        return true;
-      };
-    const slashPick = () => {
-      const slash = draftRef.current.match(/^\/([\w ]*)$/);
-      const first = slash && insertItems().find((i) => i.label.toLowerCase().includes(slash[1].trim().toLowerCase()));
-      if (!first) return false;
-      insertBlock(first.kind, null, b.id);
+    const at = now.blocks.findIndex((x) => x.id === id);
+    const b = now.blocks[at];
+    const prev = at < 0 ? now.blocks[now.blocks.length - 1] : now.blocks[at - 1];
+    if (!prev || b?.free) return false;
+    if (isProse(prev) && b && !b.beside && !prev.free) {
+      const before = (prev as { text: string }).text.replace(/\s+$/, "");
+      const here = v.state.doc.toString();
+      commit({ ...now, blocks: now.blocks.filter((x) => x.id !== id).map((x) => (x.id === prev.id ? { ...x, text: before + here } : x)) });
+      setTimeout(() => focusRun(prev.id, before.length), 0);
       return true;
-    };
-    return [
-      { key: "Mod-b", run: wrapWith("b") },
-      { key: "Mod-i", run: wrapWith("i") },
-      { key: "Mod-e", run: wrapWith("e") },
-      { key: "Mod-k", run: wrapWith("k") },
-      { key: "Mod-Shift-x", run: wrapWith("x", true) },
-      { key: "Mod-Shift-h", run: wrapWith("h", true) },
-      { key: "Enter", run: (v) => slashPick() || enterKey(v) },
-      { key: "Tab", run: (v) => slashPick() || tabKey(false)(v) },
-      { key: "Shift-Tab", run: tabKey(true) },
-      { key: "Mod-Shift-7", run: listKey("num") },
-      { key: "Mod-Shift-8", run: listKey("bullet") },
-      { key: "Mod-Shift-9", run: listKey("task") },
-      { key: "Backspace", run: joinUp(b) },
-      { key: "Delete", run: joinDown(b) },
-    ];
+    }
+    if (!v.state.doc.length && b) removeBlock(id, true);
+    v.contentDOM.blur();
+    pickBlock(prev.id);
+    return true;
   };
+  /** ⌦ at the end of writing: the writing after it joined on (an object after it: picked) */
+  const joinDown = (id: string, v: EditorView) => {
+    const sel = v.state.selection.main;
+    if (!sel.empty || sel.head !== v.state.doc.length) return false;
+    const now = docRef.current;
+    if (!now) return false;
+    const at = now.blocks.findIndex((x) => x.id === id);
+    const b = now.blocks[at];
+    const next = at < 0 ? undefined : now.blocks[at + 1];
+    if (!b || !next || b.free) return false;
+    if (isProse(next) && !next.beside && !next.free) {
+      const after = (next as { text: string }).text.replace(/^\s+/, "");
+      commit({ ...now, blocks: now.blocks.filter((x) => x.id !== next.id).map((x) => (x.id === id ? { ...x, text: v.state.doc.toString() + after } : x)) });
+      return true;
+    }
+    v.contentDOM.blur();
+    pickBlock(next.id);
+    return true;
+  };
+  /** what the writing's keys do, as of now (its editor's made once: its keys call in here) */
+  const writingApi = useRef<{ joinUp: (id: string, v: EditorView) => boolean; joinDown: (id: string, v: EditorView) => boolean; slashPick: (id: string, v: EditorView) => boolean; slashMove: (id: string, by: number) => boolean; slashClose: (id: string) => boolean }>({
+    joinUp,
+    joinDown,
+    slashPick: () => false,
+    slashMove: () => false,
+    slashClose: () => false,
+  });
+  /** the writing's keys: ⌘B ⌘I ⌘U ⌘E ⌘K ⌘⇧X ⌘⇧H, lists (Enter, Tab, ⌘⇧7 ⌘⇧8 ⌘⇧9), / for an app, ⌫ and ⌦ between blocks */
+  const runKeys = (id: string): KeyBinding[] => [
+    { key: "Mod-b", run: wrapKey("b") },
+    { key: "Mod-i", run: wrapKey("i") },
+    { key: "Mod-u", run: wrapKey("u") },
+    { key: "Mod-e", run: wrapKey("e") },
+    { key: "Mod-k", run: wrapKey("k") },
+    { key: "Mod-Shift-x", run: wrapKey("x", true) },
+    { key: "Mod-Shift-h", run: wrapKey("h", true) },
+    { key: "Enter", run: (v) => writingApi.current.slashPick(id, v) || enterKey(v) },
+    { key: "Tab", run: (v) => writingApi.current.slashPick(id, v) || tabKey(false)(v) },
+    { key: "ArrowDown", run: () => writingApi.current.slashMove(id, 1) },
+    { key: "ArrowUp", run: () => writingApi.current.slashMove(id, -1) },
+    { key: "Escape", run: () => writingApi.current.slashClose(id) },
+    { key: "Shift-Tab", run: tabKey(true) },
+    { key: "Mod-Shift-7", run: listKey("num") },
+    { key: "Mod-Shift-8", run: listKey("bullet") },
+    { key: "Mod-Shift-9", run: listKey("task") },
+    { key: "Backspace", run: (v) => writingApi.current.joinUp(id, v) },
+    { key: "Delete", run: (v) => writingApi.current.joinDown(id, v) },
+  ];
+  /** a code or app block's keys: ⌘B and the like do nothing there (it's code) */
+  const proseKeys = (_b: Block): KeyBinding[] => [];
+  // ---- the writing: typed in, the caret in it, apps put in where it is
+
+  /** typed into: the block's text (the writing at the end, typed in for the first time: a block now, with the id it's had) */
+  const typeRun = (id: string, text: string) => {
+    const now = docRef.current;
+    if (!now) return;
+    if (!now.blocks.some((x) => x.id === id)) {
+      if (id !== endId.current) return;
+      commit({ ...now, blocks: [...now.blocks, { id, kind: "text", text }] });
+      endId.current = blockId();
+      return;
+    }
+    commit({ ...now, blocks: now.blocks.map((x) => (x.id === id && x.kind === "text" ? { ...x, text } : x)) });
+  };
+  /** the caret in the writing, mirrored for its keys (they're made once) */
+  const caretRef = useRef(caret);
+  caretRef.current = caret;
+  const slashAtRef = useRef(slashAt);
+  slashAtRef.current = slashAt;
+  /** a / menu put away with Esc: not shown again on that line */
+  const dismissed = useRef("");
+  /** the caret moved (or was typed at): where its line is, whether it's empty, a / being typed */
+  const cursorMoved = (id: string, v: EditorView) => {
+    if (!v.hasFocus) {
+      if (caretRef.current?.id === id) setCaret(null);
+      return;
+    }
+    const sel = v.state.selection.main;
+    const line = v.state.doc.lineAt(sel.head);
+    const box = v.coordsAtPos(line.from, 1) ?? v.coordsAtPos(sel.head);
+    const el = v.dom.closest<HTMLElement>("[data-block]");
+    if (!box || !el) return setCaret(null);
+    const r = el.getBoundingClientRect();
+    const slash = sel.empty && sel.head === line.to ? line.text.match(/^\/([\w ]*)$/) : null;
+    if (!slash && dismissed.current) dismissed.current = "";
+    const next = {
+      id,
+      top: box.top - r.top,
+      left: v.contentDOM.getBoundingClientRect().left - r.left,
+      bottom: box.bottom - r.top,
+      empty: sel.empty && !line.text.trim(),
+      slash: slash && dismissed.current !== `${id}:${line.from}` ? slash[1].toLowerCase() : null,
+    };
+    const was = caretRef.current;
+    if (!was || was.id !== next.id || was.top !== next.top || was.left !== next.left || was.bottom !== next.bottom || was.empty !== next.empty || was.slash !== next.slash) {
+      if (was?.slash !== next.slash) setSlashAt(0);
+      caretRef.current = next;
+      setCaret(next);
+    }
+  };
+  /** the editor that last had the caret: what the bar's menus (a font, a style) change */
+  const lastView = useRef<EditorView | null>(null);
+  const runFocused = (id: string, v: EditorView) => {
+    setFocusedRun(id);
+    setTextView(v);
+    lastView.current = v;
+    setPicked(null);
+    setQuietId(null);
+    if (editingRef.current) finishEditing();
+    setInserting((now) => (now && now.after !== id ? null : now));
+  };
+  const runBlurred = (id: string, v: EditorView) => {
+    setTimeout(() => {
+      if (v.hasFocus) return;
+      if (focusedRunRef.current === id) setFocusedRun(null);
+      setTextView((t) => (t === v ? null : t));
+      setCaret((c) => (c?.id === id ? null : c));
+      settleRun(id);
+    }, 0);
+  };
+  /** writing left: an empty one goes (there's always the end's to write in); objects written in it
+   * (```calc, $$ math $$ on its own, a Markdown table) are blocks of their own — the app, the math, a spreadsheet */
+  const settleRun = (id: string) => {
+    const now = docRef.current;
+    const b = now?.blocks.find((x) => x.id === id);
+    if (!now || !b || b.kind !== "text") return;
+    if (!b.text.trim()) {
+      if (!b.free) commit({ ...now, blocks: joinWriting(now.blocks.filter((x) => x.id !== id)) });
+      return;
+    }
+    const parts = parseBlocks(b.text);
+    if (parts.length === 1 && isProse(parts[0])) return;
+    const { id: _id, kind: _kind, text: _text, ...place } = b;
+    const pieces = parts.map((x, k): Block => {
+      const y = (k === 0 ? { ...x, ...place, id: b.id } : x) as Block;
+      const table = y.kind === "text" && isTableText(y.text) ? fromMarkdownTable(y.text) : null;
+      return table !== null ? ({ ...y, kind: "cell", lang: "table", info: "", code: table } as Block) : y;
+    });
+    commit({ ...now, blocks: now.blocks.flatMap((x) => (x.id === id ? pieces : [x])) });
+  };
+  /** Esc in the writing: out of it — picked, quietly (j/k go on from it) */
+  const leaveRun = (id: string) => {
+    runs.current.get(id)?.view.contentDOM.blur();
+    if (docRef.current?.blocks.some((x) => x.id === id)) {
+      setPicked(id);
+      setQuietId(id);
+    }
+    root.current?.focus({ preventScroll: true });
+  };
+  /** off the writing's top or bottom: on to the block above or below */
+  const runEdge = (id: string, dir: "up" | "down") => {
+    // (the / menu takes ↑ ↓)
+    if (caretRef.current?.id === id && caretRef.current.slash !== null) return false;
+    const blocks = docRef.current?.blocks ?? [];
+    const at = blocks.findIndex((x) => x.id === id);
+    const next = at < 0 ? (dir === "up" ? blocks[blocks.length - 1] : undefined) : blocks[dir === "down" ? at + 1 : at - 1];
+    if (!next) return false;
+    if (isProse(next)) focusRun(next.id, dir === "down" ? "start" : "end");
+    else if (next.kind === "cell" && next.lang === "paper") page.current?.querySelector<HTMLElement>(`[data-block="${next.id}"] .ps-paper`)?.focus();
+    else if (next.kind === "text" || codeLanguage(next) || (next.kind === "cell" && next.lang === "python")) {
+      fromTop.current = dir === "down";
+      startEditing(next);
+    } else pickBlock(next.id);
+    return true;
+  };
+  const runHandle = (id: string, h: RunHandle | null) => {
+    if (!h) return void runs.current.delete(id);
+    runs.current.set(id, h);
+    const want = pendingFocus.current;
+    if (want?.id === id) {
+      pendingFocus.current = null;
+      setTimeout(() => h.focus(want.at), 0);
+    }
+  };
+  /** a new block, open to work in (graph paper: its cursor in it; a table's typed into where it is) */
+  const openNew = (b: Block) => {
+    setPicked(b.id);
+    if (b.kind === "cell" && b.lang === "paper") {
+      setEditing(null);
+      setQuietId(b.id);
+      return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .pp-scratch`)?.focus(), 60);
+    }
+    if (b.kind === "cell" && b.lang === "table") return setEditing(null);
+    if (isProse(b)) return focusRun(b.id, "end");
+    setEditing(b.id);
+    setDraft(b.kind === "text" ? b.text : b.code);
+  };
+  /** something put in the writing where the caret is: an empty line (or the / typed) is its place, else it goes
+   * under the caret's line — the writing splits there. Beside: next to the paragraph the caret's in (graph paper by
+   * the problem). In a tab: open in its app, beside the notebook, too */
+  const insertAtCaret = (id: string, kind: { lang: string; start: string }, how: { beside?: boolean; tab?: boolean } = {}) => {
+    const now = docRef.current;
+    if (!now) return;
+    setInserting(null);
+    const run = now.blocks.find((x) => x.id === id) ?? null;
+    const v = runs.current.get(id)?.view;
+    const text = v?.state.doc.toString() ?? (run?.kind === "text" ? run.text : "");
+    const head = v?.state.selection.main.head ?? text.length;
+    const lineFrom = text.lastIndexOf("\n", head - 1) + 1;
+    const nl = text.indexOf("\n", head);
+    const lineTo = nl < 0 ? text.length : nl;
+    const line = text.slice(lineFrom, lineTo);
+    const taken = !line.trim() || /^\/[\w ]*$/.test(line);
+    // a heading: the line made one, right here
+    if (kind.lang === "text") {
+      if (v) {
+        v.dispatch({ changes: { from: lineFrom, to: taken ? lineTo : lineFrom, insert: taken ? kind.start : "" }, selection: { anchor: lineFrom + (taken ? kind.start.length : 0) } });
+        if (!taken) v.dispatch({ changes: { from: lineTo, insert: `\n\n${kind.start}` }, selection: { anchor: lineTo + 2 + kind.start.length } });
+        v.focus();
+      }
+      return;
+    }
+    let before = text.slice(0, taken ? lineFrom : lineTo).replace(/\s+$/, "");
+    const after = text.slice(lineTo).replace(/^\s+/, "");
+    const nid = blockId();
+    const fresh: Block =
+      kind.lang === "math" ? { id: nid, kind: "text", text: kind.start } : kind.lang === "textbox" ? { id: nid, kind: "text", text: "", free: { x: 0, y: 0 }, width: 40 } : { id: nid, kind: "cell", lang: kind.lang, info: "", code: kind.start };
+    const pieces: Block[] = [];
+    const place = run ? (({ id: _i, kind: _k, text: _t, ...p }) => p)(run as Block & { text: string }) : {};
+    let pid: string | null = null;
+    if (how.beside && before) {
+      // the paragraph the caret's in (or the last one above an empty line): the row's first, the new block beside it
+      const cut = before.search(/\n\s*\n(?![\s\S]*\n\s*\n)/);
+      const para = (cut < 0 ? before : before.slice(cut)).trim();
+      before = cut < 0 ? "" : before.slice(0, cut).replace(/\s+$/, "");
+      pid = before ? blockId() : id;
+      if (before) pieces.push({ ...place, id, kind: "text", text: before } as Block);
+      pieces.push({ id: pid, kind: "text", text: para });
+      pieces.push({ ...fresh, beside: true } as Block);
+    } else {
+      if (before) pieces.push({ ...place, id, kind: "text", text: before } as Block);
+      pieces.push(fresh);
+    }
+    if (after) pieces.push({ id: before || pid === id ? blockId() : id, kind: "text", text: after });
+    editingRef.current = null;
+    commit({ ...now, blocks: run ? now.blocks.flatMap((x) => (x.id === id ? pieces : [x])) : [...now.blocks, ...pieces] });
+    openNew(fresh);
+    if (how.tab) setTimeout(() => openInApp(docRef.current?.blocks.find((x) => x.id === nid) ?? fresh), 80);
+  };
+  /** where the bar's apps go: at the caret in the writing (the last writing the caret was in), else under what's picked, else the end */
+  const insertHere = (kind: { lang: string; start: string }, how: { beside?: boolean; tab?: boolean } = {}) => {
+    const id = focusedRunRef.current ?? (textView ? [...runs.current.entries()].find(([, h]) => h.view === textView)?.[0] : undefined);
+    if (id) return insertAtCaret(id, kind, how);
+    const at = editingRef.current ?? picked;
+    finishEditing();
+    const here = at && docRef.current?.blocks.some((x) => x.id === at) ? at : null;
+    if (here) return void setTimeout(() => insertBlock({ ...kind, beside: how.beside }, here), 0);
+    insertAtCaret(writingAtEnd(), kind, how);
+  };
+  writingApi.current = {
+    joinUp,
+    joinDown,
+    slashPick: (id, _v) => {
+      const c = caretRef.current;
+      if (!c || c.id !== id || c.slash === null) return false;
+      const items = insertItems().filter((i) => i.label.toLowerCase().includes(c.slash!.trim()));
+      const item = items[Math.min(slashAtRef.current, items.length - 1)];
+      if (!item) return false;
+      insertAtCaret(id, item.kind);
+      return true;
+    },
+    slashMove: (id, by) => {
+      const c = caretRef.current;
+      if (!c || c.id !== id || c.slash === null) return false;
+      const n = insertItems().filter((i) => i.label.toLowerCase().includes(c.slash!.trim())).length;
+      if (n) setSlashAt((a) => (a + by + n) % n);
+      return true;
+    },
+    slashClose: (id) => {
+      const c = caretRef.current;
+      const v = runs.current.get(id)?.view;
+      if (!c || c.id !== id || c.slash === null || !v) return false;
+      dismissed.current = `${id}:${v.state.doc.lineAt(v.state.selection.main.head).from}`;
+      setCaret({ ...c, slash: null });
+      return true;
+    },
+  };
+
   /** a picture pasted into a text block's editor */
   const pasteInto = (e: ClipboardEvent, v: EditorView) => {
     const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
@@ -1454,6 +1835,7 @@ export default function NotebookTile({
       try {
         const path = await invoke<string>("flat_save", { notebook: name, dataUrl: String(reader.result) });
         flatPictures.set(path, String(reader.result));
+        rememberPicture(path, String(reader.result));
         v.dispatch({ changes: { from: at, insert: `![](${encodeURI(path)})` } });
       } catch (err) {
         setNotice(`Couldn't keep that picture: ${errorText(err)}`);
@@ -1913,32 +2295,56 @@ export default function NotebookTile({
     const pluginCell = !language && !OWN_CELLS.has(b.lang) ? (plugins.cells.find((c) => c.id === b.lang.toLowerCase()) ?? cellKindOf(b.lang)) : undefined;
     return { label: language?.label ?? pluginCell?.label ?? LANG_LABEL[b.lang] ?? b.lang, icon: NEW_CELLS.find((c) => c.lang === b.lang)?.icon ?? "source" };
   };
-  /** everything the + menu (and / in a new line) can add */
-  const insertItems = () => [
-    ...NEW_CELLS.filter((c) => !offCells.includes(c.lang)).flatMap((c) => [
-      { key: c.lang, label: c.label, icon: c.icon, group: c.lang === "text" || c.lang === "math" ? "Write" : c.lang === "python" ? "Code" : "Apps", kind: c as { lang: string; start: string } },
-      ...(c.lang === "text" ? [{ key: "heading", label: "Heading", icon: "text", group: "Write", kind: { lang: "text", start: "## " } }] : []),
-    ]),
-    ...plugins.cells.filter((c) => !offCells.includes(c.id)).map((c) => ({ key: `cell:${c.id}`, label: c.label, icon: "source", group: "From plugins", kind: { lang: c.id, start: c.starter ?? "" } })),
-    ...allLanguages.map((l) => ({ key: `lang:${l.id}`, label: l.label, icon: "source", group: "Code", kind: { lang: l.id, start: l.starter ?? "" } })),
-  ];
-  const insertMenu = (after: string | null, replace?: string, filter = "") => {
+  /** everything the + menu (and / in a new line) can add: writing's own things, the apps, code — each app in a tab beside the page too */
+  const insertItems = () => {
+    const off = (lang: string) => offCells.includes(lang);
+    const cell = (lang: string) => NEW_CELLS.find((c) => c.lang === lang)!;
+    const write = [
+      { key: "heading", label: "Heading", icon: "heading", group: "Write", kind: { lang: "text", start: "## " } },
+      ...(off("math") ? [] : [{ key: "math", label: "Math", icon: "equations", group: "Write", kind: cell("math") as { lang: string; start: string } }]),
+      ...(off("table") ? [] : [{ key: "table", label: "Table", icon: "table", group: "Write", kind: cell("table") as { lang: string; start: string } }]),
+      { key: "textbox", label: "Text box", icon: "move", group: "Write", kind: { lang: "textbox", start: "" } },
+    ];
+    const apps = NEW_CELLS.filter((c) => !["text", "math", "table", "python"].includes(c.lang) && !off(c.lang)).map((c) => ({ key: c.lang, label: c.label, icon: c.icon, group: "Apps", kind: c as { lang: string; start: string } }));
+    const code = [
+      ...(off("python") ? [] : [{ key: "python", label: "Python", icon: "source", group: "Code", kind: cell("python") as { lang: string; start: string } }]),
+      ...allLanguages.map((l) => ({ key: `lang:${l.id}`, label: l.label, icon: "source", group: "Code", kind: { lang: l.id, start: l.starter ?? "" } })),
+    ];
+    const theirs = plugins.cells.filter((c) => !off(c.id)).map((c) => ({ key: `cell:${c.id}`, label: c.label, icon: "source", group: "From plugins", kind: { lang: c.id, start: c.starter ?? "" } }));
+    return [...write, ...apps, ...code, ...theirs];
+  };
+  /** the menu of what to put in: under a block (its +), in place of one, or at the caret in the writing (+ beside an
+   * empty line, or / typed — `active` the one Enter takes) */
+  const insertMenu = (after: string | null, replace?: string, filter = "", at?: { run: string; style: CSSProperties; active: number }) => {
     const items = insertItems().filter((i) => !filter || i.label.toLowerCase().includes(filter.trim()));
     const groups = [...new Set(items.map((i) => i.group))];
+    const pick = (i: (typeof items)[number], tab = false) => (at ? insertAtCaret(at.run, i.kind, { tab }) : (insertBlock(i.kind, after, replace), tab && undefined));
+    let n = -1;
     return (
       // (a press here keeps the line being typed in: picking from it isn't leaving it)
-      <div className="nb-insert" onMouseDown={(e) => e.preventDefault()} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+      <div className={`nb-insert${at ? " is-at-caret" : ""}`} style={at?.style} onMouseDown={(e) => e.preventDefault()} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
         {!items.length && <div className="nb-insert-empty">Nothing called “{filter}”</div>}
         {groups.map((g) => (
           <div key={g} className="nb-insert-group">
             <div className="nb-insert-title">{g}</div>
             {items
               .filter((i) => i.group === g)
-              .map((i) => (
-                <button key={i.key} className="nb-insert-item" onClick={() => insertBlock(i.kind, after, replace)}>
-                  <Icon name={i.icon} size={15} /> {i.label}
-                </button>
-              ))}
+              .map((i) => {
+                n++;
+                const linkable = !!LINKED_LANGS[i.kind.lang] && canLink() && !!at;
+                return (
+                  <div key={i.key} className={`nb-insert-row${at && n === at.active ? " is-active" : ""}`}>
+                    <button className="nb-insert-item" onClick={() => pick(i)}>
+                      <Icon name={i.icon} size={15} /> {i.label}
+                    </button>
+                    {linkable && (
+                      <button className="nb-insert-tab" title={`${i.label} in a tab beside the notebook — what's done there is kept here`} onClick={() => pick(i, true)}>
+                        <Icon name="splitRight" size={13} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         ))}
       </div>
@@ -2252,23 +2658,32 @@ export default function NotebookTile({
           .catch(() => img.replaceWith(Object.assign(document.createElement("span"), { className: "nb-missing", textContent: "(a picture that's gone)" })));
     }
   });
-  /** a click on the page around the writing: the paragraph level with it (the caret as near as it goes), else the end */
+  /** a click on the page around the writing (its margin, between two apps, under it all): the caret in the writing
+   * level with it — as near the click as it goes — or new writing between the apps there, or the writing at the end */
   const writeNear = (x: number, y: number) => {
     const blocks = docRef.current?.blocks ?? [];
-    for (const el of page.current?.querySelectorAll<HTMLElement>("[data-block]") ?? []) {
+    const els = [...(page.current?.querySelectorAll<HTMLElement>(".nb-solo > [data-block], .nb-solo > .nb-free > [data-block], .nb-col > [data-block]") ?? [])];
+    let above: string | null = null;
+    for (const el of els) {
       const r = el.getBoundingClientRect();
-      if (y < r.top || y > r.bottom) continue;
-      const b = blocks.find((x) => x.id === el.dataset.block);
-      if (b?.kind !== "text" || b.free) return;
-      clickAt.current = { x: Math.max(r.left + 12, Math.min(r.right - 4, x)), y };
-      return startEditing(b);
+      const id = el.dataset.block!;
+      if (y >= r.top && y <= r.bottom) {
+        const b = blocks.find((v) => v.id === id);
+        if (id === endId.current || (b && isProse(b))) return focusRun(id, { x, y });
+        return;
+      }
+      if (r.bottom < y) above = id;
     }
-    const last = blocks[blocks.length - 1];
-    if (last && last.kind === "text" && !last.free && !last.beside && mathRowsOf(last.text) === null && y > (page.current?.querySelector(`[data-block="${last.id}"]`)?.getBoundingClientRect().bottom ?? 0)) {
-      fromTop.current = false;
-      return startEditing(last);
+    // between two apps (no writing there): writing put there
+    const at = above ? blocks.findIndex((b) => b.id === above) : -1;
+    const next = at >= 0 ? blocks[at + 1] : undefined;
+    if (at >= 0 && next && !isProse(blocks[at]) && !isProse(next) && !next.beside) {
+      const id = blockId();
+      commit({ ...docRef.current!, blocks: [...blocks.slice(0, at + 1), { id, kind: "text", text: "" }, ...blocks.slice(at + 1)] });
+      return focusRun(id, "start");
     }
-    if (last || !blocks.length) addBlock({ lang: "text", start: "" });
+    if (next && isProse(next)) return focusRun(next.id, "start");
+    focusRun(writingAtEnd(), "end");
   };
   /** a picked block alone on its line: its edges, to drag */
   const sizeHandles = (b: Block) => {
@@ -2282,53 +2697,78 @@ export default function NotebookTile({
     );
   };
 
+  /** what the writing's heading tools show changes with the apps in its sections */
+  const sectionKey = (doc?.blocks ?? []).map((b) => (b.kind === "cell" ? `${b.lang}${flatOf(b) ? "*" : ""}` : "t")).join(",");
+  /** writing, on the page: its editor (always there), the + beside an empty line, the menu of what to put in */
+  const runView = (b: Block, inRow: boolean, marks: string, isPicked: boolean) => {
+    const placed = inRow || !!b.free || !!b.width || !!b.wrap || !!b.wide;
+    const here = caret?.id === b.id && focusedRun === b.id ? caret : null;
+    const plusOpen = inserting?.after === b.id && inserting.atCaret;
+    const menuAt = here && (here.slash !== null || plusOpen) ? { top: here.bottom + 6, left: here.left } : null;
+    return (
+      <div key={b.id} data-block={b.id} className={`nb-block is-text is-run${placed ? " is-placed" : ""}${focusedRun === b.id ? " is-writing" : ""}${b.align && b.align !== "left" ? ` is-lines-${b.align}` : ""}${marks}`}>
+        {placed && focusedRun !== b.id && gutter(b)}
+        <TextRun
+          id={b.id}
+          value={b.kind === "text" ? b.text : ""}
+          onChange={(t) => typeRun(b.id, t)}
+          vimKeys={vimKeys}
+          keys={runKeys(b.id)}
+          onFocus={(v) => runFocused(b.id, v)}
+          onBlur={(v) => runBlurred(b.id, v)}
+          onDone={() => leaveRun(b.id)}
+          onEdge={(dir) => runEdge(b.id, dir)}
+          onPaste={pasteInto}
+          onUndoPast={() => notebookUndo(false)}
+          onLink={(to) => (to.note ? openOrCreate(to.note) : to.href && /^(https?:|mailto:)/i.test(to.href) ? void openUrl(to.href).catch(() => {}) : undefined)}
+          onCursor={(v) => cursorMoved(b.id, v)}
+          onHandle={runHandle}
+          extensions={[sectionTools(b.id, sectionApi)]}
+          refreshKey={sectionKey}
+        />
+        {/* an empty line: + to put an app (math, a table, code…) there */}
+        {here?.empty && here.slash === null && (
+          <button
+            className={`nb-plus${plusOpen ? " is-on" : ""}`}
+            style={{ top: here.top + (here.bottom - here.top) / 2, left: here.left - 32 }}
+            title="Put something here — an app, math, a table, code (or type /)"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setInserting(plusOpen ? null : { after: b.id, atCaret: true })}
+          >
+            <Icon name="plus" size={14} />
+          </button>
+        )}
+        {menuAt && insertMenu(null, undefined, here!.slash ?? "", { run: b.id, style: menuAt, active: here!.slash !== null ? slashAt : -1 })}
+        {dropBlock?.id === b.id && dropBlock.top !== undefined && <div className={`nb-drop-para is-${dropBlock.side}`} style={{ top: dropBlock.top, height: dropBlock.height }} />}
+        {isPicked && placed && objectBar(b, inRow)}
+        {isPicked && placed && !inRow && sizeHandles(b)}
+      </div>
+    );
+  };
   const blockView = (b: Block, calcAt: number, inRow = false): ReactNode => {
     const isEditing = editing === b.id;
     const isPicked = picked === b.id && !isEditing;
     const marks = `${foundIds.has(b.id) ? (currentFound?.id === b.id ? " is-found-here" : " is-found") : ""}${dropMark(b.id)}${isPicked ? " is-picked" : ""}${isPicked && quietId === b.id ? " is-quiet" : ""}`;
     if (b.kind === "text") {
-      // / at the start of a new line: what to put here instead
-      const slash = isEditing && /^\/[\w ]*$/.test(draft) ? draft.slice(1).toLowerCase() : null;
+      // writing: always there to write in
+      if (isProse(b)) return runView(b, inRow, marks, isPicked);
+      // math, a table: objects on the page — as they read, worked in when they're clicked
       return (
-        <div key={b.id} data-block={b.id} className={`nb-block is-text${isEditing ? " is-editing" : ""}${b.align && b.align !== "left" ? ` is-lines-${b.align}` : ""}${marks}`}>
+        <div key={b.id} data-block={b.id} className={`nb-block is-text is-object-text${isEditing ? " is-editing" : ""}${b.align && b.align !== "left" ? ` is-lines-${b.align}` : ""}${marks}`}>
           {!isEditing && gutter(b)}
-          {isEditing && mathRowsOf(b.text) !== null ? (
+          {isEditing && isMathText(b.text) ? (
             // a Math block: math typed as math, drawn as it's typed
             <MathBlockLive text={draft} onChange={type} onDone={() => finishEditing()} />
           ) : isEditing ? (
-            // written as it reads (live preview): the Markdown shows only where the caret is
-            <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys={vimKeys} prose markdown keys={proseKeys(b)} onPaste={pasteInto} at={clickAt.current ?? undefined} caret={caretAt.current ?? undefined} fromTop={fromTop.current} onEdge={onEdge(b)} onView={setTextView} />
+            <CodeEditor value={draft} onChange={type} onDone={() => finishEditing()} vimKeys={vimKeys} prose markdown keys={proseKeys(b)} onPaste={pasteInto} fromTop={fromTop.current} onEdge={onEdge(b)} onView={setTextView} />
           ) : (
             <div
               className="nb-md"
               onClick={(e) => {
-                const box = (e.target as HTMLElement).closest?.("input[type=checkbox]");
-                if (box) {
-                  e.stopPropagation();
-                  const n = [...e.currentTarget.querySelectorAll("input[type=checkbox]")].indexOf(box);
-                  updateBlock(b.id, { text: toggleTask(b.text, n) });
-                  return;
-                }
-                if (!followLinks(e)) {
-                  clickAt.current = { x: e.clientX, y: e.clientY };
-                  startEditing(b);
-                }
+                if (!followLinks(e)) startEditing(b);
               }}
               dangerouslySetInnerHTML={{ __html: renderMarkdown(b.text) }}
             />
-          )}
-          {slash !== null && insertMenu(null, b.id, slash)}
-          {!isEditing && /^#{1,6}\s/m.test(b.text) && sectionOf(b).length > 0 && (
-            <span className="nb-section-tools">
-              <button title="Bounce this section in place — every block under this header kept as a picture, so nothing in it is drawn or worked out again" onClick={() => bounceSection(b)}>
-                <Icon name="frame" size={12} /> bounce
-              </button>
-              {sectionOf(b).some((x) => flatOf(x)) && (
-                <button title="Every block under this header live again" onClick={() => unbounceSection(b)}>
-                  unbounce
-                </button>
-              )}
-            </span>
           )}
           {isPicked && objectBar(b, inRow)}
           {isPicked && !inRow && sizeHandles(b)}
@@ -2543,6 +2983,11 @@ export default function NotebookTile({
     const pick = (i: number) => {
       const b = blocks[Math.max(0, Math.min(blocks.length - 1, i))];
       if (!b) return;
+      // ↑ ↓ onto writing: the caret into it (j/k pick it, as they pick anything)
+      if (isProse(b) && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        setPicked(null);
+        return focusRun(b.id, e.key === "ArrowDown" ? "start" : "end");
+      }
       setPicked(b.id);
       page.current?.querySelector(`[data-block="${b.id}"]`)?.scrollIntoView({ block: "nearest" });
       if (!toldKeys.current) {
@@ -2575,11 +3020,14 @@ export default function NotebookTile({
       return true;
     }
     if (key === "a" || key === "b") {
-      const id = blockId();
+      // writing above or below it (the writing that's there, when there is)
       const where = key === "a" ? at : at + 1;
+      const there = key === "a" ? blocks[at - 1] : blocks[at + 1];
+      if (there && isProse(there) && !there.free) return focusRun(there.id, key === "a" ? "end" : "start"), true;
+      const id = blockId();
       commit({ ...doc, blocks: [...blocks.slice(0, where), { id, kind: "text", text: "" }, ...blocks.slice(where)] });
-      setEditing(id);
-      setDraft("");
+      setPicked(null);
+      focusRun(id, "start");
       return true;
     }
     if (key === "d") {
@@ -2593,16 +3041,23 @@ export default function NotebookTile({
     return false;
   };
 
-  // the paragraph the toolbar aligns: the one being written, else the one picked
-  const alignTarget = (() => {
-    const b = doc?.blocks.find((x) => x.id === (editing ?? picked));
-    return b && b.kind === "text" && !b.free ? b : null;
+  /** the blocks on the page: the notebook's, and writing at the end when the last isn't writing — there's always somewhere to write */
+  const shown: Block[] = (() => {
+    const blocks = doc?.blocks ?? [];
+    const last = blocks[blocks.length - 1];
+    return last && isProse(last) && !last.free && !last.beside ? blocks : [...blocks, { id: endId.current, kind: "text", text: "" }];
   })();
+  // the paragraph the toolbar aligns: the one the caret's in (in the writing), else a block picked (a text box's lines)
+  const alignTarget = (() => {
+    const b = doc?.blocks.find((x) => x.id === picked);
+    return !textView && b && b.kind === "text" && !b.free ? b : null;
+  })();
+  const caretAlign = textView ? alignmentAt(textView.state, textView.state.selection.main.head).align : undefined;
   let calcAt = 0;
   return (
     <div
       ref={root}
-      className="nb"
+      className={`nb${finding ? " is-finding" : ""}`}
       // focusable, so its keys (⌘F) come here once it's clicked
       tabIndex={-1}
       onKeyDownCapture={(e) => {
@@ -2752,43 +3207,42 @@ export default function NotebookTile({
         <div className="nb-center">
         <FormatBar
           view={textView}
-          align={alignTarget ? (alignTarget.align as "center" | "right" | undefined) ?? "left" : undefined}
-          onAlign={alignTarget ? (a) => place(alignTarget, { align: a === "left" ? undefined : a, wrap: undefined, wide: undefined }) : undefined}
-          onUndo={() => notebookUndo(false)} onRedo={() => notebookUndo(true)} onNew={(start) => addBlock({ lang: "text", start })} onPicture={keepPicture} onTable={() => {
-            // (what's being written is kept first)
-            const at = editingRef.current;
-            finishEditing();
-            setTimeout(() => insertBlock({ lang: "table", start: "x\ty\n\t\n\t\n\t" }, at), 0);
-          }} onApp={(lang) => {
-            const at = editingRef.current ?? picked;
-            finishEditing();
+          align={textView ? caretAlign : alignTarget ? ((alignTarget.align as "center" | "right" | undefined) ?? "left") : undefined}
+          onAlign={textView ? (a) => setAlignment(textView, a) : alignTarget ? (a) => place(alignTarget, { align: a === "left" ? undefined : a, wrap: undefined, wide: undefined }) : undefined}
+          onUndo={() => notebookUndo(false)}
+          onRedo={() => notebookUndo(true)}
+          onNew={(start) => insertHere({ lang: "text", start })}
+          onPicture={keepPicture}
+          onTable={() => insertHere({ lang: "table", start: "x\ty\n\t\n\t\n\t" })}
+          onApp={(lang) => {
             const kind = NEW_CELLS.find((c) => c.lang === lang)!;
-            // (graph paper: beside what's being written — the problem on the left, its working on the right)
-            const here = at && docRef.current?.blocks.some((x) => x.id === at) ? at : null;
-            setTimeout(() => insertBlock({ lang, start: lang === "work" ? "" : kind.start, beside: lang === "paper" && !!here }, here), 0);
-          }} />
+            // (graph paper: beside the paragraph being written — the problem on the left, its working on the right)
+            insertHere({ lang, start: lang === "work" ? "" : kind.start }, { beside: lang === "paper" });
+          }}
+        />
         <div
           className={`nb-page${pageView ? " is-sheet" : ""}`}
           ref={page}
           onScroll={spy}
           // a press on the page around the blocks: nothing picked
           onPointerDown={(e) => !(e.target as HTMLElement).closest("[data-block], .nb-insert, .nb-end, .nb-add") && setPicked(null)}
-          // a click on the page itself (its margin, the space under the writing): writing there, as in Word
+          // a click on the page itself (its margin, between the apps, under the writing): writing there, as in Word
           onClick={(e) => {
             const t = e.target as HTMLElement;
-            if (editing || (t !== e.currentTarget && !t.classList.contains("nb-end"))) return;
+            if (t !== e.currentTarget && !t.matches(".nb-solo, .nb-row, .nb-col, .nb-foot")) return;
+            if (editing) finishEditing();
             writeNear(e.clientX, e.clientY);
           }}
         >
           {header}
-          {rowsOf(doc.blocks).map((row) => {
+          {rowsOf(shown).map((row) => {
             if (row.length === 1) {
               const b = row[0];
               const width = sizing?.id === b.id ? sizing.width : (b.width ?? 100);
               const spot = b.free ? " is-free" : b.wide ? " is-wide" : b.wrap ? ` is-wrap-${b.wrap}` : b.kind === "cell" && b.align && b.align !== "left" ? ` is-align-${b.align}` : "";
               const at = freeDrag?.id === b.id ? freeDrag : b.free;
               return (
-                <div key={`solo-${b.id}`} className={`nb-solo is-${b.kind}${spot}${sizing?.id === b.id ? " is-sizing" : ""}`} style={width < 100 && !b.wide ? { width: `${width}%` } : undefined}>
+                <div key={`solo-${b.id}`} className={`nb-solo is-${b.kind}${spot}${sizing?.id === b.id ? " is-sizing" : ""}${b.id === shown[shown.length - 1]?.id ? " is-last" : ""}`} style={width < 100 && !b.wide ? { width: `${width}%` } : undefined}>
                   {at ? (
                     // placed freely: in front of the text, where it was put (its place in the text is its anchor)
                     <div className="nb-free" style={{ left: at.x, top: at.y }}>
@@ -2816,16 +3270,6 @@ export default function NotebookTile({
               </div>
             );
           })}
-          {/* the end of the page: click to write on; + for anything else */}
-          <div className="nb-end">
-            <button className={`nb-gutter-btn nb-end-add${inserting?.after === null && !inserting.replace ? " is-on" : ""}`} title="Add something — text, math, an app, code" onClick={() => setInserting(inserting?.after === null && !inserting.replace ? null : { after: null })}>
-              <Icon name="plus" size={15} />
-            </button>
-            <button className="nb-end-write" onClick={() => addBlock({ lang: "text", start: "" })}>
-              Click to write
-            </button>
-            {inserting?.after === null && !inserting.replace && insertMenu(null)}
-          </div>
           <div className="nb-foot">
             Saved as {name}.md · {todayLabel()} · {wordCount} word{wordCount === 1 ? "" : "s"}
           </div>
@@ -2840,7 +3284,11 @@ export default function NotebookTile({
                 className={`nb-outline-item${i === hereAt ? " is-here" : ""}`}
                 style={{ paddingLeft: 8 + (h.level - 1) * 12 }}
                 title={h.text}
-                onClick={() => page.current?.querySelector(`[data-block="${h.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                onClick={() => {
+                  const run = runs.current.get(h.id);
+                  if (run) run.scrollTo(h.at);
+                  else page.current?.querySelector(`[data-block="${h.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
               >
                 {h.text}
               </button>

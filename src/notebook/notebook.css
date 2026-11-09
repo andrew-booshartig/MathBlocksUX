@@ -3977,3 +3977,301 @@ body.nb-is-moving * {
     calc(100% + var(--nb-margin) + 10px) -20px,
     calc(-1 * var(--nb-margin)) -20px;
 }
+
+/* ==== the writing: one editor from object to object, always there to write in (Word's page, Obsidian's note) ==== */
+.nb-page {
+  /* the notebook's own type (its header can set them: font, heading font, font size) */
+  --nb-font: -apple-system, "Inter", "Helvetica Neue", sans-serif;
+  --nb-head-font: var(--nb-font);
+  --nb-size: 16px;
+  font-family: var(--nb-font);
+  font-size: var(--nb-size);
+}
+
+.nb-cm.is-live .cm-editor,
+.nb-cm.is-live .cm-scroller,
+.nb-md {
+  font-family: var(--nb-font);
+  font-size: var(--nb-size);
+}
+
+.cm-lp-h1,
+.cm-lp-h2,
+.cm-lp-h3,
+.cm-lp-h4,
+.cm-lp-h5,
+.cm-lp-h6,
+.nb-md h1,
+.nb-md h2,
+.nb-md h3,
+.nb-md h4,
+.nb-title {
+  font-family: var(--nb-head-font);
+}
+
+.cm-lp-h1 {
+  font-size: 1.6em;
+}
+
+.cm-lp-h2 {
+  font-size: 1.3em;
+}
+
+.cm-lp-h3 {
+  font-size: 1.1em;
+}
+
+/* a heading: room above it, as a section starts */
+.nb-cm.is-live .cm-line.cm-lp-h1,
+.nb-cm.is-live .cm-line.cm-lp-h2 {
+  padding-top: 0.45em;
+}
+
+.nb-block.is-run {
+  margin: 0 -10px;
+  padding: 0 10px;
+  border-radius: 0;
+  cursor: text;
+}
+
+.nb-block.is-run:not(.is-placed):hover {
+  background: none;
+}
+
+.nb-block.is-run.is-placed {
+  border-radius: 10px;
+}
+
+/* the writing at the end: room under it, written in wherever it's clicked */
+.nb-solo.is-last > .nb-block.is-run .cm-content {
+  min-height: max(140px, 32vh);
+}
+
+/* + beside an empty line: put something there (an app, math, a table, code) */
+.nb-plus {
+  position: absolute;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  padding: 0;
+  border: 1px solid var(--t-line);
+  border-radius: 50%;
+  background: var(--nb-paper, var(--t-bg2));
+  color: var(--t-muted);
+  cursor: pointer;
+  opacity: 0.8;
+  transition:
+    opacity 0.12s,
+    color 0.12s,
+    border-color 0.12s,
+    transform 0.12s;
+}
+
+.nb-plus:hover,
+.nb-plus.is-on {
+  opacity: 1;
+  color: var(--t-text);
+  border-color: color-mix(in srgb, var(--t-blue) 70%, var(--t-line));
+}
+
+.nb-plus.is-on {
+  transform: rotate(45deg);
+}
+
+/* the menu at the caret (from + or /) */
+.nb-insert.is-at-caret {
+  width: 260px;
+  z-index: 40;
+}
+
+.nb-insert-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 8px;
+}
+
+.nb-insert-row > .nb-insert-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.nb-insert-row.is-active > .nb-insert-item {
+  background: color-mix(in srgb, var(--t-blue) 18%, transparent);
+}
+
+.nb-insert-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--t-faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.nb-insert-row:hover > .nb-insert-tab,
+.nb-insert-row.is-active > .nb-insert-tab {
+  opacity: 1;
+}
+
+.nb-insert-tab:hover {
+  color: var(--t-text);
+  background: color-mix(in srgb, var(--t-text) 8%, transparent);
+}
+
+/* a heading's tools, at its end when it's pointed at */
+.nb-cm.is-live .nb-section-tools {
+  position: static;
+  display: inline-flex;
+  margin-left: 12px;
+  vertical-align: middle;
+  opacity: 0;
+  font-family: -apple-system, "Inter", sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  transition: opacity 0.12s;
+}
+
+.nb-cm.is-live .cm-line:hover .nb-section-tools {
+  opacity: 1;
+}
+
+/* in the writing: pictures, a line, links to notes, underlines */
+.cm-lp-picture {
+  display: inline-block;
+  max-width: 100%;
+  max-height: 520px;
+  margin: 6px 0;
+  border-radius: 6px;
+  vertical-align: top;
+}
+
+.cm-lp-rule {
+  display: inline-block;
+  width: 100%;
+  height: 1px;
+  vertical-align: middle;
+  background: var(--t-line);
+}
+
+.cm-lp-wikilink {
+  color: var(--t-purple, #c678dd);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--t-purple, #c678dd) 40%, transparent);
+}
+
+.cm-lp-wikilink-src {
+  color: var(--t-purple, #c678dd);
+}
+
+.cm-lp-u {
+  text-decoration: underline;
+}
+
+.cm-lp-sub {
+  vertical-align: sub;
+  font-size: 0.8em;
+}
+
+.cm-lp-sup {
+  vertical-align: super;
+  font-size: 0.8em;
+}
+
+.nb-md u {
+  text-decoration: underline;
+}
+
+/* one selection on the page, as in Word: the writing the caret's left keeps none showing (a find shows its place, though) */
+.nb:not(.is-finding) .nb-cm.is-run .cm-editor:not(.cm-focused) .cm-selectionLayer {
+  display: none;
+}
+
+/* a callout in the writing: > [!tip] Remember */
+.nb-cm.is-live .cm-line.cm-lp-callout {
+  padding: 1px 14px !important;
+  border-left: 3px solid var(--callout, var(--t-blue));
+  background: color-mix(in srgb, var(--callout, var(--t-blue)) 9%, transparent);
+}
+
+.nb-cm.is-live .cm-line.cm-lp-callout-title {
+  padding-top: 6px !important;
+  font-weight: 650;
+  color: var(--callout, var(--t-blue));
+}
+
+.nb-cm.is-live .cm-line.cm-lp-callout:not(:has(+ .cm-lp-callout)) {
+  padding-bottom: 6px !important;
+}
+
+.cm-lp-callout-kind {
+  margin-right: 6px;
+}
+
+.cm-lp-callout.is-tip,
+.cm-lp-callout.is-hint,
+.cm-lp-callout.is-success,
+.cm-lp-callout.is-check,
+.cm-lp-callout.is-done {
+  --callout: var(--t-green, #98c379);
+}
+
+.cm-lp-callout.is-warning,
+.cm-lp-callout.is-caution,
+.cm-lp-callout.is-important,
+.cm-lp-callout.is-question {
+  --callout: var(--t-yellow, #e5c07b);
+}
+
+.cm-lp-callout.is-danger,
+.cm-lp-callout.is-failure,
+.cm-lp-callout.is-bug {
+  --callout: var(--t-red, #e06c75);
+}
+
+.cm-lp-callout.is-example,
+.cm-lp-callout.is-abstract,
+.cm-lp-callout.is-summary,
+.cm-lp-callout.is-quote {
+  --callout: var(--t-purple, #c678dd);
+}
+
+/* dragging an app over writing: where it lands — above, below or beside the paragraph under the pointer */
+.nb-drop-para {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.nb-drop-para.is-before {
+  border-top: 3px solid var(--t-blue);
+  margin-top: -3px;
+}
+
+.nb-drop-para.is-after {
+  border-bottom: 3px solid var(--t-blue);
+  margin-bottom: -3px;
+}
+
+.nb-drop-para.is-left {
+  border-left: 3px solid var(--t-blue);
+  background: color-mix(in srgb, var(--t-blue) 7%, transparent);
+}
+
+.nb-drop-para.is-right {
+  border-right: 3px solid var(--t-blue);
+  background: color-mix(in srgb, var(--t-blue) 7%, transparent);
+}
