@@ -326,11 +326,25 @@ export default function NotebookTile({
   // ---- open / save
 
   const load = useCallback(
-    async (which: string) => {
+    async (which: string, again = false) => {
       try {
         const file = await invoke<{ text: string; modified: number }>("read_notebook", { name: which });
         lastModified.current = file.modified;
-        setDoc(parseNotebook(file.text));
+        const read = parseNotebook(file.text);
+        // the same notebook read again (saved in another editor): its blocks keep their ids where they line up, so the
+        // writing being written in stays the editor it is — the caret where it was, the changes coming in around it
+        const was = docRef.current?.blocks;
+        if (again && was) {
+          const used = new Set<string>();
+          read.blocks = read.blocks.map((b, k) => {
+            const old = was[k];
+            if (!old || used.has(old.id) || old.kind !== b.kind || (b.kind === "cell" && old.kind === "cell" && old.lang !== b.lang)) return b;
+            used.add(old.id);
+            return { ...b, id: old.id } as Block;
+          });
+        }
+        docRef.current = read;
+        setDoc(read);
         setSource(file.text);
         setError(null);
         setElsewhere(false);
@@ -416,9 +430,10 @@ export default function NotebookTile({
       if (saving) return;
       const m = await invoke<number>("notebook_modified", { name }).catch(() => 0);
       if (!m || m === lastModified.current) return;
-      if (editing || focusedRunRef.current || view === "source") setElsewhere(true);
+      // (an app being worked in, or the Markdown being typed: asked first; the writing just takes it in, the caret kept)
+      if (editing || view === "source") setElsewhere(true);
       else {
-        await load(name);
+        await load(name, true);
         setNotice("Updated — it was saved in another editor");
       }
     }, 1500);

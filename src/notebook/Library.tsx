@@ -24,6 +24,8 @@ const plain = (text: string) =>
     .replace(/^---\n[\s\S]*?\n---\n/, "")
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/<!--[\s\S]*?-->/g, " ")
+    // (a callout's [!tip], a task's [x], <u>: not words)
+    .replace(/\[![\w-]+\][+-]?|\[[ xX]\]|<\/?(u|sub|sup)>/g, " ")
     .replace(/[#*_`>=[\]$|-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
