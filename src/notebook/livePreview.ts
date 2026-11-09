@@ -150,8 +150,10 @@ function build(state: EditorState, view: EditorView): DecorationSet {
   /** callouts' [!kind] markers (not links) */
   const callouts: [number, number][] = [];
   const sel = state.selection.ranges;
+  // (writing the caret isn't in shows no Markdown at all — its selection's just where the caret would go)
+  const focused = view.hasFocus;
   /** the caret (or a selection) touches from…to: its Markdown shows */
-  const touched = (from: number, to: number) => sel.some((r) => r.from <= to && r.to >= from);
+  const touched = (from: number, to: number) => focused && sel.some((r) => r.from <= to && r.to >= from);
   const lineTouched = (pos: number) => {
     const l = state.doc.lineAt(pos);
     return touched(l.from, l.to);
@@ -313,7 +315,7 @@ const preview = ViewPlugin.fromClass(
       this.decorations = build(view.state, view);
     }
     update(u: ViewUpdate) {
-      if (u.docChanged || u.selectionSet || u.viewportChanged) this.decorations = build(u.state, u.view);
+      if (u.docChanged || u.selectionSet || u.viewportChanged || u.focusChanged) this.decorations = build(u.state, u.view);
     }
   },
   { decorations: (v) => v.decorations },

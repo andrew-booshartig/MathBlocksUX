@@ -98,6 +98,8 @@ export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon:
   { lang: "python", label: "Python", icon: "source", start: "" },
 ];
 
+/** each kind's color in the + menu (the apps' own, as their tabs have them) */
+const INSERT_HUES: Record<string, string> = { calc: "teal", work: "orange", graph: "blue", paper: "green", numberline: "blue", vars: "purple", math: "teal", table: "green", python: "yellow" };
 const LANG_LABEL: Record<string, string> = { paper: "Graph paper", table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
 const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "paper"]);
@@ -583,6 +585,19 @@ export default function NotebookTile({
   const [caret, setCaret] = useState<{ id: string; top: number; left: number; bottom: number; empty: boolean; slash: string | null } | null>(null);
   /** the / menu: the item picked with ↑ ↓ */
   const [slashAt, setSlashAt] = useState(0);
+  /** a notebook opened: the caret in its writing, ready to type (as Word opens a document) — once each time one's opened */
+  const caretOnOpen = useRef<string | null>(null);
+  useEffect(() => {
+    if (!doc || !name || caretOnOpen.current === name || view !== "doc") return;
+    caretOnOpen.current = name;
+    const first = doc.blocks.find((b) => isProse(b) && !b.free);
+    setTimeout(() => {
+      // (not when something else on the page already has the keys)
+      const active = document.activeElement as HTMLElement | null;
+      if (active && active !== document.body && !active.classList.contains("nb") && !active.closest(".nb-library, .nb-pop")) return;
+      focusRun(first?.id ?? endId.current, first ? "start" : "end");
+    }, 60);
+  }, [doc, name, view]); // eslint-disable-line react-hooks/exhaustive-deps
   /** a font (or size) pointed at in the bar's menu: shown on the page till it's let go */
   const [previewType, setPreviewType] = useState<Partial<NotebookType> | null>(null);
   /** writing after the last object: there to be written in (a block once it's typed in), with this id */
@@ -2338,7 +2353,10 @@ export default function NotebookTile({
                 return (
                   <div key={i.key} className={`nb-insert-row${at && n === at.active ? " is-active" : ""}`}>
                     <button className="nb-insert-item" onClick={() => pick(i)}>
-                      <Icon name={i.icon} size={15} /> {i.label}
+                      <span className="nb-insert-icon" style={{ "--hue": `var(--t-${INSERT_HUES[i.kind.lang] ?? (i.group === "Code" ? "muted" : "subtle")})` } as CSSProperties}>
+                        <Icon name={i.icon} size={14} />
+                      </span>
+                      {i.label}
                     </button>
                     {linkable && (
                       <button className="nb-insert-tab" title={`${i.label} in a tab beside the notebook — what's done there is kept here`} onClick={() => pick(i, true)}>
@@ -2796,7 +2814,16 @@ export default function NotebookTile({
       ) : b.lang === "vars" ? (
         // being worked in: the table; done: the values as they read
         isEditing ? (
-          <VarsCell code={b.code} lines={calc?.[calcAt]} onCommit={(code) => updateBlock(b.id, { code })} onDone={() => finishEditing()} />
+          <VarsCell
+            code={b.code}
+            lines={calc?.[calcAt]}
+            onCommit={(code) => {
+              // (what's being edited follows, so finishing doesn't put back what it was)
+              type(code);
+              updateBlock(b.id, { code });
+            }}
+            onDone={() => finishEditing()}
+          />
         ) : (
           <VarsRecord code={b.code} lines={calc?.[calcAt]} />
         )

@@ -213,6 +213,9 @@ export default function FormatBar({
 }) {
   const [symbols, setSymbols] = useState(false);
   const [styles, setStyles] = useState(false);
+  /** narrow: the folded-away buttons' menu (and the symbols, from it) */
+  const [more, setMore] = useState(false);
+  const [foldSymbols, setFoldSymbols] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const line = view ? view.state.doc.lineAt(view.state.selection.main.head).text : "";
   const current = useMemo(() => [...STYLES].reverse().find((s) => s.lead && line.startsWith(s.lead) && (s.id !== "quote" || !/^>\s?\[!/.test(line)) && !line.startsWith(`${s.lead.trim()}#`)) ?? STYLES[0], [line]);
@@ -258,16 +261,16 @@ export default function FormatBar({
       <button disabled={off} title="Underline (⌘U)" onClick={() => wrap("u")}>
         <u>U</u>
       </button>
-      <button disabled={off} title="Strikethrough (⌘⇧X)" onClick={() => wrap("x", true)}>
+      <button className="nb-format-wide2" disabled={off} title="Strikethrough (⌘⇧X)" onClick={() => wrap("x", true)}>
         <s>S</s>
       </button>
-      <button disabled={off} title="Highlight (⌘⇧H)" onClick={() => wrap("h", true)}>
+      <button className="nb-format-wide2" disabled={off} title="Highlight (⌘⇧H)" onClick={() => wrap("h", true)}>
         <span className="nb-format-mark">H</span>
       </button>
-      <button disabled={off} title="Code (⌘E)" onClick={() => wrap("e")}>
+      <button className="nb-format-wide2" disabled={off} title="Code (⌘E)" onClick={() => wrap("e")}>
         <Icon name="source" size={14} />
       </button>
-      <button disabled={off} title="Link (⌘K) — [[a note]] links another notebook" onClick={() => wrap("k")}>
+      <button className="nb-format-wide2" disabled={off} title="Link (⌘K) — [[a note]] links another notebook" onClick={() => wrap("k")}>
         <Icon name="link" size={14} />
       </button>
       <span className="nb-format-sep" />
@@ -277,38 +280,38 @@ export default function FormatBar({
       <button title="Numbered list (⌘⇧7) — Enter goes on to the next number" onClick={() => lead("1. ", true)}>
         <span className="nb-format-num">1.</span>
       </button>
-      <button title="Lettered list — a. b. c." onClick={() => lead("a. ", true)}>
+      <button className="nb-format-wide" title="Lettered list — a. b. c." onClick={() => lead("a. ", true)}>
         <span className="nb-format-num">a.</span>
       </button>
-      <button title="Lettered list — A. B. C." onClick={() => lead("A. ", true)}>
+      <button className="nb-format-wide" title="Lettered list — A. B. C." onClick={() => lead("A. ", true)}>
         <span className="nb-format-num">A.</span>
       </button>
       <button title="Checklist (⌘⇧9)" onClick={() => lead("- [ ] ", true)}>
         <Icon name="check" size={15} />
       </button>
-      <button disabled={off} title="Outdent (⇧Tab)" onClick={() => view && (tabKey(true)(view), view.focus())}>
+      <button className="nb-format-wide" disabled={off} title="Outdent (⇧Tab)" onClick={() => view && (tabKey(true)(view), view.focus())}>
         <Icon name="outdent" size={15} />
       </button>
-      <button disabled={off} title="Indent — a list item in under the one above (Tab)" onClick={() => view && (tabKey(false)(view), view.focus())}>
+      <button className="nb-format-wide" disabled={off} title="Indent — a list item in under the one above (Tab)" onClick={() => view && (tabKey(false)(view), view.focus())}>
         <Icon name="indent" size={15} />
       </button>
       <span className="nb-format-sep" />
       {(["left", "center", "right"] as const).map((a) => (
-        <button key={a} disabled={!onAlign} className={align === a ? "is-on" : ""} title={`Align ${a}`} onClick={() => onAlign?.(a)}>
+        <button key={a} disabled={!onAlign} className={`nb-format-wide${align === a ? " is-on" : ""}`} title={`Align ${a}`} onClick={() => onAlign?.(a)}>
           <Icon name={a === "left" ? "alignLeft" : a === "center" ? "alignCenter" : "alignRight"} size={15} />
         </button>
       ))}
       <span className="nb-format-sep" />
-      <button title="A table — a spreadsheet, typed into right on the page" onClick={onTable}>
+      <button className="nb-format-wide" title="A table — a spreadsheet, typed into right on the page" onClick={onTable}>
         <Icon name="table" size={15} />
       </button>
-      <button title="A picture" onClick={() => file.current?.click()}>
+      <button className="nb-format-wide" title="A picture" onClick={() => file.current?.click()}>
         <Icon name="image" size={15} />
       </button>
-      <button title="Math — a problem written out, typed as it reads (in a line of text, $x^2$ does it)" onClick={() => onApp("math")}>
+      <button className="nb-format-wide3" title="Math — a problem written out, typed as it reads (in a line of text, $x^2$ does it)" onClick={() => onApp("math")}>
         <span className="nb-format-num">∑</span>
       </button>
-      <span className="nb-format-anchor">
+      <span className="nb-format-anchor nb-format-wide3">
         <button disabled={off} className={symbols ? "is-on" : ""} title="A symbol — × ÷ ± √ π ° ≤ ≥ ≈ ½ …" onClick={() => setSymbols(!symbols)}>
           <span className="nb-format-num">Ω</span>
         </button>
@@ -316,6 +319,70 @@ export default function FormatBar({
           <span className="nb-format-menu nb-format-symbols" onMouseLeave={() => setSymbols(false)}>
             {SYMBOLS.map((c) => (
               <button key={c} onClick={() => (insert(view, c), setSymbols(false))}>
+                {c}
+              </button>
+            ))}
+          </span>
+        )}
+      </span>
+      {/* narrow: what's folded away, here */}
+      <span className="nb-format-anchor nb-format-fold">
+        <button className={more ? "is-on" : ""} title="More — lettered lists, indent, alignment, a table, a picture" onClick={() => setMore(!more)}>
+          <Icon name="more" size={15} />
+        </button>
+        {more && (
+          <span className="nb-format-menu nb-format-more" onMouseLeave={() => setMore(false)}>
+            <button className="is-tier2" disabled={off} onClick={() => (setMore(false), wrap("x", true))}>
+              <s>S</s> Strikethrough
+            </button>
+            <button className="is-tier2" disabled={off} onClick={() => (setMore(false), wrap("h", true))}>
+              <span className="nb-format-mark">H</span> Highlight
+            </button>
+            <button className="is-tier2" disabled={off} onClick={() => (setMore(false), wrap("e"))}>
+              <Icon name="source" size={14} /> Code
+            </button>
+            <button className="is-tier2" disabled={off} onClick={() => (setMore(false), wrap("k"))}>
+              <Icon name="link" size={14} /> Link
+            </button>
+            <button onClick={() => (setMore(false), lead("a. ", true))}>
+              <span className="nb-format-num">a.</span> Lettered list
+            </button>
+            <button onClick={() => (setMore(false), lead("A. ", true))}>
+              <span className="nb-format-num">A.</span> Lettered list
+            </button>
+            <button disabled={off} onClick={() => view && (setMore(false), tabKey(true)(view), view.focus())}>
+              <Icon name="outdent" size={15} /> Outdent
+            </button>
+            <button disabled={off} onClick={() => view && (setMore(false), tabKey(false)(view), view.focus())}>
+              <Icon name="indent" size={15} /> Indent
+            </button>
+            <button disabled={!onAlign} className={align === "left" ? "is-on" : ""} onClick={() => (setMore(false), onAlign?.("left"))}>
+              <Icon name="alignLeft" size={15} /> Left
+            </button>
+            <button disabled={!onAlign} className={align === "center" ? "is-on" : ""} onClick={() => (setMore(false), onAlign?.("center"))}>
+              <Icon name="alignCenter" size={15} /> Center
+            </button>
+            <button disabled={!onAlign} className={align === "right" ? "is-on" : ""} onClick={() => (setMore(false), onAlign?.("right"))}>
+              <Icon name="alignRight" size={15} /> Right
+            </button>
+            <button onClick={() => (setMore(false), onTable())}>
+              <Icon name="table" size={15} /> Table
+            </button>
+            <button onClick={() => (setMore(false), file.current?.click())}>
+              <Icon name="image" size={15} /> Picture
+            </button>
+            <button className="is-tier3" onClick={() => (setMore(false), onApp("math"))}>
+              <span className="nb-format-num">∑</span> Math
+            </button>
+            <button className="is-tier3" disabled={off} onClick={() => (setMore(false), setFoldSymbols(true))}>
+              <span className="nb-format-num">Ω</span> Symbol
+            </button>
+          </span>
+        )}
+        {foldSymbols && view && (
+          <span className="nb-format-menu nb-format-symbols is-right" onMouseLeave={() => setFoldSymbols(false)}>
+            {SYMBOLS.map((c) => (
+              <button key={c} onClick={() => (insert(view, c), setFoldSymbols(false))}>
                 {c}
               </button>
             ))}

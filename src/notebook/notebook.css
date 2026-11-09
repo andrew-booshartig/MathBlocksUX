@@ -4492,3 +4492,118 @@ body.nb-is-moving * {
   background: color-mix(in srgb, var(--t-green, #98c379) 14%, transparent);
   color: var(--t-green, #98c379);
 }
+
+/* the bar, narrow (beside an app's tab, a small window): the less-used buttons fold into ⋯, the apps' names go */
+.nb-format-fold {
+  display: none;
+}
+
+.nb-format-more {
+  min-width: 190px;
+}
+
+.nb-format-more button {
+  gap: 10px !important;
+}
+
+@container (max-width: 1300px) {
+  .nb-format-label {
+    display: none;
+  }
+}
+
+@container (max-width: 1140px) {
+  .nb-format > .nb-format-wide {
+    display: none;
+  }
+
+  .nb-format-fold {
+    display: inline-flex;
+  }
+}
+
+.nb-format-more .is-tier2 {
+  display: none;
+}
+
+@container (max-width: 920px) {
+  .nb-format > .nb-format-wide2 {
+    display: none;
+  }
+
+  .nb-format-more .is-tier2 {
+    display: inline-flex;
+  }
+
+  .nb-format-style {
+    min-width: 92px !important;
+  }
+
+  .nb-format-font {
+    min-width: 76px !important;
+    max-width: 92px;
+  }
+}
+
+.nb-format-more .is-tier3 {
+  display: none;
+}
+
+.nb-format-menu.is-right {
+  left: auto;
+  right: 0;
+}
+
+@container (max-width: 760px) {
+  .nb-format > .nb-format-wide3 {
+    display: none;
+  }
+
+  .nb-format-more .is-tier3 {
+    display: inline-flex;
+  }
+
+  .nb-format-sep {
+    margin: 0 2px;
+  }
+
+  .nb-format > button,
+  .nb-format > .nb-format-anchor > button {
+    min-width: 24px;
+    padding: 0 3px;
+  }
+}
+
+/* the + menu's rows: an icon in its app's color, the name; picked with ↑ ↓ (or pointed at) */
+.nb-insert-row > .nb-insert-item:first-child:only-child {
+  background: none;
+}
+
+.nb-insert-row > .nb-insert-item:hover,
+.nb-insert-row.is-active > .nb-insert-item {
+  background: color-mix(in srgb, var(--t-text) 8%, transparent);
+}
+
+.nb-insert-row.is-active > .nb-insert-item {
+  background: color-mix(in srgb, var(--t-blue) 18%, transparent);
+}
+
+.nb-insert-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--hue, var(--t-muted)) 16%, transparent);
+  color: var(--hue, var(--t-muted));
+}
+
+.nb-insert-item .nb-insert-icon .icon {
+  color: inherit;
+}
+
+.nb-insert.is-at-caret {
+  width: 270px;
+  max-height: min(420px, 60vh);
+}
