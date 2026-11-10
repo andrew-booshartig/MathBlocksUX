@@ -35,6 +35,7 @@ export const TILES = [
   { id: "facts", title: "Flash cards", hue: "orange", blurb: "The times table, a card at a time — the ones you miss come back" },
   { id: "electrical", title: "Electrical", hue: "yellow", blurb: "Ohm's law, voltage drop, wire size, conduit and box fill, a house's load, a panel" },
   { id: "circuit", title: "Circuit", hue: "yellow", blurb: "Draw a circuit or a wiring diagram, then run it — current flows, lamps light, every part worked out" },
+  { id: "draw", title: "Draw", hue: "pink", blurb: "Sketch, diagram, mind-map: boxes and arrows that hold on, a pen, text with math" },
   { id: "reference", title: "Reference", hue: "yellow", blurb: "Any unit conversion, looked up and shown how" },
   { id: "equations", title: "Equations", hue: "pink", blurb: "Formulas ready to fill in, and your own" },
 ] as const;
@@ -226,7 +227,7 @@ export const PRESETS: Preset[] = [
     id: "notebook",
     name: "Notebook",
     blurb: "The notebook fills the window — the tools a tab away, to drag beside it",
-    zones: [{ tiles: ["notebook", "calc", "work", "graph", "equations", "reference", "paper", "facts", "sliderule", "electrical", "circuit"] }],
+    zones: [{ tiles: ["notebook", "calc", "work", "graph", "equations", "reference", "paper", "facts", "sliderule", "electrical", "circuit", "draw"] }],
     boxes: [[0, 0, 100, 100, "notebook"]],
   },
   {
@@ -236,7 +237,7 @@ export const PRESETS: Preset[] = [
     zones: [
       { tiles: ["calc", "work", "notebook"] },
       { tiles: ["graph"], from: "calc", dir: "right", share: 0.4 },
-      { tiles: ["equations", "reference", "paper", "facts", "sliderule", "electrical", "circuit"], from: "graph", dir: "below", share: 0.38 },
+      { tiles: ["equations", "reference", "paper", "facts", "sliderule", "electrical", "circuit", "draw"], from: "graph", dir: "below", share: 0.38 },
     ],
     boxes: [
       [0, 0, 58, 100, "calc"],
@@ -251,7 +252,7 @@ export const PRESETS: Preset[] = [
     zones: [
       { tiles: ["calc"] },
       { tiles: ["work", "notebook"], from: "calc", dir: "right", share: 0.42 },
-      { tiles: ["graph", "equations", "reference", "paper", "facts", "sliderule", "electrical", "circuit"], from: "work", dir: "below", share: 0.42 },
+      { tiles: ["graph", "equations", "reference", "paper", "facts", "sliderule", "electrical", "circuit", "draw"], from: "work", dir: "below", share: 0.42 },
     ],
     boxes: [
       [0, 0, 58, 100, "calc"],
@@ -266,7 +267,7 @@ export const PRESETS: Preset[] = [
     zones: [
       { tiles: ["graph"] },
       { tiles: ["calc", "work", "notebook"], from: "graph", dir: "right", share: 0.36 },
-      { tiles: ["equations", "reference", "paper", "facts", "sliderule", "electrical", "circuit"], from: "calc", dir: "below", share: 0.36 },
+      { tiles: ["equations", "reference", "paper", "facts", "sliderule", "electrical", "circuit", "draw"], from: "calc", dir: "below", share: 0.36 },
     ],
     boxes: [
       [0, 0, 62, 100, "graph"],
@@ -280,7 +281,7 @@ export const PRESETS: Preset[] = [
     blurb: "The notebook big, Calculate and Work beside it, the graph under them",
     zones: [
       { tiles: ["notebook"] },
-      { tiles: ["calc", "work", "reference", "paper", "facts", "sliderule", "electrical", "circuit"], from: "notebook", dir: "right", share: 0.42 },
+      { tiles: ["calc", "work", "reference", "paper", "facts", "sliderule", "electrical", "circuit", "draw"], from: "notebook", dir: "right", share: 0.42 },
       { tiles: ["graph", "equations"], from: "calc", dir: "below", share: 0.45 },
     ],
     boxes: [
@@ -293,14 +294,14 @@ export const PRESETS: Preset[] = [
     id: "focus",
     name: "Focus",
     blurb: "Calculate alone — every other tile a tab away",
-    zones: [{ tiles: ["calc", "work", "graph", "notebook", "equations", "reference", "paper", "facts", "sliderule", "electrical", "circuit"] }],
+    zones: [{ tiles: ["calc", "work", "graph", "notebook", "equations", "reference", "paper", "facts", "sliderule", "electrical", "circuit", "draw"] }],
     boxes: [[0, 0, 100, 100, "calc"]],
   },
 ];
 
 /** a smaller window gets fewer, bigger zones */
 const COMPACT: Zone[] = [
-  { tiles: ["calc", "work", "notebook", "reference", "paper", "facts", "sliderule", "electrical", "circuit"] },
+  { tiles: ["calc", "work", "notebook", "reference", "paper", "facts", "sliderule", "electrical", "circuit", "draw"] },
   { tiles: ["graph", "equations"], from: "calc", dir: "right", share: 0.45 },
 ];
 

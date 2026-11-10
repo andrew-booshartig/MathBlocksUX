@@ -617,6 +617,8 @@ export interface CalculatorBlockData extends BlockBase {
   smartElectrical?: import("./electrical/ElectricalTile").ElectricalState;
   /** its Circuit tile: the circuit drawn there (as ```circuit text) — or a notebook's circuit opened beside it */
   smartCircuit?: { code?: string };
+  /** its Draw tile: the drawing there (as ```draw lines) — or a notebook's drawing opened beside it */
+  smartDraw?: { code?: string };
   /** its Paper tile: long division / multiplication, the problem and how it's worked */
   smartPaper?: import("./paper/PaperTile").PaperState;
   /** its Flash cards tile: which tables, and how each fact is doing */

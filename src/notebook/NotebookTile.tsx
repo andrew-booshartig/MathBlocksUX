@@ -37,6 +37,8 @@ import PaperBlock from "./paperBlock";
 import CanvasBlock from "./canvasBlock";
 import CircuitEditor from "../circuit/CircuitEditor";
 import { circuitHeight } from "../circuit/size";
+import DrawEditor from "../draw/DrawEditor";
+import { drawHeight } from "../draw/size";
 import { enterKey, listKey, tabKey, wrapKey } from "./proseKeys";
 import { TableBlock, fromMarkdownTable, tableMarkdown } from "./tableBlock";
 import type { EditorView, KeyBinding } from "@codemirror/view";
@@ -99,16 +101,17 @@ export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon:
   { lang: "work", label: "Work", icon: "work", start: "problem: 2x + 3 = 11\n" },
   { lang: "paper", label: "Graph paper", icon: "gridpaper", start: "" },
   { lang: "circuit", label: "Circuit", icon: "circuit", start: "" },
+  { lang: "draw", label: "Drawing", icon: "draw", start: "" },
   { lang: "python", label: "Python", icon: "source", start: "" },
 ];
 
 /** each kind's color in the + menu (the apps' own, as their tabs have them) */
-const INSERT_HUES: Record<string, string> = { calc: "teal", work: "orange", graph: "blue", paper: "green", circuit: "yellow", numberline: "blue", vars: "purple", math: "teal", table: "green", python: "yellow" };
-const LANG_LABEL: Record<string, string> = { paper: "Graph paper", circuit: "Circuit", table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
+const INSERT_HUES: Record<string, string> = { calc: "teal", work: "orange", graph: "blue", paper: "green", circuit: "yellow", draw: "pink", numberline: "blue", vars: "purple", math: "teal", table: "green", python: "yellow" };
+const LANG_LABEL: Record<string, string> = { paper: "Graph paper", circuit: "Circuit", draw: "Drawing", table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
-const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "paper", "circuit"]);
+const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "paper", "circuit", "draw"]);
 /** drawn and worked on right where they are on the page (a circuit): their own editor, clicked into */
-const CANVAS_CELLS = new Set(["circuit"]);
+const CANVAS_CELLS = new Set(["circuit", "draw"]);
 /** cells worked out by the calculator, in order: calc lines, and variables blocks (as name = value) */
 /** an app's fence written inside text: ```calc, ```work, ```graph … */
 const APP_FENCE = /^(`{3,}|~{3,})\s*(calc|work|graph|vars|numberline|table)\b/im;
@@ -2942,6 +2945,10 @@ export default function NotebookTile({
         <CanvasBlock height={b.height} fallback={circuitHeight(b.code)} onHeight={(height) => place(b, { height })}>
           {(height) => <CircuitEditor code={b.code} inline height={height} onChange={(code) => updateBlock(b.id, { code })} onNotebook={(markdown) => putUnder(b.id, markdown)} />}
         </CanvasBlock>
+      ) : b.lang === "draw" ? (
+        <CanvasBlock height={b.height} fallback={drawHeight(b.code)} onHeight={(height) => place(b, { height })}>
+          {(height) => <DrawEditor code={b.code} inline height={height} onChange={(code) => updateBlock(b.id, { code })} />}
+        </CanvasBlock>
       ) : b.lang === "numberline" ? (
         <NumberLineCell code={isEditing ? draft : b.code} />
       ) : b.lang === "work" ? (
@@ -3199,7 +3206,8 @@ export default function NotebookTile({
       tabIndex={-1}
       onKeyDownCapture={(e) => {
         // ⌘Z / ⌘⇧Z: the notebook's changes (a field or the code editor undoes its own typing)
-        const inField = (e.target as HTMLElement).closest?.("input, textarea, .cm-editor, math-field, [contenteditable], .sheet, .pp-scratch");
+        // (a circuit, a drawing: its keys and its ⌘Z its own)
+        const inField = (e.target as HTMLElement).closest?.("input, textarea, .cm-editor, math-field, [contenteditable], .sheet, .pp-scratch, .cs-editor, .dr-editor");
         if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "z" && !inField) {
           e.preventDefault();
           notebookUndo(e.shiftKey);

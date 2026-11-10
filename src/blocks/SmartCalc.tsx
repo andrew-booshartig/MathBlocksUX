@@ -8,6 +8,7 @@ import FactsTile from "../drill/FactsTile";
 import SlideRuleTile from "../sliderule/SlideRuleTile";
 import ElectricalTile from "../electrical/ElectricalTile";
 import CircuitEditor from "../circuit/CircuitEditor";
+import DrawEditor from "../draw/DrawEditor";
 import Icon from "../Icon";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -173,6 +174,12 @@ function LinkedApp({ id, equations, onEquations }: { id: string; equations?: Equ
     return (
       <div className="dock-canvas">
         <CircuitEditor code={data.smartCircuit?.code ?? ""} onChange={(code) => updateBlock(id, { smartCircuit: { code } })} />
+      </div>
+    );
+  if (app.view === "draw")
+    return (
+      <div className="dock-canvas">
+        <DrawEditor code={data.smartDraw?.code ?? ""} onChange={(code) => updateBlock(id, { smartDraw: { code } })} />
       </div>
     );
   return <SmartCalc data={data} only={app.view} scope={app.scope} equations={equations} onEquations={onEquations} />;
@@ -1744,6 +1751,12 @@ export default function SmartCalc({
       />
     </div>
   );
+  // ---- Draw: a drawing board (its own, kept with the workspace)
+  const drawBody = (
+    <div className="dock-canvas">
+      <DrawEditor code={data.smartDraw?.code ?? ""} onChange={(code) => updateBlock(data.id, { smartDraw: { code } })} onSend={() => toNotebook(cellText("draw", current()?.smartDraw?.code ?? ""))} />
+    </div>
+  );
   // ---- Paper: long division and multiplication, a step at a time
   const slideBody = <SlideRuleTile state={data.smartSlide ?? {}} update={(patch) => updateBlock(data.id, { smartSlide: { ...(current()?.smartSlide ?? {}), ...patch } })} />;
   const factsBody = <FactsTile state={data.smartFacts ?? {}} update={(patch) => updateBlock(data.id, { smartFacts: { ...(current()?.smartFacts ?? {}), ...patch } })} />;
@@ -2217,6 +2230,7 @@ export default function SmartCalc({
             reference: referenceBody,
             electrical: electricalBody,
             circuit: circuitBody,
+            draw: drawBody,
             paper: paperBody,
             facts: factsBody,
             sliderule: slideBody,
