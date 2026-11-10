@@ -51,7 +51,7 @@ import { DEFAULT_SIZE, TYPE_KEYS, fontCss } from "./fonts";
 import { LINKED_LANGS, appDataFor, canLink, closeLinked, codeFor, linkedApp, linkedId, openLinked, rescopeLinked, useLinkedApps, watchLinked } from "./linked";
 import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
-import { setPageView, setVimKeys, usePageView, useVimKeys } from "./editorSettings";
+import { setFocusMode, setPageView, setSmartSymbols, setVimKeys, useFocusMode, usePageView, useSmartSymbols, useVimKeys } from "./editorSettings";
 import { useParts } from "../parts";
 import "./notebook.css";
 
@@ -783,6 +783,10 @@ export default function NotebookTile({
   useEffect(spy, [outline]); // eslint-disable-line react-hooks/exhaustive-deps
   const vimKeys = useVimKeys();
   const pageView = usePageView();
+  const smartSymbols = useSmartSymbols();
+  const focusMode = useFocusMode();
+  const focusModeRef = useRef(focusMode);
+  focusModeRef.current = focusMode;
   /** what's typed in the block being edited, as of now (an editor's callbacks run between renders) */
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -1770,8 +1774,21 @@ export default function NotebookTile({
   /** a / menu put away with Esc: not shown again on that line */
   const dismissed = useRef("");
   /** the caret moved (or was typed at): where its line is, whether it's empty, a / being typed */
+  const typewriterLine = useRef(-1);
   const cursorMoved = (id: string, v: EditorView) => {
     placeBubble(v);
+    // (focus: the line being written kept a little above the middle, as a typewriter keeps it)
+    if (focusModeRef.current && v.hasFocus && page.current) {
+      const head = v.state.selection.main.head;
+      const lineNo = v.state.doc.lineAt(head).number;
+      const key = lineNo + (runs.current.get(id) ? 0 : 0);
+      if (key !== typewriterLine.current) {
+        typewriterLine.current = key;
+        const box = v.coordsAtPos(head);
+        const pageBox = page.current.getBoundingClientRect();
+        if (box) page.current.scrollBy({ top: box.top - (pageBox.top + pageBox.height * 0.4) });
+      }
+    }
     if (!v.hasFocus) {
       if (caretRef.current?.id === id) setCaret(null);
       return;
@@ -2360,6 +2377,12 @@ export default function NotebookTile({
                 </button>
                 <button className={`nb-pop-item nb-vim-toggle${pageView ? " is-on" : ""}`} title="The page as a sheet of paper on a desk, as Word shows it — or the plain page" onClick={() => (setMenu(false), setPageView(!pageView))}>
                   <Icon name="check" size={14} /> Page view {pageView ? "on" : "off"}
+                </button>
+                <button className="nb-pop-item" title="Just the page: the bars and the lists beside it out of the way, the line being written kept in the middle (⌘⇧F; Esc to leave it)" onClick={() => (setMenu(false), setFocusMode(true))}>
+                  <Icon name="eye" size={14} /> Focus — just the page <kbd className="nb-pop-key">⌘⇧F</kbd>
+                </button>
+                <button className={`nb-pop-item nb-vim-toggle${smartSymbols ? " is-on" : ""}`} title="As you write: -> is →, <= ≤, >= ≥, != ≠, +- ±, ~= ≈, => ⇒, ... …, -- in a sentence an em dash (⌘Z right after gives back what you typed)" onClick={() => (setMenu(false), setSmartSymbols(!smartSymbols))}>
+                  <Icon name="check" size={14} /> Smart symbols {smartSymbols ? "on" : "off"}
                 </button>
                 <button className={`nb-pop-item nb-vim-toggle${vimKeys ? " is-on" : ""}`} title="Vim in code cells and text, set up like Neovim: Space is the leader (Space r runs), :w is done, yanks go to the clipboard" onClick={() => (setMenu(false), setVimKeys(!vimKeys))}>
                   <Icon name="check" size={14} /> Vim keys {vimKeys ? "on" : "off"}
@@ -3447,7 +3470,7 @@ export default function NotebookTile({
   return (
     <div
       ref={root}
-      className={`nb${finding ? " is-finding" : ""}`}
+      className={`nb${finding ? " is-finding" : ""}${focusMode ? " is-focus" : ""}`}
       // focusable, so its keys (⌘F) come here once it's clicked
       tabIndex={-1}
       onKeyDownCapture={(e) => {
@@ -3457,6 +3480,18 @@ export default function NotebookTile({
         if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "z" && !inField) {
           e.preventDefault();
           notebookUndo(e.shiftKey);
+          return;
+        }
+        // ⌘⇧F: focus — just the page (again: out of it)
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") {
+          e.preventDefault();
+          setFocusMode(!focusMode);
+          return;
+        }
+        // Esc with nothing else to do: out of focus
+        if (e.key === "Escape" && focusMode && !inField && !picked && !barMenu && !inserting) {
+          e.preventDefault();
+          setFocusMode(false);
           return;
         }
         // ⌘P: go to any note
@@ -3483,6 +3518,11 @@ export default function NotebookTile({
       }}
     >
       {toolbar}
+      {focusMode && (
+        <button className="nb-focus-out" title="Out of focus (Esc or ⌘⇧F)" onClick={() => setFocusMode(false)}>
+          <Icon name="close" size={12} /> Focus
+        </button>
+      )}
       {bubble && bubble.view.hasFocus && (
         <div className="nb-bubble" style={{ left: bubble.x, top: bubble.y }} onMouseDown={(e) => e.preventDefault()}>
           {(

@@ -12,6 +12,7 @@ import { indentUnit } from "@codemirror/language";
 import { markdownKeymap } from "@codemirror/lang-markdown";
 import { getCM, vim } from "@replit/codemirror-vim";
 import { livePreview } from "./livePreview";
+import { smartTyping } from "./smartType";
 
 /** a run of writing, from outside it: the caret put in it, a place shown, where a place is */
 export interface RunHandle {
@@ -90,6 +91,7 @@ export default function TextRun(props: TextRunProps) {
       p.vimKeys ? keymap.of(p.keys) : Prec.highest(keymap.of(p.keys)),
       Prec.high(keymap.of(keys)),
       livePreview(),
+      smartTyping,
       keymap.of(markdownKeymap),
       history(),
       keymap.of([...historyKeymap, ...defaultKeymap]),

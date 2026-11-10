@@ -4906,3 +4906,73 @@ body.nb-is-moving * {
   border-right: 0;
   transform: rotate(-45deg);
 }
+
+
+/* ==== focus: just the page — the bars and the lists beside it out of the way ==== */
+.nb.is-focus > .nb-bar,
+.nb.is-focus .nb-library,
+.nb.is-focus .nb-outline-side,
+.nb.is-focus .nb-vars {
+  display: none !important;
+}
+
+/* (the toolbar: there when the top's pointed at, or one of its menus is open) */
+.nb.is-focus .nb-format {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  z-index: 40;
+  transform: translateX(-50%);
+  border-radius: 12px;
+  border: 1px solid var(--t-line);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.2);
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+
+.nb.is-focus .nb-format:hover,
+.nb.is-focus .nb-format:focus-within,
+.nb.is-focus .nb-format:has(.nb-format-menu) {
+  opacity: 1;
+}
+
+.nb.is-focus .nb-center {
+  position: relative;
+}
+
+.nb.is-focus .nb-page {
+  padding-top: 72px;
+}
+
+.nb-focus-out {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 41;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--t-line);
+  border-radius: 999px;
+  background: var(--t-bg1);
+  color: var(--t-muted);
+  font: 11.5px -apple-system, "Inter", sans-serif;
+  opacity: 0.35;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.nb-focus-out:hover {
+  opacity: 1;
+  color: var(--t-text);
+}
+
+.nb-pop-key {
+  margin-left: auto;
+  padding-left: 12px;
+  font: inherit;
+  font-size: 11px;
+  opacity: 0.5;
+}
