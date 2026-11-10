@@ -20,6 +20,7 @@ import { type CalcLine, GraphCell, NumberLineCell, type PyOutput, PythonOutput, 
 import { type Block, type CellLang, type NotebookDoc, type Placement, PRINT_SWITCHES, blockId, isMathText, isProse, isTableText, joinWriting, metaValue, parseBlocks, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
 import { caretSpotOf, rememberCaret, setNotebookInbox } from "./inbox";
 import { ColorPalette } from "./ColorMenu";
+import Shortcuts from "./Shortcuts";
 import { notebookLatex } from "./latex";
 import { renderMarkdown } from "./markdown";
 import Preview from "./Preview";
@@ -787,6 +788,8 @@ export default function NotebookTile({
   const focusMode = useFocusMode();
   const focusModeRef = useRef(focusMode);
   focusModeRef.current = focusMode;
+  /** ⌘/: every key, in one place */
+  const [keysOpen, setKeysOpen] = useState(false);
   /** what's typed in the block being edited, as of now (an editor's callbacks run between renders) */
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -2381,6 +2384,9 @@ export default function NotebookTile({
                 <button className="nb-pop-item" title="Just the page: the bars and the lists beside it out of the way, the line being written kept in the middle (⌘⇧F; Esc to leave it)" onClick={() => (setMenu(false), setFocusMode(true))}>
                   <Icon name="eye" size={14} /> Focus — just the page <kbd className="nb-pop-key">⌘⇧F</kbd>
                 </button>
+                <button className="nb-pop-item" onClick={() => (setMenu(false), setKeysOpen(true))}>
+                  <Icon name="source" size={14} /> Keyboard shortcuts <kbd className="nb-pop-key">⌘/</kbd>
+                </button>
                 <button className={`nb-pop-item nb-vim-toggle${smartSymbols ? " is-on" : ""}`} title="As you write: -> is →, <= ≤, >= ≥, != ≠, +- ±, ~= ≈, => ⇒, ... …, -- in a sentence an em dash (⌘Z right after gives back what you typed)" onClick={() => (setMenu(false), setSmartSymbols(!smartSymbols))}>
                   <Icon name="check" size={14} /> Smart symbols {smartSymbols ? "on" : "off"}
                 </button>
@@ -3482,9 +3488,18 @@ export default function NotebookTile({
           notebookUndo(e.shiftKey);
           return;
         }
+        // ⌘/: every key
+        if ((e.metaKey || e.ctrlKey) && (e.key === "/" || e.key === "?")) {
+          // (not the writing's own ⌘/, which would make the line a comment)
+          e.preventDefault();
+          e.stopPropagation();
+          setKeysOpen(!keysOpen);
+          return;
+        }
         // ⌘⇧F: focus — just the page (again: out of it)
         if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "f") {
           e.preventDefault();
+          e.stopPropagation();
           setFocusMode(!focusMode);
           return;
         }
@@ -3518,6 +3533,7 @@ export default function NotebookTile({
       }}
     >
       {toolbar}
+      {keysOpen && <Shortcuts onClose={() => (setKeysOpen(false), lastView.current?.focus())} />}
       {focusMode && (
         <button className="nb-focus-out" title="Out of focus (Esc or ⌘⇧F)" onClick={() => setFocusMode(false)}>
           <Icon name="close" size={12} /> Focus
