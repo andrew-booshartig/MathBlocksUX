@@ -8,7 +8,7 @@ import Icon from "../Icon";
 type Listing = { name: string; modified: number }[];
 
 /** what each note says, as of its last change */
-const texts = new Map<string, { modified: number; text: string }>();
+import { texts } from "./noteTexts";
 
 const when = (ms: number) => {
   const d = new Date(ms);

@@ -21,6 +21,7 @@ import { type Block, type CellLang, type NotebookDoc, type Placement, PRINT_SWIT
 import { caretSpotOf, rememberCaret, setNotebookInbox } from "./inbox";
 import { ColorPalette } from "./ColorMenu";
 import Shortcuts from "./Shortcuts";
+import { useBacklinks } from "./noteTexts";
 import { notebookLatex } from "./latex";
 import { renderMarkdown } from "./markdown";
 import Preview from "./Preview";
@@ -788,6 +789,8 @@ export default function NotebookTile({
   const focusMode = useFocusMode();
   const focusModeRef = useRef(focusMode);
   focusModeRef.current = focusMode;
+  /** the notebooks that link to this one ([[its name]]) */
+  const backlinks = useBacklinks(name, listing);
   /** ⌘/: every key, in one place */
   const [keysOpen, setKeysOpen] = useState(false);
   /** what's typed in the block being edited, as of now (an editor's callbacks run between renders) */
@@ -3769,6 +3772,16 @@ export default function NotebookTile({
             );
           })}
           <div className="nb-foot">
+            {backlinks.length > 0 && (
+              <div className="nb-backlinks">
+                <span className="nb-backlinks-title">Linked from</span>
+                {backlinks.map((n) => (
+                  <button key={n} className="nb-backlink" title={`Open ${n}`} onClick={() => (setView("doc"), onOpen(n))}>
+                    <Icon name="notebook" size={12} /> {n}
+                  </button>
+                ))}
+              </div>
+            )}
             Saved as {name}.md · {todayLabel()} · {wordCount} word{wordCount === 1 ? "" : "s"}
           </div>
         </div>
