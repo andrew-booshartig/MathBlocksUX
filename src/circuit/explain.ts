@@ -292,7 +292,7 @@ export function explain(c: Circuit, nets: Nets, sol: Solution, sourceId?: string
     lines.push({
       group: "check",
       tex: `${powers.map((p) => `P_{${p.sub}}`).join(" + ")} = ${powers.map((p) => num(p.p, 3)).join(" + ")} = ${fmtTex(sum, "W")}`,
-      note: Math.abs(sum - s.re) < 1e-6 * Math.max(1, Math.abs(s.re)) ? "the same as P_T ✓" : undefined,
+      note: Math.abs(sum - s.re) < 1e-6 * Math.max(1, Math.abs(s.re)) ? "the same as the total ✓" : undefined,
     });
   }
   return { source: src.id, reduced: true, lines, table, total: { z: top.z, i: it, v: vs, p: s.re, pf } };

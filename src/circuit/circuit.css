@@ -196,7 +196,8 @@
   left: 8px;
   display: flex;
   gap: 6px;
-  z-index: 3;
+  /* (over the worked-out panel: its menus open on top of it) */
+  z-index: 5;
 }
 
 .cs-bar.is-right {
@@ -285,14 +286,18 @@
   }
 }
 
-@container (max-width: 470px) {
-  .cs-bar.is-right .cs-tool.is-text:not(.is-run) {
-    font-size: 0;
+/* (narrow: the right bar's buttons as icons, then fewer parts — every part's still under +) */
+@container (max-width: 720px) {
+  .cs-bar.is-right .cs-tool.is-text {
     gap: 0;
-    padding: 0 6px;
+    padding: 0 7px;
+    font-size: 0;
   }
-  .cs-bar.is-right .cs-tool.is-text:not(.is-run)::first-letter {
-    font-size: 12px;
+}
+
+@container (max-width: 470px) {
+  .cs-tool.is-mid {
+    display: none;
   }
 }
 
@@ -636,7 +641,7 @@
 /* ---- running */
 .cs-card {
   position: absolute;
-  z-index: 5;
+  z-index: 6;
   min-width: 132px;
   padding: 7px 10px 8px;
   background: var(--t-bg1);

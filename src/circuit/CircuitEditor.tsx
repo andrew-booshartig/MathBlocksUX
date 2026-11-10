@@ -484,7 +484,9 @@ export default function CircuitEditor({ code, onChange, inline = false, height, 
       if (picked.size) return stop(), setPicked(new Set());
       if (inline) {
         stop();
-        root.current?.blur();
+        // (out of it: whatever in it has the focus lets go)
+        const now = document.activeElement as HTMLElement | null;
+        if (now && root.current?.contains(now)) now.blur();
       }
       return;
     }
@@ -658,7 +660,7 @@ export default function CircuitEditor({ code, onChange, inline = false, height, 
     return (
       <div className="cs-card" style={{ left: Math.min(size.w - 170, at.left + 10), top: Math.max(4, at.top - 8) }}>
         <div className="cs-card-head">
-          <b>{hoverPart.name}</b> {k.label.toLowerCase()}
+          <b>{hoverPart.name}</b> {k.label}
         </div>
         {rows.map(([a, b], i) => (
           <div key={i} className={`cs-card-row${a ? "" : " is-trouble"}`}>
@@ -693,7 +695,7 @@ export default function CircuitEditor({ code, onChange, inline = false, height, 
       </div>
       <div className="cs-group cs-favorites">
         {[...FAVORITES, ...recent].map((kind, i) => (
-          <ToolButton key={kind} on={tool.t === "place" && tool.kind === kind} title={`${kindOf(kind)?.label}${i < 9 ? ` (${i + 1})` : ""} — R turns it, F flips it`} onClick={() => pickTool({ t: "place", kind })} className={i >= 5 && i < 9 ? "is-extra" : i >= 9 ? "is-recent" : undefined}>
+          <ToolButton key={kind} on={tool.t === "place" && tool.kind === kind} title={`${kindOf(kind)?.label}${i < 9 ? ` (${i + 1})` : ""} — R turns it, F flips it`} onClick={() => pickTool({ t: "place", kind })} className={i >= 5 && i < 9 ? "is-extra" : i >= 9 ? "is-recent" : i >= 3 ? "is-mid" : undefined}>
             <PartIcon kind={kind} size={23} />
             {i < 9 && <span className="cs-key">{i + 1}</span>}
           </ToolButton>
