@@ -42,6 +42,9 @@ function inline(tokens: Token[] = []): string {
           return `$${(t as Tokens.Generic).text}$`;
         case "wikilink":
           return esc((t as Tokens.Generic).label);
+        case "html":
+          // (underline, colors, highlights: their words — the tags aren't LaTeX)
+          return "";
         default:
           return esc((t as { raw?: string }).raw ?? "");
       }

@@ -4655,3 +4655,138 @@ body.nb-is-moving * {
     display: none;
   }
 }
+
+/* ==== colors: words colored, highlights (the theme's own shades) ==== */
+.cm-lp-hl,
+.nb-md mark[style] {
+  padding: 0.05em 0.18em;
+  margin: 0 -0.05em;
+  border-radius: 0.28em;
+  color: inherit;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* the bar's button: an A on the last color used, ▾ every color */
+.nb-color {
+  display: inline-flex;
+  align-items: center;
+}
+
+.nb-format .nb-color > .nb-color-main {
+  min-width: 24px;
+  padding: 0 3px 0 6px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.nb-format .nb-color > .nb-color-more {
+  min-width: 14px;
+  padding: 0 2px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  opacity: 0.7;
+}
+
+.nb-format .nb-color > .nb-color-more:hover,
+.nb-format .nb-color > .nb-color-more.is-on {
+  opacity: 1;
+}
+
+.nb-color-a {
+  position: relative;
+  display: inline-block;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.nb-color-a::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  bottom: -4px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--c, var(--t-red, #e5484d));
+}
+
+.nb-color-a.is-mark {
+  padding: 1px 2px;
+  border-radius: 3px;
+  background: var(--c);
+}
+
+.nb-color-a.is-mark::after {
+  display: none;
+}
+
+.nb-color-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0 !important;
+  width: max-content;
+  padding: 10px 10px 12px !important;
+}
+
+.nb-color-title {
+  margin: 2px 2px 0;
+  color: var(--t-faint, var(--t-muted));
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nb-color-row {
+  display: grid;
+  grid-template-columns: repeat(10, 24px);
+  gap: 4px;
+}
+
+.nb-format-menu .nb-color-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--t-line) 80%, transparent);
+  border-radius: 6px;
+  background: var(--t-bg2);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.08s;
+}
+
+.nb-format-menu .nb-color-swatch.is-mark {
+  color: var(--t-text);
+  border-color: transparent;
+}
+
+.nb-format-menu .nb-color-swatch:hover {
+  transform: scale(1.12);
+}
+
+.nb-format-menu .nb-color-swatch.is-on {
+  box-shadow:
+    0 0 0 2px var(--t-bg1),
+    0 0 0 3.5px var(--t-blue, #3b82f6);
+}
+
+.nb-format-menu .nb-color-swatch.is-none {
+  position: relative;
+  color: var(--t-muted);
+  background: transparent;
+}
+
+.nb-format-menu .nb-color-swatch.is-none::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  background: linear-gradient(to top right, transparent calc(50% - 0.75px), var(--t-red, #e5484d) calc(50% - 0.75px), var(--t-red, #e5484d) calc(50% + 0.75px), transparent calc(50% + 0.75px));
+  opacity: 0.8;
+}

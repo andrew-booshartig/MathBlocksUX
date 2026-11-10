@@ -30,6 +30,7 @@ const plain = (text: string) =>
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     // (a callout's [!tip], a task's [x], <u>: not words)
     .replace(/\[![\w-]+\][+-]?|\[[ xX]\]|<\/?(u|sub|sup)>/g, " ")
+    .replace(/<\/?(span|mark)\b[^>]*>/g, "")
     .replace(/[#*_`>=[\]$|-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();

@@ -4,6 +4,7 @@
  * the caret is, so it can be changed. It's still plain text underneath: the
  * file, Neovim and vim keys all see Markdown. */
 import { syntaxTree } from "@codemirror/language";
+import { colorSpans, markColorCss, textColorCss } from "./colors";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { type EditorState, type Extension, type Range, RangeSet, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
@@ -301,6 +302,14 @@ function build(state: EditorState, view: EditorView): DecorationSet {
       out.push(mark(`cm-lp-${m[1]}`).range(a + open, b - open - 1));
       if (!touched(a, b)) out.push(hide.range(a, a + open), hide.range(b - open - 1, b));
     }
+    // colored words and highlights: the color drawn, the tags it's written with never shown
+    for (const c of colorSpans(text, from)) {
+      if (c.innerEnd > c.inner)
+        out.push(
+          Decoration.mark(c.kind === "text" ? { class: "cm-lp-color", attributes: { style: `color: ${textColorCss(c.color)}` } } : { class: "cm-lp-hl", attributes: { style: `background: ${markColorCss(c.color)}` } }).range(c.inner, c.innerEnd),
+        );
+      out.push(hide.range(c.from, c.inner), hide.range(c.innerEnd, c.to));
+    }
     for (const m of text.matchAll(/(^|\s)(#[A-Za-z][\w/-]*)/g)) {
       const a = from + m.index! + m[1].length;
       if (state.doc.lineAt(a).text.match(/^#{1,6}\s/) && state.doc.lineAt(a).from === a) continue;
@@ -310,10 +319,11 @@ function build(state: EditorState, view: EditorView): DecorationSet {
   return Decoration.set(out, true);
 }
 
-/** the pictures in view: each stepped over as one thing (the caret's either side of it, ⌫ takes it whole) */
+/** the pictures in view, and the tags color's written with: each stepped over as one thing (the caret's either side of
+ * it, ⌫ takes it whole) */
 function picturesOf(view: EditorView): DecorationSet {
   const out: Range<Decoration>[] = [];
-  for (const { from, to } of view.visibleRanges)
+  for (const { from, to } of view.visibleRanges) {
     syntaxTree(view.state).iterate({
       from,
       to,
@@ -323,6 +333,8 @@ function picturesOf(view: EditorView): DecorationSet {
         return false;
       },
     });
+    for (const c of colorSpans(view.state.sliceDoc(from, to), from)) out.push(Decoration.mark({}).range(c.from, c.inner), Decoration.mark({}).range(c.innerEnd, c.to));
+  }
   return Decoration.set(out, true);
 }
 

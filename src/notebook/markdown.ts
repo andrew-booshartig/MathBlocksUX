@@ -3,6 +3,7 @@
  * and [[another notebook]] links. Raw HTML is shown as text, never run, and
  * links only go to the web, mail or a heading here — a notebook someone
  * shares can't do anything to the app. */
+import { markColorCss, textColorCss } from "./colors";
 import katex from "katex";
 import { Marked, type Tokens } from "marked";
 
@@ -132,7 +133,21 @@ function makeMarked(print: boolean) {
     renderer: {
       // no HTML of its own: shown as the text it is
       // underline, sub- and superscripts (Markdown's way to them is HTML), and a comment (hidden) — any other HTML is shown as its text
-      html: ({ text }: Tokens.HTML | Tokens.Tag) => (/^<\/?(u|sub|sup)>$/i.test(text.trim()) ? text.trim().toLowerCase() : /^<br\s*\/?>$/i.test(text.trim()) ? "<br>" : /^<!--[\s\S]*-->\s*$/.test(text) ? "" : escape(text)),
+      html: ({ text }: Tokens.HTML | Tokens.Tag) => {
+        const t = text.trim();
+        if (/^<\/?(u|sub|sup|mark)>$/i.test(t)) return t.toLowerCase();
+        if (/^<\/span>$/i.test(t)) return "</span>";
+        // colored words and highlights (the palette's in the theme's shade): only their color, nothing else
+        const color = t.match(/^<(span|mark)\s+style="\s*(color|background(?:-color)?)\s*:\s*([^";]+?)\s*;?\s*"\s*>$/i);
+        if (color) {
+          const span = color[1].toLowerCase() === "span";
+          const css = span ? textColorCss(color[3]) : markColorCss(color[3]);
+          return css ? `<${span ? "span" : "mark"} style="${span ? "color" : "background"}: ${css}">` : `<${span ? "span" : "mark"}>`;
+        }
+        if (/^<br\s*\/?>$/i.test(t)) return "<br>";
+        if (/^<!--[\s\S]*-->\s*$/.test(text)) return "";
+        return escape(text);
+      },
       link({ href, title, tokens }: Tokens.Link) {
         const inner = this.parser.parseInline(tokens);
         const to = safeHref(href);

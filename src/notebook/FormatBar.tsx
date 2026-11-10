@@ -8,6 +8,7 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { redo, undo } from "@codemirror/commands";
 import type { EditorView } from "@codemirror/view";
 import Icon from "../Icon";
+import ColorButton, { ColorPalette } from "./ColorMenu";
 import { tabKey, wrapKey } from "./proseKeys";
 import { APPLE_FONTS, DEFAULT_SIZE, SIZES, fontCss, recentFonts, rememberFont, useFonts } from "./fonts";
 
@@ -216,6 +217,7 @@ export default function FormatBar({
   /** narrow: the folded-away buttons' menu (and the symbols, from it) */
   const [more, setMore] = useState(false);
   const [foldSymbols, setFoldSymbols] = useState(false);
+  const [foldColors, setFoldColors] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const line = view ? view.state.doc.lineAt(view.state.selection.main.head).text : "";
   const current = useMemo(() => [...STYLES].reverse().find((s) => s.lead && line.startsWith(s.lead) && (s.id !== "quote" || !/^>\s?\[!/.test(line)) && !line.startsWith(`${s.lead.trim()}#`)) ?? STYLES[0], [line]);
@@ -264,9 +266,7 @@ export default function FormatBar({
       <button className="nb-format-wide2" disabled={off} title="Strikethrough (⌘⇧X)" onClick={() => wrap("x", true)}>
         <s>S</s>
       </button>
-      <button className="nb-format-wide2" disabled={off} title="Highlight (⌘⇧H)" onClick={() => wrap("h", true)}>
-        <span className="nb-format-mark">H</span>
-      </button>
+      <ColorButton view={view} className="nb-format-wide2" />
       <button className="nb-format-wide2" disabled={off} title="Code (⌘E)" onClick={() => wrap("e")}>
         <Icon name="source" size={14} />
       </button>
@@ -338,6 +338,12 @@ export default function FormatBar({
             <button className="is-tier2" disabled={off} onClick={() => (setMore(false), wrap("h", true))}>
               <span className="nb-format-mark">H</span> Highlight
             </button>
+            <button className="is-tier2" disabled={off} onClick={() => (setMore(false), setFoldColors(true))}>
+              <span className="nb-format-num nb-color-a" style={{ "--c": "var(--t-red, #e5484d)" } as CSSProperties}>
+                A
+              </span>{" "}
+              Colors…
+            </button>
             <button className="is-tier2" disabled={off} onClick={() => (setMore(false), wrap("e"))}>
               <Icon name="source" size={14} /> Code
             </button>
@@ -386,6 +392,11 @@ export default function FormatBar({
             <button className="is-tier3" disabled={off} onClick={() => (setMore(false), setFoldSymbols(true))}>
               <span className="nb-format-num">Ω</span> Symbol
             </button>
+          </span>
+        )}
+        {foldColors && view && (
+          <span onMouseLeave={() => setFoldColors(false)}>
+            <ColorPalette view={view} onPick={() => setFoldColors(false)} className="is-right" />
           </span>
         )}
         {foldSymbols && view && (
