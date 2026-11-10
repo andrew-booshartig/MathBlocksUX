@@ -312,6 +312,9 @@ function build(state: EditorState, view: EditorView): DecorationSet {
     }
     for (const m of text.matchAll(/(^|\s)(#[A-Za-z][\w/-]*)/g)) {
       const a = from + m.index! + m[1].length;
+      // (a color's #hex, inside the HTML it's written with, isn't a tag)
+      const before = text.slice(0, a - from);
+      if (before.lastIndexOf("<") > before.lastIndexOf(">")) continue;
       if (state.doc.lineAt(a).text.match(/^#{1,6}\s/) && state.doc.lineAt(a).from === a) continue;
       out.push(mark("cm-lp-tag").range(a, a + m[2].length));
     }

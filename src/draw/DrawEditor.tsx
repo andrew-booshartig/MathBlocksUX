@@ -154,21 +154,39 @@ export default function DrawEditor({ code, onChange, inline = false, height, onS
   }, []);
   const fitted = useMemo((): View => {
     const b = boundsOf(d.els);
-    if (!b) return { x: Math.round(size.w / 2), y: Math.round(size.h / 2), z: 1 };
-    const pad = inline ? 22 : 60;
-    const z = Math.max(0.2, Math.min(1, (size.w - pad * 2) / Math.max(1, b.w), (size.h - pad * 2) / Math.max(1, b.h)));
-    return { x: size.w / 2 - (b.x + b.w / 2) * z, y: size.h / 2 - (b.y + b.h / 2) * z, z };
-  }, [d, size, inline]);
+    // (worked on: room over it for its tools and under it for its style; only shown, it hugs the page)
+    const pad = active ? { t: 58, b: 56, s: 30 } : { t: 14, b: 14, s: 14 };
+    const w = Math.max(40, size.w - pad.s * 2);
+    const h = Math.max(40, size.h - pad.t - pad.b);
+    if (!b) return { x: Math.round(size.w / 2), y: Math.round(pad.t + h / 2), z: 1 };
+    const z = Math.max(0.2, Math.min(1, w / Math.max(1, b.w), h / Math.max(1, b.h)));
+    return { x: size.w / 2 - (b.x + b.w / 2) * z, y: pad.t + h / 2 - (b.y + b.h / 2) * z, z };
+  }, [d, size, active]);
+  const fittedRef = useRef(fitted);
+  fittedRef.current = fitted;
   const [view_, setMoved] = useState<View | null>(null);
+  /** moved by hand (a pan, a zoom): it stays where it's been put */
+  const handMoved = useRef(false);
   const view = view_ ?? fitted;
   const viewRef = useRef(view);
   viewRef.current = view;
   useEffect(() => {
-    if (active) setMoved((m) => m ?? fitted);
-    else setMoved(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!active) {
+      handMoved.current = false;
+      setMoved(null);
+    } else if (!handMoved.current) setMoved(fittedRef.current);
+  }, [active, size.w, size.h]);
+  const fitView = () => ((handMoved.current = false), setMoved(fitted));
+  /** how tall it is while it's worked on: room for its tools round what's drawn (set as it's clicked into, so what's
+   * drawn meanwhile doesn't make it jump) */
+  const [workHeight, setWorkHeight] = useState(320);
+  const dRef = useRef(d);
+  dRef.current = d;
+  useEffect(() => {
+    if (!active) return;
+    const b = boundsOf(dRef.current.els);
+    setWorkHeight(Math.max(320, b ? Math.round(b.h + 150) : 320));
   }, [active]);
-  const fitView = () => setMoved(fitted);
   const worldAt = (cx: number, cy: number): Pt => {
     const r = svg.current!.getBoundingClientRect();
     const v = viewRef.current;
@@ -176,6 +194,7 @@ export default function DrawEditor({ code, onChange, inline = false, height, onS
   };
   const screenOf = (x: number, y: number) => ({ left: view.x + x * view.z, top: view.y + y * view.z });
   const zoomAt = (factor: number, cx = size.w / 2, cy = size.h / 2) => {
+    handMoved.current = true;
     const v = viewRef.current;
     const z = Math.max(0.1, Math.min(6, v.z * factor));
     setMoved({ z, x: cx - ((cx - v.x) / v.z) * z, y: cy - ((cy - v.y) / v.z) * z });
@@ -428,6 +447,7 @@ export default function DrawEditor({ code, onChange, inline = false, height, onS
     }
     switch (drag.op) {
       case "pan":
+        handMoved.current = true;
         setMoved({ ...drag.view, x: drag.view.x + e.clientX - drag.from[0], y: drag.view.y + e.clientY - drag.from[1] });
         break;
       case "create": {
@@ -645,6 +665,7 @@ export default function DrawEditor({ code, onChange, inline = false, height, onS
       const r = el.getBoundingClientRect();
       if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.0075), e.clientX - r.left, e.clientY - r.top);
       else {
+        handMoved.current = true;
         const v = viewRef.current;
         setMoved({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY });
       }
@@ -1148,7 +1169,7 @@ export default function DrawEditor({ code, onChange, inline = false, height, onS
       onCut={(e) => copy(e, true)}
       onPaste={paste}
       onContextMenu={(e) => e.preventDefault()}
-      style={inline && height ? { height } : undefined}
+      style={inline && height ? { height: active ? Math.max(height, workHeight) : height } : undefined}
     >
       <svg
         ref={svg}

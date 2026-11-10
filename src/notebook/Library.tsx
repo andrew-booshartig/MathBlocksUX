@@ -55,7 +55,7 @@ export default function Library({ listing, current, onOpen, onNew }: { listing: 
   }, [listing]);
   const tags = useMemo(() => {
     const count = new Map<string, number>();
-    for (const l of listing) for (const t of new Set((texts.get(l.name)?.text ?? "").match(/(?<=^|\s)#[A-Za-z][\w/-]*/g) ?? [])) count.set(t, (count.get(t) ?? 0) + 1);
+    for (const l of listing) for (const t of new Set((texts.get(l.name)?.text ?? "").replace(/<[^>\n]*>/g, " ").match(/(?<=^|\s)#[A-Za-z][\w/-]*/g) ?? [])) count.set(t, (count.get(t) ?? 0) + 1);
     return [...count].sort((a, b) => b[1] - a[1]).slice(0, 24);
   }, [listing, read]); // eslint-disable-line react-hooks/exhaustive-deps
   const q = query.trim().toLowerCase();

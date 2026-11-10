@@ -3,7 +3,7 @@ import { boundsOf, parseDrawing } from "./model";
 
 export function drawHeight(code: string): number {
   const b = code.trim() ? boundsOf(parseDrawing(code).els) : null;
-  if (!b) return 340;
-  // (room above it for its bars when it's clicked into)
-  return Math.max(220, Math.min(640, Math.round(b.h + 120)));
+  if (!b) return 320;
+  // (shown: it hugs the page — clicked into, it grows room for its tools)
+  return Math.max(100, Math.min(640, Math.round(b.h + 32)));
 }

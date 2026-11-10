@@ -4862,3 +4862,47 @@ body.nb-is-moving * {
 .nb-bubble-math {
   font: italic 600 14px "New York", ui-serif, Georgia, serif;
 }
+
+
+/* a checklist's box: drawn in the theme's colors (the system's own box doesn't follow the theme) */
+.cm-lp-task,
+.nb-md input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-grid;
+  place-content: center;
+  width: 15px;
+  height: 15px;
+  margin: 0 7px 0 0;
+  border: 1.5px solid color-mix(in srgb, var(--t-text) 38%, transparent);
+  border-radius: 4.5px;
+  background: transparent;
+  vertical-align: -2px;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.cm-lp-task:hover,
+.nb-md input[type="checkbox"]:hover {
+  border-color: var(--t-blue, #3b82f6);
+}
+
+.cm-lp-task:checked,
+.nb-md input[type="checkbox"]:checked {
+  border-color: var(--t-blue, #3b82f6);
+  background: var(--t-blue, #3b82f6);
+}
+
+.cm-lp-task:checked::after,
+.nb-md input[type="checkbox"]:checked::after {
+  content: "";
+  width: 7px;
+  height: 3.5px;
+  margin-top: -2px;
+  border: 2px solid #fff;
+  border-top: 0;
+  border-right: 0;
+  transform: rotate(-45deg);
+}

@@ -149,22 +149,39 @@ export default function CircuitEditor({ code, onChange, inline = false, height, 
   }, []);
   const fitted = useMemo((): View => {
     const b = boundsOf(c);
-    if (!b) return { x: Math.round(size.w / 2), y: Math.round(size.h / 2), z: 1 };
-    const pad = inline ? 18 : 56;
-    const z = Math.max(0.3, Math.min(1, (size.w - pad * 2) / Math.max(1, b.x1 - b.x0), (size.h - pad * 2) / Math.max(1, b.y1 - b.y0)));
-    return { x: size.w / 2 - ((b.x0 + b.x1) / 2) * z, y: size.h / 2 - ((b.y0 + b.y1) / 2) * z, z };
-  }, [c, size, inline]);
+    // (worked on: room over it for its bars; only shown, it hugs the page)
+    const pad = active ? { t: 56, b: 44, s: 28 } : { t: 14, b: 14, s: 14 };
+    const w = Math.max(40, size.w - pad.s * 2);
+    const h = Math.max(40, size.h - pad.t - pad.b);
+    if (!b) return { x: Math.round(size.w / 2), y: Math.round(pad.t + h / 2), z: 1 };
+    const z = Math.max(0.3, Math.min(1, w / Math.max(1, b.x1 - b.x0), h / Math.max(1, b.y1 - b.y0)));
+    return { x: size.w / 2 - ((b.x0 + b.x1) / 2) * z, y: pad.t + h / 2 - ((b.y0 + b.y1) / 2) * z, z };
+  }, [c, size, active]);
+  const fittedRef = useRef(fitted);
+  fittedRef.current = fitted;
   const [moved, setMoved] = useState<View | null>(null);
+  /** moved by hand (a pan, a zoom): it stays where it's been put */
+  const handMoved = useRef(false);
   const view = moved ?? fitted;
   const viewRef = useRef(view);
   viewRef.current = view;
-  // (clicked into: the view stays put while it's worked on — what's added doesn't shift it)
+  // (clicked into: the view held still while it's worked on — what's added doesn't shift it — fitted again only when
+  // its box changes size, till a hand moves it)
   useEffect(() => {
-    if (active) setMoved((m) => m ?? fitted);
-    else setMoved(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!active) {
+      handMoved.current = false;
+      setMoved(null);
+    } else if (!handMoved.current) setMoved(fittedRef.current);
+  }, [active, size.w, size.h]);
+  const fitView = () => ((handMoved.current = false), setMoved(fitted));
+  /** how tall it is while it's worked on: room for its bars round what's drawn (set as it's clicked into, so what's
+   * added meanwhile doesn't make it jump) */
+  const [workHeight, setWorkHeight] = useState(300);
+  useEffect(() => {
+    if (!active) return;
+    const b = boundsOf(cRef.current);
+    setWorkHeight(Math.max(300, b ? Math.round(b.y1 - b.y0 + 130) : 300));
   }, [active]);
-  const fitView = () => setMoved(fitted);
 
   const worldAt = (clientX: number, clientY: number): [number, number] => {
     const r = svg.current!.getBoundingClientRect();
@@ -176,6 +193,7 @@ export default function CircuitEditor({ code, onChange, inline = false, height, 
     return [Math.round(wx / G), Math.round(wy / G)];
   };
   const zoomAt = (factor: number, cx = size.w / 2, cy = size.h / 2) => {
+    handMoved.current = true;
     const v = viewRef.current;
     const z = Math.max(0.25, Math.min(4, v.z * factor));
     setMoved({ z, x: cx - ((cx - v.x) / v.z) * z, y: cy - ((cy - v.y) / v.z) * z });
@@ -329,6 +347,7 @@ export default function CircuitEditor({ code, onChange, inline = false, height, 
     }
     switch (drag.op) {
       case "pan":
+        handMoved.current = true;
         setMoved({ ...drag.view, x: drag.view.x + e.clientX - drag.from[0], y: drag.view.y + e.clientY - drag.from[1] });
         break;
       case "move": {
@@ -431,6 +450,7 @@ export default function CircuitEditor({ code, onChange, inline = false, height, 
       const r = el.getBoundingClientRect();
       if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.0075), e.clientX - r.left, e.clientY - r.top);
       else {
+        handMoved.current = true;
         const v = viewRef.current;
         setMoved({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY });
       }
@@ -929,7 +949,7 @@ export default function CircuitEditor({ code, onChange, inline = false, height, 
       onCut={(e) => copy(e, true)}
       onPaste={paste}
       onContextMenu={(e) => e.preventDefault()}
-      style={inline && height ? { height: panel && active ? Math.max(height, 560) : height } : undefined}
+      style={inline && height ? { height: panel && active ? Math.max(height, 560) : active ? Math.max(height, workHeight) : height } : undefined}
     >
       <svg
         ref={svg}

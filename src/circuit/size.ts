@@ -4,7 +4,7 @@ import { parseCircuit } from "./format";
 
 export function circuitHeight(code: string): number {
   const b = code.trim() ? boundsOf(parseCircuit(code)) : null;
-  if (!b) return 320;
-  // (room above it for its bars when it's clicked into)
-  return Math.max(220, Math.min(600, Math.round(b.y1 - b.y0 + 116)));
+  if (!b) return 300;
+  // (shown: it hugs the page — clicked into, it grows room for its bars)
+  return Math.max(120, Math.min(600, Math.round(b.y1 - b.y0 + 36)));
 }
