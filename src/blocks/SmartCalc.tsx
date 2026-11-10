@@ -9,6 +9,7 @@ import SlideRuleTile from "../sliderule/SlideRuleTile";
 import ElectricalTile from "../electrical/ElectricalTile";
 import CircuitEditor from "../circuit/CircuitEditor";
 import DrawEditor from "../draw/DrawEditor";
+import MermaidStudio from "../mermaid/MermaidStudio";
 import Icon from "../Icon";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -180,6 +181,12 @@ function LinkedApp({ id, equations, onEquations }: { id: string; equations?: Equ
     return (
       <div className="dock-canvas">
         <DrawEditor code={data.smartDraw?.code ?? ""} onChange={(code) => updateBlock(id, { smartDraw: { code } })} />
+      </div>
+    );
+  if (app.view === "flowchart")
+    return (
+      <div className="dock-canvas">
+        <MermaidStudio code={data.smartMermaid?.code ?? ""} onChange={(code) => updateBlock(id, { smartMermaid: { code } })} />
       </div>
     );
   return <SmartCalc data={data} only={app.view} scope={app.scope} equations={equations} onEquations={onEquations} />;
@@ -1757,6 +1764,12 @@ export default function SmartCalc({
       <DrawEditor code={data.smartDraw?.code ?? ""} onChange={(code) => updateBlock(data.id, { smartDraw: { code } })} onSend={() => toNotebook(cellText("draw", current()?.smartDraw?.code ?? ""))} />
     </div>
   );
+  // ---- Flowchart: a diagram typed as text (its own, kept with the workspace)
+  const flowchartBody = (
+    <div className="dock-canvas">
+      <MermaidStudio code={data.smartMermaid?.code ?? ""} onChange={(code) => updateBlock(data.id, { smartMermaid: { code } })} onSend={() => toNotebook(cellText("mermaid", current()?.smartMermaid?.code ?? ""))} />
+    </div>
+  );
   // ---- Paper: long division and multiplication, a step at a time
   const slideBody = <SlideRuleTile state={data.smartSlide ?? {}} update={(patch) => updateBlock(data.id, { smartSlide: { ...(current()?.smartSlide ?? {}), ...patch } })} />;
   const factsBody = <FactsTile state={data.smartFacts ?? {}} update={(patch) => updateBlock(data.id, { smartFacts: { ...(current()?.smartFacts ?? {}), ...patch } })} />;
@@ -2231,6 +2244,7 @@ export default function SmartCalc({
             electrical: electricalBody,
             circuit: circuitBody,
             draw: drawBody,
+            flowchart: flowchartBody,
             paper: paperBody,
             facts: factsBody,
             sliderule: slideBody,

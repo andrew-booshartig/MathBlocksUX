@@ -12,8 +12,8 @@
  *
  * The app edits a block at a time and writes the file back the same way. */
 
-export type CellLang = "vars" | "calc" | "graph" | "numberline" | "work" | "python" | "table" | "paper" | "circuit" | "draw";
-export const CELL_LANGS: CellLang[] = ["vars", "calc", "graph", "numberline", "work", "python", "table", "paper", "circuit", "draw"];
+export type CellLang = "vars" | "calc" | "graph" | "numberline" | "work" | "python" | "table" | "paper" | "circuit" | "draw" | "mermaid";
+export const CELL_LANGS: CellLang[] = ["vars", "calc", "graph", "numberline", "work", "python", "table", "paper", "circuit", "draw", "mermaid"];
 
 /** where a block sits, as a picture does in a document: beside the one above it (in a row), how much
  * of its line it takes (percent), which side it keeps to, whether text flows around it */

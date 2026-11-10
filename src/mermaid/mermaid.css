@@ -1,0 +1,167 @@
+/* Typed diagrams (Mermaid): drawn on the page, and the studio's split view */
+.mm-view {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+}
+
+.mm-svg {
+  max-width: 100%;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.mm-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mm-view.has-error .mm-svg {
+  opacity: 0.45;
+}
+
+.mm-error {
+  align-self: stretch;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--t-red, #e5484d) 10%, transparent);
+  color: var(--t-red, #e5484d);
+  font: 11.5px/1.45 ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre-wrap;
+}
+
+.mm-wait,
+.mm-empty {
+  padding: 18px;
+  color: var(--t-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* the studio */
+.mm-studio {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--t-text);
+  font: 12.5px -apple-system, "Inter", "Helvetica Neue", sans-serif;
+}
+
+.mm-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--t-line);
+}
+
+.mm-grow {
+  flex: 1;
+}
+
+.mm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--t-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mm-btn:hover,
+.mm-btn.is-on {
+  background: var(--t-bg3);
+  color: var(--t-text);
+}
+
+.mm-zoom {
+  min-width: 46px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mm-anchor {
+  position: relative;
+}
+
+.mm-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 5px;
+  background: var(--t-bg1);
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgb(0 0 0 / 0.24);
+}
+
+.mm-pop button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mm-pop button:hover {
+  background: var(--t-bg3);
+}
+
+.mm-split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.mm-code {
+  flex: 0 0 40%;
+  min-width: 0;
+  overflow: auto;
+  border-right: 1px solid var(--t-line);
+}
+
+.mm-code .nb-cm,
+.mm-code .cm-editor {
+  height: 100%;
+}
+
+.mm-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 18px;
+}
+
+@container (max-width: 560px) {
+  .mm-split {
+    flex-direction: column;
+  }
+  .mm-code {
+    flex: 0 0 40%;
+    border-right: none;
+    border-bottom: 1px solid var(--t-line);
+  }
+}
+
+/* a typed diagram on the notebook's page */
+.nb-block.is-mermaid .nb-cell-result {
+  padding: 4px 0;
+}

@@ -39,6 +39,8 @@ import CircuitEditor from "../circuit/CircuitEditor";
 import { circuitHeight } from "../circuit/size";
 import DrawEditor from "../draw/DrawEditor";
 import { drawHeight } from "../draw/size";
+import MermaidView from "../mermaid/MermaidView";
+import { MERMAID_SPEC } from "../mermaid/MermaidStudio";
 import { enterKey, listKey, tabKey, wrapKey } from "./proseKeys";
 import { TableBlock, fromMarkdownTable, tableMarkdown } from "./tableBlock";
 import type { EditorView, KeyBinding } from "@codemirror/view";
@@ -102,14 +104,15 @@ export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon:
   { lang: "paper", label: "Graph paper", icon: "gridpaper", start: "" },
   { lang: "circuit", label: "Circuit", icon: "circuit", start: "" },
   { lang: "draw", label: "Drawing", icon: "draw", start: "" },
+  { lang: "mermaid", label: "Flowchart", icon: "flowchart", start: "flowchart TD\n  A[Start] --> B{Is it working?}\n  B -->|Yes| C[Keep going]\n  B -->|No| D[Check it]\n  D --> B" },
   { lang: "python", label: "Python", icon: "source", start: "" },
 ];
 
 /** each kind's color in the + menu (the apps' own, as their tabs have them) */
-const INSERT_HUES: Record<string, string> = { calc: "teal", work: "orange", graph: "blue", paper: "green", circuit: "yellow", draw: "pink", numberline: "blue", vars: "purple", math: "teal", table: "green", python: "yellow" };
-const LANG_LABEL: Record<string, string> = { paper: "Graph paper", circuit: "Circuit", draw: "Drawing", table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
+const INSERT_HUES: Record<string, string> = { calc: "teal", work: "orange", graph: "blue", paper: "green", circuit: "yellow", draw: "pink", mermaid: "teal", numberline: "blue", vars: "purple", math: "teal", table: "green", python: "yellow" };
+const LANG_LABEL: Record<string, string> = { paper: "Graph paper", circuit: "Circuit", draw: "Drawing", mermaid: "Flowchart", table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
-const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "paper", "circuit", "draw"]);
+const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "paper", "circuit", "draw", "mermaid"]);
 /** drawn and worked on right where they are on the page (a circuit): their own editor, clicked into */
 const CANVAS_CELLS = new Set(["circuit", "draw"]);
 /** cells worked out by the calculator, in order: calc lines, and variables blocks (as name = value) */
@@ -2949,6 +2952,8 @@ export default function NotebookTile({
         <CanvasBlock height={b.height} fallback={drawHeight(b.code)} onHeight={(height) => place(b, { height })}>
           {(height) => <DrawEditor code={b.code} inline height={height} onChange={(code) => updateBlock(b.id, { code })} />}
         </CanvasBlock>
+      ) : b.lang === "mermaid" ? (
+        <MermaidView code={isEditing ? draft : b.code} live={isEditing} />
       ) : b.lang === "numberline" ? (
         <NumberLineCell code={isEditing ? draft : b.code} />
       ) : b.lang === "work" ? (
@@ -2970,7 +2975,7 @@ export default function NotebookTile({
         onDone={() => finishEditing()}
         vimKeys={vimKeys}
         python={b.lang === "python"}
-        spec={b.lang === "python" ? PYTHON_SPEC : language?.highlight}
+        spec={b.lang === "python" ? PYTHON_SPEC : b.lang === "mermaid" ? MERMAID_SPEC : language?.highlight}
         onRun={() => runEdited(b)}
         onRunNext={runnable(b) ? () => runAndNext(b) : undefined}
         onRunInsert={runnable(b) ? () => runAndInsert(b) : undefined}
@@ -3051,7 +3056,7 @@ export default function NotebookTile({
       </div>
     );
     // an app being worked in: it, with what it is and a way out above it
-    const appEditor = !isCode && isEditing && (b.lang === "work" ? <WorkCellEditor code={draft} onChange={setDraft} onDone={() => finishEditing()} /> : b.lang === "numberline" || pluginCell ? codeEditor : null);
+    const appEditor = !isCode && isEditing && (b.lang === "work" ? <WorkCellEditor code={draft} onChange={setDraft} onDone={() => finishEditing()} /> : b.lang === "numberline" || b.lang === "mermaid" || pluginCell ? codeEditor : null);
     return (
       <div
         key={b.id}

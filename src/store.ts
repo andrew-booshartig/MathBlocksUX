@@ -619,6 +619,8 @@ export interface CalculatorBlockData extends BlockBase {
   smartCircuit?: { code?: string };
   /** its Draw tile: the drawing there (as ```draw lines) — or a notebook's drawing opened beside it */
   smartDraw?: { code?: string };
+  /** its Flowchart tile: a diagram typed as text (Mermaid) — or a notebook's opened beside it */
+  smartMermaid?: { code?: string };
   /** its Paper tile: long division / multiplication, the problem and how it's worked */
   smartPaper?: import("./paper/PaperTile").PaperState;
   /** its Flash cards tile: which tables, and how each fact is doing */

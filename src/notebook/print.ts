@@ -7,6 +7,7 @@ import { readTable } from "./tableBlock";
 import { sheetSvg } from "../paper/sheetSvg";
 import { circuitSvg } from "../circuit/circuitSvg";
 import { drawSvg } from "../draw/drawSvg";
+import { mermaidSvg } from "../mermaid/render";
 import { evaluate } from "../sheet/formula";
 import { Plotly } from "../PlotlyChart";
 import { mathRequest } from "../mathSidecar";
@@ -139,6 +140,11 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
     else if (b.lang === "paper") body.push(sheetSvg(b.code));
     else if (b.lang === "circuit") body.push(circuitSvg(b.code));
     else if (b.lang === "draw") body.push(drawSvg(b.code));
+    else if (b.lang === "mermaid") {
+      // (drawn for paper: the light theme)
+      const out = await mermaidSvg(b.code, true);
+      body.push("svg" in out ? `<div class="mermaid-print">${out.svg}</div>` : `<pre class="code">${escape(b.code)}</pre>`);
+    }
     else if (b.lang === "table") {
       // a table prints as one, its cells worked out (formulas' results)
       const { headers, rows } = readTable(b.code);

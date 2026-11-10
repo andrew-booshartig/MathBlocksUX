@@ -16,8 +16,8 @@ import { readGraphBlock, writeGraphBlock } from "./graphBlock";
 import { readNote, writeNote } from "./notes";
 
 /** the tile a block opens in: Calculate (a Variables block too, its list beside it), Graph, Work */
-export type LinkedView = "calc" | "graph" | "work" | "circuit" | "draw";
-export const LINKED_LANGS: Record<string, LinkedView> = { calc: "calc", vars: "calc", graph: "graph", work: "work", circuit: "circuit", draw: "draw" };
+export type LinkedView = "calc" | "graph" | "work" | "circuit" | "draw" | "flowchart";
+export const LINKED_LANGS: Record<string, LinkedView> = { calc: "calc", vars: "calc", graph: "graph", work: "work", circuit: "circuit", draw: "draw", mermaid: "flowchart" };
 
 export interface LinkedApp {
   /** "nbapp:<notebook>/<block>": its tile's id in the dock, and its calculator's in the store */
@@ -90,6 +90,7 @@ export function appDataFor(id: string, lang: string, code: string, lines: CalcLi
   if (lang === "graph") return { ...base, smartPlot: { mode: "xy", xy: readGraphBlock(code) }, smartTab: "graph" };
   if (lang === "circuit") return { ...base, smartCircuit: { code } };
   if (lang === "draw") return { ...base, smartDraw: { code } };
+  if (lang === "mermaid") return { ...base, smartMermaid: { code } };
   if (lang === "work") {
     const { problem, steps } = readWorkCell(code);
     return {
@@ -116,6 +117,7 @@ export function codeFor(lang: string, data: CalculatorBlockData, before: string)
   if (lang === "graph") return writeGraphBlock(data.smartPlot?.xy ?? {});
   if (lang === "circuit") return data.smartCircuit?.code ?? before;
   if (lang === "draw") return data.smartDraw?.code ?? before;
+  if (lang === "mermaid") return data.smartMermaid?.code ?? before;
   if (lang === "work") {
     const w = data.smartWork ?? {};
     const problem = (w.workFor ?? w.problem ?? "").trim();
