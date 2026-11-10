@@ -4634,3 +4634,24 @@ body.nb-is-moving * {
 .nb-block:has(> .nb-obj-body .dr-editor.is-active) > .nb-obj-bar {
   display: none;
 }
+
+/* an app stepped in (Tab; ⇧Tab steps it back out): its steps drawn as quiet guides, as a code editor's indent guides */
+.nb-solo.is-indented::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: calc(-1 * var(--nb-indent, 32px));
+  width: var(--nb-indent, 32px);
+  background-image: linear-gradient(to right, color-mix(in srgb, var(--t-text) 13%, transparent) 1px, transparent 1px);
+  background-size: 32px 100%;
+  background-position: 11px 0;
+  background-repeat: repeat-x;
+  pointer-events: none;
+}
+
+@media print {
+  .nb-solo.is-indented::before {
+    display: none;
+  }
+}

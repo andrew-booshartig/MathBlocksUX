@@ -30,6 +30,8 @@ export interface Placement {
   height?: number;
   /** placed freely over the page (Word's "in front of text"): its offset in pixels from where it sits in the text */
   free?: { x: number; y: number };
+  /** stepped in from the left (Tab on an app, as a list's item is): how many steps */
+  indent?: number;
 }
 
 export type Block = ({ id: string; kind: "text"; text: string } | { id: string; kind: "cell"; lang: string; info: string; code: string }) & Placement;
@@ -51,6 +53,8 @@ function readPlacement(words: string): Placement {
     if (part === "wide") out.wide = true;
     const h = part.match(/^height\s+(\d+)(?:px)?$/);
     if (h) out.height = Math.max(80, Math.min(2400, Number(h[1])));
+    const ind = part.match(/^indent\s+(\d+)$/);
+    if (ind) out.indent = Math.max(0, Math.min(6, Number(ind[1]))) || undefined;
     const f = part.match(/^free\s+(-?\d+)\s+(-?\d+)$/);
     if (f) out.free = { x: Number(f[1]), y: Number(f[2]) };
   }
@@ -66,6 +70,7 @@ const placementLine = (b: Placement) => {
     b.wide ? "wide" : "",
     b.height ? `height ${Math.round(b.height)}` : "",
     b.free ? `free ${Math.round(b.free.x)} ${Math.round(b.free.y)}` : "",
+    b.indent ? `indent ${b.indent}` : "",
   ].filter(Boolean);
   return parts.length ? `<!-- matrixlab: ${parts.join(", ")} -->\n` : "";
 };

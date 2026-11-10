@@ -156,7 +156,12 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
   // side by side, as on the page: each block its share of the row
   const body = rowsOf(doc.blocks).map((row) => {
     // alone, narrowed: as wide as on the page
-    if (row.length === 1) return row[0].width && row[0].width < 100 ? `<div style="width:${row[0].width}%">${pieces.get(row[0]) ?? ""}</div>` : (pieces.get(row[0]) ?? "");
+    if (row.length === 1) {
+      const b = row[0];
+      const indent = b.kind === "cell" && !b.free && !b.wide && b.indent ? b.indent * 32 : 0;
+      if (indent) return `<div style="margin-left:${indent}px;width:calc((100% - ${indent}px) * ${Math.min(100, b.width ?? 100) / 100})">${pieces.get(b) ?? ""}</div>`;
+      return b.width && b.width < 100 ? `<div style="width:${b.width}%">${pieces.get(b) ?? ""}</div>` : (pieces.get(b) ?? "");
+    }
     const widths = widthsOf(row);
     return `<div class="row">${row.map((b, k) => `<div class="col" style="flex-basis:${widths[k].toFixed(2)}%">${pieces.get(b) ?? ""}</div>`).join("")}</div>`;
   });

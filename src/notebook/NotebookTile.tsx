@@ -113,6 +113,8 @@ const INSERT_HUES: Record<string, string> = { calc: "teal", work: "orange", grap
 const LANG_LABEL: Record<string, string> = { paper: "Graph paper", circuit: "Circuit", draw: "Drawing", mermaid: "Flowchart", table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
 const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "paper", "circuit", "draw", "mermaid"]);
+/** an indent's step (Tab on an app), in pixels: a list's */
+const INDENT_STEP = 32;
 /** drawn and worked on right where they are on the page (a circuit): their own editor, clicked into */
 const CANVAS_CELLS = new Set(["circuit", "draw"]);
 /** cells worked out by the calculator, in order: calc lines, and variables blocks (as name = value) */
@@ -2625,7 +2627,16 @@ export default function NotebookTile({
     const narrow = (to: number) => (b.width && b.width < 100 ? b.width : to);
     const toggleMenu = (which: "flat" | "more") => setBarMenu(menu === which ? null : { id: b.id, which });
     return (
-      <div className={`nb-obj-bar${menu ? " is-open" : ""}`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+      <div
+        className={`nb-obj-bar${menu ? " is-open" : ""}`}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          // (a button of its bar done with: the keys the notebook's again — the arrows go on from the block)
+          if (!(e.target as HTMLElement).closest("input, textarea, select")) setTimeout(() => root.current?.focus({ preventScroll: true }), 0);
+        }}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
         <span className="nb-obj-name">
           <Icon name={icon} size={13} /> {label}
           {flat && <span className="nb-obj-tag" title="Kept as a picture — not worked out or drawn again">picture</span>}
@@ -3126,6 +3137,14 @@ export default function NotebookTile({
     );
   };
 
+  /** a block on a row of its own: its share of the line (narrowed), stepped in when it's indented (its guides drawn in the step) */
+  const indentOf = (b: Block) => (b.kind === "cell" && !b.free && !b.wide ? (b.indent ?? 0) : 0);
+  const soloStyle = (b: Block, width: number): CSSProperties | undefined => {
+    const steps = indentOf(b);
+    if (!steps) return width < 100 && !b.wide ? { width: `${width}%` } : undefined;
+    const room = `(100% - ${steps * INDENT_STEP}px)`;
+    return { marginLeft: steps * INDENT_STEP, width: `calc(${room} * ${Math.min(100, width) / 100})`, "--nb-indent": `${steps * INDENT_STEP}px` } as CSSProperties;
+  };
   /** a / typed on a fresh line right under a block (its menu of apps opening there): the writing under it, a new
    * line at its top — or the writing at the end, or a new paragraph when an app's right under it */
   const slashUnder = (at: number) => {
@@ -3193,6 +3212,15 @@ export default function NotebookTile({
     }
     if (key === "j" || (key === "ArrowDown" && at >= 0)) return pick(at + 1), true;
     if (key === "k" || (key === "ArrowUp" && at >= 0)) return pick(at < 0 ? blocks.length - 1 : at - 1), true;
+    // Tab: an app stepped in (⇧Tab: back out), as a list's item is — never wandering off into the buttons
+    if (key === "Tab") {
+      const b = at >= 0 ? blocks[at] : undefined;
+      if (b && b.kind === "cell" && !b.free && !b.wide && !b.beside && !blocks[at + 1]?.beside) {
+        const indent = Math.max(0, Math.min(6, (b.indent ?? 0) + (e.shiftKey ? -1 : 1)));
+        if (indent !== (b.indent ?? 0)) updateBlock(b.id, { indent: indent || undefined, align: undefined, wrap: undefined });
+      }
+      return true;
+    }
     if (at < 0) return false;
     const b = blocks[at];
     // /: something new under it — the menu of apps on a line of its own, right under it
@@ -3304,10 +3332,14 @@ export default function NotebookTile({
           startFinding();
           return;
         }
-        // the keys of command mode (not while typing anywhere)
-        if (!inField && !(e.target as HTMLElement).closest?.("button, select, .nb-pop, .xy-pop, .pp-scratch") && commandKey(e)) {
+        // the keys of command mode (not while typing anywhere) — from a block's own bar or grip too (a button
+        // clicked keeps the focus: the arrows still go on from the block)
+        const t = e.target as HTMLElement;
+        const chrome = !!t.closest?.(".nb-obj-bar, .nb-gutter") && !t.closest?.(".nb-obj-menu, .nb-insert");
+        if (!inField && (chrome || !t.closest?.("button, select, .nb-pop, .xy-pop, .pp-scratch")) && commandKey(e)) {
           e.preventDefault();
           e.stopPropagation();
+          if (chrome) root.current?.focus({ preventScroll: true });
         }
       }}
     >
@@ -3471,7 +3503,11 @@ export default function NotebookTile({
               const spot = b.free ? " is-free" : b.wide ? " is-wide" : b.wrap ? ` is-wrap-${b.wrap}` : b.kind === "cell" && b.align && b.align !== "left" ? ` is-align-${b.align}` : "";
               const at = freeDrag?.id === b.id ? freeDrag : b.free;
               return (
-                <div key={`solo-${b.id}`} className={`nb-solo is-${b.kind}${spot}${sizing?.id === b.id ? " is-sizing" : ""}${b.id === shown[shown.length - 1]?.id ? " is-last" : ""}`} style={width < 100 && !b.wide ? { width: `${width}%` } : undefined}>
+                <div
+                  key={`solo-${b.id}`}
+                  className={`nb-solo is-${b.kind}${spot}${sizing?.id === b.id ? " is-sizing" : ""}${b.id === shown[shown.length - 1]?.id ? " is-last" : ""}${indentOf(b) ? " is-indented" : ""}`}
+                  style={soloStyle(b, width)}
+                >
                   {at ? (
                     // placed freely: in front of the text, where it was put (its place in the text is its anchor)
                     <div className="nb-free" style={{ left: at.x, top: at.y }}>
