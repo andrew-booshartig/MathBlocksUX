@@ -4607,3 +4607,22 @@ body.nb-is-moving * {
   width: 270px;
   max-height: min(420px, 60vh);
 }
+
+/* ==== a drawing on the page (a circuit, a sketch): as wide as its place, dragged taller at its bottom edge ==== */
+.nb-canvas {
+  position: relative;
+  max-width: 100%;
+  padding-bottom: 8px;
+  box-sizing: content-box;
+}
+
+.nb-canvas:hover .nb-paper-grow::after,
+.nb-canvas .nb-paper-grow:active::after {
+  opacity: 1;
+}
+
+/* (worked on: its own bars are its tools — the notebook's bar for it waits till it's let go) */
+.nb-block:has(> .nb-obj-body .cs-editor.is-active) > .nb-obj-bar,
+.nb-block:has(> .nb-obj-body .dr-editor.is-active) > .nb-obj-bar {
+  display: none;
+}

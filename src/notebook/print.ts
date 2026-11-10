@@ -5,6 +5,7 @@
  * MathML — every browser draws it, no fonts or internet needed. */
 import { readTable } from "./tableBlock";
 import { sheetSvg } from "../paper/sheetSvg";
+import { circuitSvg } from "../circuit/circuitSvg";
 import { evaluate } from "../sheet/formula";
 import { Plotly } from "../PlotlyChart";
 import { mathRequest } from "../mathSidecar";
@@ -135,6 +136,7 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
     } else if (b.lang === "work") body.push(await workPicture(b.code, o));
     else if (b.lang === "python") body.push(pythonPicture(b.code, py[b.code], false, hideCode));
     else if (b.lang === "paper") body.push(sheetSvg(b.code));
+    else if (b.lang === "circuit") body.push(circuitSvg(b.code));
     else if (b.lang === "table") {
       // a table prints as one, its cells worked out (formulas' results)
       const { headers, rows } = readTable(b.code);

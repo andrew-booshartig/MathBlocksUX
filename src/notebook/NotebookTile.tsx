@@ -34,6 +34,9 @@ import { alignmentAt, rememberPicture, setAlignment } from "./livePreview";
 import { type SectionApi, sectionTools } from "./sectionTools";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import PaperBlock from "./paperBlock";
+import CanvasBlock from "./canvasBlock";
+import CircuitEditor from "../circuit/CircuitEditor";
+import { circuitHeight } from "../circuit/size";
 import { enterKey, listKey, tabKey, wrapKey } from "./proseKeys";
 import { TableBlock, fromMarkdownTable, tableMarkdown } from "./tableBlock";
 import type { EditorView, KeyBinding } from "@codemirror/view";
@@ -95,14 +98,17 @@ export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon:
   { lang: "numberline", label: "Number line", icon: "segment", start: "x < 3" },
   { lang: "work", label: "Work", icon: "work", start: "problem: 2x + 3 = 11\n" },
   { lang: "paper", label: "Graph paper", icon: "gridpaper", start: "" },
+  { lang: "circuit", label: "Circuit", icon: "circuit", start: "" },
   { lang: "python", label: "Python", icon: "source", start: "" },
 ];
 
 /** each kind's color in the + menu (the apps' own, as their tabs have them) */
-const INSERT_HUES: Record<string, string> = { calc: "teal", work: "orange", graph: "blue", paper: "green", numberline: "blue", vars: "purple", math: "teal", table: "green", python: "yellow" };
-const LANG_LABEL: Record<string, string> = { paper: "Graph paper", table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
+const INSERT_HUES: Record<string, string> = { calc: "teal", work: "orange", graph: "blue", paper: "green", circuit: "yellow", numberline: "blue", vars: "purple", math: "teal", table: "green", python: "yellow" };
+const LANG_LABEL: Record<string, string> = { paper: "Graph paper", circuit: "Circuit", table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
-const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "paper"]);
+const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "paper", "circuit"]);
+/** drawn and worked on right where they are on the page (a circuit): their own editor, clicked into */
+const CANVAS_CELLS = new Set(["circuit"]);
 /** cells worked out by the calculator, in order: calc lines, and variables blocks (as name = value) */
 /** an app's fence written inside text: ```calc, ```work, ```graph … */
 const APP_FENCE = /^(`{3,}|~{3,})\s*(calc|work|graph|vars|numberline|table)\b/im;
@@ -916,6 +922,15 @@ export default function NotebookTile({
     const now = docRef.current;
     if (now) commit({ ...now, blocks: now.blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b)) });
   };
+  /** Markdown put under a block (after its row, when it's in one): an app's worked-out answer */
+  const putUnder = (id: string, markdown: string) => {
+    const now = docRef.current;
+    if (!now || !markdown.trim()) return;
+    let at = now.blocks.findIndex((b) => b.id === id);
+    if (at < 0) at = now.blocks.length - 1;
+    while (now.blocks[at + 1]?.beside) at++;
+    commit({ ...now, blocks: [...now.blocks.slice(0, at + 1), ...parseBlocks(markdown), ...now.blocks.slice(at + 1)] });
+  };
   /** before printing: the graphs not yet scrolled to drawn too (a moment for each), so the page has them all */
   const everyGraphDrawn = async () => {
     const ids = (docRef.current?.blocks ?? []).filter((b) => b.kind === "cell" && b.lang === "graph" && !flatOf(b)).map((b) => b.id);
@@ -1405,6 +1420,11 @@ export default function NotebookTile({
       return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${id}"] .pp-scratch`)?.focus(), 60);
     }
     if (kind.lang === "table") return setEditing(null);
+    if (CANVAS_CELLS.has(kind.lang)) {
+      setEditing(null);
+      setQuietId(id);
+      return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${id}"] .cs-editor, [data-block="${id}"] .dr-editor`)?.focus(), 60);
+    }
     setEditing(id);
     setDraft(kind.start);
   };
@@ -1763,6 +1783,11 @@ export default function NotebookTile({
       return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .pp-scratch`)?.focus(), 60);
     }
     if (b.kind === "cell" && b.lang === "table") return setEditing(null);
+    if (b.kind === "cell" && CANVAS_CELLS.has(b.lang)) {
+      setEditing(null);
+      setQuietId(b.id);
+      return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .cs-editor, [data-block="${b.id}"] .dr-editor`)?.focus(), 60);
+    }
     if (isProse(b)) return focusRun(b.id, "end");
     setEditing(b.id);
     setDraft(b.kind === "text" ? b.text : b.code);
@@ -2416,7 +2441,10 @@ export default function NotebookTile({
   /** open it: work in the app right where it is, on the page (a picture made live first) — its bar opens it in a tab beside the notebook */
   const openBlock = (b: Block) => {
     // a table (graph paper) is worked in where it is
-    if (b.kind === "cell" && (b.lang === "table" || b.lang === "paper")) return;
+    if (b.kind === "cell" && (b.lang === "table" || b.lang === "paper" || CANVAS_CELLS.has(b.lang))) {
+      if (CANVAS_CELLS.has(b.lang) && !openInAppNow(b)) page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .cs-editor, [data-block="${b.id}"] .dr-editor`)?.focus();
+      return;
+    }
     if (b.kind === "cell" && flatOf(b)) unflatten(b);
     // (open in its tab already: that's where it's worked in)
     if (openInAppNow(b)) return void openInApp(b);
@@ -2489,7 +2517,7 @@ export default function NotebookTile({
     const t = e.target as HTMLElement;
     if (t.closest("button, a, input, textarea, select, math-field, .cm-editor, [contenteditable], .nb-obj-bar, .nb-gutter, .nb-size, .nb-insert, .nb-folded, .sheet")) return;
     // graph paper is written on where it is: picked (its bar shows), never dragged by a stroke on it
-    if (t.closest(".ps-paper, .nb-paper-grow")) return void (setPicked(b.id), setQuietId(b.id));
+    if (t.closest(".ps-paper, .nb-paper-grow, .cs-editor, .dr-editor")) return void (setPicked(b.id), setQuietId(b.id));
     press.current = { id: b.id, already: picked === b.id };
     pickBlock(b.id);
     // placed freely: dragged anywhere (a graph's plot and an output's text excepted — the grip moves those)
@@ -2563,7 +2591,7 @@ export default function NotebookTile({
           <Icon name={icon} size={13} /> {label}
           {flat && <span className="nb-obj-tag" title="Kept as a picture — not worked out or drawn again">picture</span>}
         </span>
-        {cell && !flat && cell.lang !== "paper" && cell.lang !== "table" && !openInAppNow(b) && (
+        {cell && !flat && cell.lang !== "paper" && cell.lang !== "table" && !CANVAS_CELLS.has(cell.lang) && !openInAppNow(b) && (
           <button title={code ? "Edit its code (click the code, or Enter)" : "Work in it, right here (double-click it, or Enter)"} onClick={() => startEditing(b)}>
             <Icon name="pen" size={14} />
           </button>
@@ -2910,6 +2938,10 @@ export default function NotebookTile({
         <TableBlock id={b.id} code={b.code} info={b.info} onChange={(code) => updateBlock(b.id, { code })} onInfo={(info) => updateBlock(b.id, { info })} onRemove={() => removeBlock(b.id)} />
       ) : b.lang === "paper" ? (
         <PaperBlock id={b.id} code={b.code} onChange={(code) => updateBlock(b.id, { code })} onLeave={() => leavePaper(b)} />
+      ) : b.lang === "circuit" ? (
+        <CanvasBlock height={b.height} fallback={circuitHeight(b.code)} onHeight={(height) => place(b, { height })}>
+          {(height) => <CircuitEditor code={b.code} inline height={height} onChange={(code) => updateBlock(b.id, { code })} onNotebook={(markdown) => putUnder(b.id, markdown)} />}
+        </CanvasBlock>
       ) : b.lang === "numberline" ? (
         <NumberLineCell code={isEditing ? draft : b.code} />
       ) : b.lang === "work" ? (

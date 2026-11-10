@@ -7,6 +7,7 @@ import PaperTile from "../paper/PaperTile";
 import FactsTile from "../drill/FactsTile";
 import SlideRuleTile from "../sliderule/SlideRuleTile";
 import ElectricalTile from "../electrical/ElectricalTile";
+import CircuitEditor from "../circuit/CircuitEditor";
 import Icon from "../Icon";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -165,7 +166,15 @@ function LinkedApp({ id, equations, onEquations }: { id: string; equations?: Equ
   useLinkedApps();
   const app = linkedApp(id);
   const data = useStore((state) => state.blocks[id]) as CalculatorBlockData | undefined;
+  const updateBlock = useStore((state) => state.updateBlock<CalculatorBlockData>);
   if (!app || !data) return <div className="dock-plugin-missing">This block's app was closed — open the block again from the notebook</div>;
+  // a drawing (a circuit): its own editor, the block's text in it
+  if (app.view === "circuit")
+    return (
+      <div className="dock-canvas">
+        <CircuitEditor code={data.smartCircuit?.code ?? ""} onChange={(code) => updateBlock(id, { smartCircuit: { code } })} />
+      </div>
+    );
   return <SmartCalc data={data} only={app.view} scope={app.scope} equations={equations} onEquations={onEquations} />;
 }
 
@@ -1724,6 +1733,17 @@ export default function SmartCalc({
       onCopy={(text) => navigator.clipboard?.writeText(text).then(() => setNote("Copied")).catch(() => {})}
     />
   );
+  // ---- Circuit: a circuit drawn and run (its own, kept with the workspace)
+  const circuitBody = (
+    <div className="dock-canvas">
+      <CircuitEditor
+        code={data.smartCircuit?.code ?? ""}
+        onChange={(code) => updateBlock(data.id, { smartCircuit: { code } })}
+        onNotebook={(markdown) => toNotebook(markdown)}
+        onSend={() => toNotebook(cellText("circuit", current()?.smartCircuit?.code ?? ""))}
+      />
+    </div>
+  );
   // ---- Paper: long division and multiplication, a step at a time
   const slideBody = <SlideRuleTile state={data.smartSlide ?? {}} update={(patch) => updateBlock(data.id, { smartSlide: { ...(current()?.smartSlide ?? {}), ...patch } })} />;
   const factsBody = <FactsTile state={data.smartFacts ?? {}} update={(patch) => updateBlock(data.id, { smartFacts: { ...(current()?.smartFacts ?? {}), ...patch } })} />;
@@ -2196,6 +2216,7 @@ export default function SmartCalc({
             notebook: notebookBody,
             reference: referenceBody,
             electrical: electricalBody,
+            circuit: circuitBody,
             paper: paperBody,
             facts: factsBody,
             sliderule: slideBody,

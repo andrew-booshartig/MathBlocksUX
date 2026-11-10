@@ -109,6 +109,22 @@ const PATHS: Record<string, string> = {
   psBracket: "M6 20c2.5-3 2.5-13 0-16h14M10 12h.01M14 12h.01M18 12h.01",
   psAxes: "M12 3v18M3 12h18M12 3l-2 2.5M12 3l2 2.5M21 12l-2.5-2M21 12l-2.5 2",
   image: "M4 5h16v14H4zM8.5 10a1.5 1.5 0 1 0 0-.01M20 15l-5-5-8 9",
+  // the circuit editor and the drawing board
+  cursor: "M5 3.5 18.5 10l-6 2-2.5 6.5z",
+  wire: "M4 18h5V6h6v12h5M4 18h.01M20 18h.01",
+  rotate: "M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4v4.5H15",
+  flip: "M12 3v18M9 7 4 17h5zM15 7l5 10h-5z",
+  blank: "",
+  gauge: "M4.5 17a8 8 0 1 1 15 0M12 13.5l3.5-4M12 13.5h.01",
+  circuit: "M3 12h3l1.5-3.5 2 7 2-7 2 7 2-7L17 12h4M3 12v6M21 12v6M3 18h18",
+  draw: "M4 20c2.5-1 3.5-3 4.5-5.5S11 9 13.5 8.5 17 10 16 12.5 12.5 17 15 18.5s3.5-1 5-3",
+  diamond: "M12 3.5 20.5 12 12 20.5 3.5 12z",
+  ellipse: "M12 18.5c4.7 0 8.5-2.9 8.5-6.5S16.7 5.5 12 5.5 3.5 8.4 3.5 12s3.8 6.5 8.5 6.5z",
+  highlighter: "M9 15.5 5 19.5h5l1.5-1.5M9 15.5l2.5 2.5M9 15.5 16.5 4.5l3 3L11.5 18",
+  flowchart: "M8.5 3.5h7v5h-7zM4 15.5h6v5H4zM14 15.5h6v5h-6zM12 8.5V12M7 15.5V12h10v3.5",
+  research: "M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM20 20l-4.8-4.8M8 8.5h5M8 11h5M8 13.5h3",
+  sticky: "M5 4h14v10l-6 6H5zM13 20v-6h6",
+  frame2: "M4 7h16M4 17h16M7 4v16M17 4v16",
   // Extensions: a puzzle piece
   puzzle: "M10 4.5a2 2 0 1 1 4 0V6h4a1 1 0 0 1 1 1v4h-1.5a2 2 0 1 0 0 4H19v4a1 1 0 0 1-1 1h-4v-1.5a2 2 0 1 0-4 0V20H6a1 1 0 0 1-1-1v-4h1.5a2 2 0 1 0 0-4H5V7a1 1 0 0 1 1-1h4z",
 };
