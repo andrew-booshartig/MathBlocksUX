@@ -621,6 +621,8 @@ export interface CalculatorBlockData extends BlockBase {
   smartDraw?: { code?: string };
   /** its Flowchart tile: a diagram typed as text (Mermaid) — or a notebook's opened beside it */
   smartMermaid?: { code?: string };
+  /** its Research tile: the article open, the ones looked up lately */
+  smartResearch?: import("./research/ResearchTile").ResearchState;
   /** its Paper tile: long division / multiplication, the problem and how it's worked */
   smartPaper?: import("./paper/PaperTile").PaperState;
   /** its Flash cards tile: which tables, and how each fact is doing */

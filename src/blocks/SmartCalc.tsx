@@ -10,6 +10,7 @@ import ElectricalTile from "../electrical/ElectricalTile";
 import CircuitEditor from "../circuit/CircuitEditor";
 import DrawEditor from "../draw/DrawEditor";
 import MermaidStudio from "../mermaid/MermaidStudio";
+import ResearchTile from "../research/ResearchTile";
 import Icon from "../Icon";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1770,6 +1771,22 @@ export default function SmartCalc({
       <MermaidStudio code={data.smartMermaid?.code ?? ""} onChange={(code) => updateBlock(data.id, { smartMermaid: { code } })} onSend={() => toNotebook(cellText("mermaid", current()?.smartMermaid?.code ?? ""))} />
     </div>
   );
+  // ---- Research: an article looked up beside the notebook, what's kept put in where the writing's caret was (the notebook stays where it is)
+  const researchBody = (
+    <ResearchTile
+      state={data.smartResearch ?? {}}
+      update={(patch) => updateBlock(data.id, { smartResearch: { ...(current()?.smartResearch ?? {}), ...patch } })}
+      onInsert={async (markdown) => {
+        try {
+          const where = await sendToNotebook(markdown, current()?.smartNotebook, { atCaret: true });
+          if (where !== current()?.smartNotebook) updateBlock(data.id, { smartNotebook: where });
+          return true;
+        } catch {
+          return false;
+        }
+      }}
+    />
+  );
   // ---- Paper: long division and multiplication, a step at a time
   const slideBody = <SlideRuleTile state={data.smartSlide ?? {}} update={(patch) => updateBlock(data.id, { smartSlide: { ...(current()?.smartSlide ?? {}), ...patch } })} />;
   const factsBody = <FactsTile state={data.smartFacts ?? {}} update={(patch) => updateBlock(data.id, { smartFacts: { ...(current()?.smartFacts ?? {}), ...patch } })} />;
@@ -2245,6 +2262,7 @@ export default function SmartCalc({
             circuit: circuitBody,
             draw: drawBody,
             flowchart: flowchartBody,
+            research: researchBody,
             paper: paperBody,
             facts: factsBody,
             sliderule: slideBody,

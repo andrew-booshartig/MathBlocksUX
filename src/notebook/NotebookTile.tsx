@@ -18,7 +18,7 @@ import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
 import { type CalcLine, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, VarsRecord, WhenSeen, WorkCell, WorkCellEditor, drawEverything, numberOf, parseVars, plots, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
 import { type Block, type CellLang, type NotebookDoc, type Placement, PRINT_SWITCHES, blockId, isMathText, isProse, isTableText, joinWriting, metaValue, parseBlocks, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
-import { setNotebookInbox } from "./inbox";
+import { caretSpotOf, rememberCaret, setNotebookInbox } from "./inbox";
 import { notebookLatex } from "./latex";
 import { renderMarkdown } from "./markdown";
 import Preview from "./Preview";
@@ -455,9 +455,35 @@ export default function NotebookTile({
   // → Notebook from Calculate, Work or Graph lands here while it's open
   useEffect(() => {
     if (!name || !doc) return;
-    setNotebookInbox((markdown) => {
+    setNotebookInbox((markdown, how) => {
       const current = docRef.current;
       if (!current) return false;
+      // where the writing's caret was (a quote looked up beside it): after its paragraph, there
+      const v = lastView.current;
+      if (how?.atCaret && v && v.dom.isConnected) {
+        const text = v.state.doc.toString();
+        const head = v.state.selection.main.head;
+        const gap = text.indexOf("\n\n", head);
+        const end = gap < 0 ? text.length : gap;
+        const insert = `${text.slice(0, end).trim() ? "\n\n" : ""}${markdown.trim()}`;
+        v.dispatch({ changes: { from: end, insert }, selection: { anchor: end + insert.length }, scrollIntoView: true });
+        if (name) rememberCaret(name, markdown.trim().split("\n").pop() ?? "");
+        setNotice("Put in where you were writing");
+        return true;
+      }
+      // (the notebook not on screen — its tab behind another: the paragraph the caret was in, found in its writing)
+      const spot = how?.atCaret && name ? caretSpotOf(name) : undefined;
+      const home = spot ? current.blocks.find((b) => b.kind === "text" && b.text.includes(spot)) : undefined;
+      if (spot && home && home.kind === "text") {
+        const at = home.text.indexOf(spot) + spot.length;
+        const gap = home.text.indexOf("\n\n", at);
+        const end = gap < 0 ? home.text.length : gap;
+        const text = `${home.text.slice(0, end)}\n\n${markdown.trim()}${home.text.slice(end)}`;
+        commit({ ...current, blocks: current.blocks.map((b) => (b.id === home.id ? ({ ...b, text } as Block) : b)) });
+        rememberCaret(name!, markdown.trim().split("\n").pop() ?? "");
+        setNotice("Put in where you were writing");
+        return true;
+      }
       commit({ ...current, blocks: [...current.blocks, ...parseNotebook(markdown).blocks] });
       setNotice("Added at the end");
       // down to where it landed
@@ -1683,6 +1709,13 @@ export default function NotebookTile({
       return;
     }
     const sel = v.state.selection.main;
+    // (the paragraph the caret's in: where something looked up beside the notebook goes)
+    if (name) {
+      const all = v.state.doc.toString();
+      const from = all.lastIndexOf("\n\n", sel.head - 1);
+      const to = all.indexOf("\n\n", sel.head);
+      rememberCaret(name, all.slice(from < 0 ? 0 : from + 2, to < 0 ? all.length : to));
+    }
     const line = v.state.doc.lineAt(sel.head);
     const box = v.coordsAtPos(line.from, 1) ?? v.coordsAtPos(sel.head);
     const el = v.dom.closest<HTMLElement>("[data-block]");
