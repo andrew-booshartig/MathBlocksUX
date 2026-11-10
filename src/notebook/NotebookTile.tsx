@@ -19,6 +19,7 @@ import { todayLabel } from "../workHistory";
 import { type CalcLine, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, VarsRecord, WhenSeen, WorkCell, WorkCellEditor, drawEverything, numberOf, parseVars, plots, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
 import { type Block, type CellLang, type NotebookDoc, type Placement, PRINT_SWITCHES, blockId, isMathText, isProse, isTableText, joinWriting, metaValue, parseBlocks, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
 import { caretSpotOf, rememberCaret, setNotebookInbox } from "./inbox";
+import { ColorPalette } from "./ColorMenu";
 import { notebookLatex } from "./latex";
 import { renderMarkdown } from "./markdown";
 import Preview from "./Preview";
@@ -1770,6 +1771,7 @@ export default function NotebookTile({
   const dismissed = useRef("");
   /** the caret moved (or was typed at): where its line is, whether it's empty, a / being typed */
   const cursorMoved = (id: string, v: EditorView) => {
+    placeBubble(v);
     if (!v.hasFocus) {
       if (caretRef.current?.id === id) setCaret(null);
       return;
@@ -1803,6 +1805,50 @@ export default function NotebookTile({
       caretRef.current = next;
       setCaret(next);
     }
+  };
+  // ---- words picked: a little bar over them (bold, italic, a color, a link, math…), as Notion's and Craft's
+  const [bubble, setBubble] = useState<{ x: number; y: number; view: EditorView } | null>(null);
+  const [bubbleColors, setBubbleColors] = useState(false);
+  const pressing = useRef(false);
+  const placeBubble = (v: EditorView | null) => {
+    const sel = v?.state.selection.main;
+    if (!v || !sel || sel.empty || pressing.current || !v.hasFocus) {
+      setBubbleColors(false);
+      return setBubble(null);
+    }
+    const a = v.coordsAtPos(sel.from, 1);
+    const b = v.coordsAtPos(sel.to, -1);
+    if (!a || !b) return setBubble(null);
+    const content = v.contentDOM.getBoundingClientRect();
+    const x = Math.abs(a.top - b.top) < 4 ? (a.left + b.right) / 2 : (content.left + Math.min(content.right, content.left + 600)) / 2;
+    setBubble((now) => (now && Math.abs(now.x - x) < 1 && Math.abs(now.y - a.top) < 1 && now.view === v ? now : { x, y: a.top, view: v }));
+  };
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      if ((e.target as HTMLElement).closest?.(".nb-bubble")) return;
+      pressing.current = true;
+      setBubble(null);
+    };
+    const up = () => {
+      if (!pressing.current) return;
+      pressing.current = false;
+      // (the selection settled: its bar)
+      setTimeout(() => placeBubble(lastView.current), 0);
+    };
+    window.addEventListener("pointerdown", down, true);
+    window.addEventListener("pointerup", up, true);
+    return () => {
+      window.removeEventListener("pointerdown", down, true);
+      window.removeEventListener("pointerup", up, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /** what's picked as math: $…$ around it */
+  const wrapMath = (v: EditorView) => {
+    const { from, to } = v.state.selection.main;
+    const picked = v.state.sliceDoc(from, to);
+    v.dispatch({ changes: { from, to, insert: "$" + picked + "$" }, selection: { anchor: from + 1, head: to + 1 } });
+    v.focus();
   };
   /** the editor that last had the caret: what the bar's menus (a font, a style) change */
   const lastView = useRef<EditorView | null>(null);
@@ -3437,6 +3483,44 @@ export default function NotebookTile({
       }}
     >
       {toolbar}
+      {bubble && bubble.view.hasFocus && (
+        <div className="nb-bubble" style={{ left: bubble.x, top: bubble.y }} onMouseDown={(e) => e.preventDefault()}>
+          {(
+            [
+              ["b", false, <b key="b">B</b>, "Bold (⌘B)"],
+              ["i", false, <i key="i">I</i>, "Italic (⌘I)"],
+              ["u", false, <u key="u">U</u>, "Underline (⌘U)"],
+              ["x", true, <s key="s">S</s>, "Strikethrough (⌘⇧X)"],
+            ] as const
+          ).map(([k, shift, label, title]) => (
+            <button key={k} title={title} onClick={() => (wrapKey(k, shift)(bubble.view), bubble.view.focus())}>
+              {label}
+            </button>
+          ))}
+          <span className="nb-bubble-sep" />
+          <span className="nb-bubble-anchor">
+            <button className={bubbleColors ? "is-on" : ""} title="Colors — for the words, and highlights" onClick={() => setBubbleColors(!bubbleColors)}>
+              <span className="nb-color-a" style={{ "--c": "var(--t-red, #e5484d)" } as CSSProperties}>
+                A
+              </span>
+            </button>
+            {bubbleColors && <ColorPalette view={bubble.view} onPick={() => setBubbleColors(false)} />}
+          </span>
+          <button title="Highlight (⌘⇧H)" onClick={() => (wrapKey("h", true)(bubble.view), bubble.view.focus())}>
+            <span className="nb-format-mark">H</span>
+          </button>
+          <span className="nb-bubble-sep" />
+          <button title="Code (⌘E)" onClick={() => (wrapKey("e")(bubble.view), bubble.view.focus())}>
+            <Icon name="source" size={14} />
+          </button>
+          <button title="Link (⌘K)" onClick={() => (wrapKey("k")(bubble.view), bubble.view.focus())}>
+            <Icon name="link" size={14} />
+          </button>
+          <button title="Math — $…$, typed as it reads" onClick={() => wrapMath(bubble.view)}>
+            <span className="nb-bubble-math">∑</span>
+          </button>
+        </div>
+      )}
       {quickOpen && <QuickOpen listing={listing} onClose={() => setQuickOpen(false)} onOpen={(n) => (setQuickOpen(false), setView("doc"), onOpen(n))} />}
       {finding && (
         <div className="nb-find">
@@ -3577,7 +3661,7 @@ export default function NotebookTile({
           className={`nb-page${pageView ? " is-sheet" : ""}`}
           ref={page}
           style={typeStyle}
-          onScroll={spy}
+          onScroll={() => (spy(), bubble && setBubble(null))}
           // a press on the page around the blocks: nothing picked
           onPointerDown={(e) => !(e.target as HTMLElement).closest("[data-block], .nb-insert, .nb-end, .nb-add") && setPicked(null)}
           // a click on the page itself (its margin, between the apps, under the writing): writing there, as in Word

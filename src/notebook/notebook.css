@@ -4790,3 +4790,75 @@ body.nb-is-moving * {
   background: linear-gradient(to top right, transparent calc(50% - 0.75px), var(--t-red, #e5484d) calc(50% - 0.75px), var(--t-red, #e5484d) calc(50% + 0.75px), transparent calc(50% + 0.75px));
   opacity: 0.8;
 }
+
+/* ==== words picked: a little bar over them ==== */
+.nb-bubble {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px;
+  transform: translate(-50%, calc(-100% - 10px));
+  background: var(--t-bg1);
+  border: 1px solid var(--t-line);
+  border-radius: 10px;
+  box-shadow:
+    0 10px 30px rgb(0 0 0 / 0.22),
+    0 1px 0 rgb(255 255 255 / 0.04) inset;
+  animation: nb-bubble-in 0.12s ease-out;
+  font: 13px -apple-system, "Inter", sans-serif;
+}
+
+@keyframes nb-bubble-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% - 4px)) scale(0.97);
+  }
+}
+
+.nb-bubble > button,
+.nb-bubble-anchor > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--t-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.nb-bubble > button:hover,
+.nb-bubble-anchor > button:hover,
+.nb-bubble-anchor > button.is-on {
+  background: var(--t-bg3);
+  color: var(--t-text);
+}
+
+.nb-bubble-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--t-line);
+}
+
+.nb-bubble-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.nb-bubble-anchor > .nb-color-palette {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.nb-bubble-math {
+  font: italic 600 14px "New York", ui-serif, Georgia, serif;
+}
