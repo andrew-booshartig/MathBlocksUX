@@ -4506,7 +4506,7 @@ body.nb-is-moving * {
   gap: 10px !important;
 }
 
-@container (max-width: 1300px) {
+@container (max-width: 1420px) {
   .nb-format-label {
     display: none;
   }

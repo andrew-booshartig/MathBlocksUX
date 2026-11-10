@@ -200,7 +200,7 @@ export default function FormatBar({
   /** a spreadsheet, where the caret is */
   onTable: () => void;
   /** an app (Calculate, Work, Graph, graph paper) or math, where the caret is, open to work in */
-  onApp: (lang: "calc" | "work" | "graph" | "paper" | "math") => void;
+  onApp: (lang: "calc" | "work" | "graph" | "paper" | "math" | "draw" | "circuit" | "mermaid") => void;
   /** the paragraph's alignment (the one the caret's in) — none: nothing to align */
   align?: "left" | "center" | "right";
   onAlign?: (a: "left" | "center" | "right") => void;
@@ -371,6 +371,15 @@ export default function FormatBar({
             <button onClick={() => (setMore(false), file.current?.click())}>
               <Icon name="image" size={15} /> Picture
             </button>
+            <button className="is-tier2" onClick={() => (setMore(false), onApp("draw"))}>
+              <Icon name="draw" size={15} /> Drawing
+            </button>
+            <button className="is-tier2" onClick={() => (setMore(false), onApp("circuit"))}>
+              <Icon name="circuit" size={15} /> Circuit
+            </button>
+            <button onClick={() => (setMore(false), onApp("mermaid"))}>
+              <Icon name="flowchart" size={15} /> Flowchart
+            </button>
             <button className="is-tier3" onClick={() => (setMore(false), onApp("math"))}>
               <span className="nb-format-num">∑</span> Math
             </button>
@@ -401,6 +410,12 @@ export default function FormatBar({
       </button>
       <button className="nb-format-app" title="Graph paper — beside the paragraph the caret's in: worked by hand, a digit a square, carries, lines, crossing out" onClick={() => onApp("paper")}>
         <Icon name="gridpaper" size={15} /> <span className="nb-format-label">Paper</span>
+      </button>
+      <button className="nb-format-app nb-format-wide2" title="Drawing — boxes and arrows, a pen, a mind map, right where the caret is" onClick={() => onApp("draw")}>
+        <Icon name="draw" size={15} />
+      </button>
+      <button className="nb-format-app nb-format-wide2" title="Circuit — drawn, then run: current flows, every part worked out" onClick={() => onApp("circuit")}>
+        <Icon name="circuit" size={15} />
       </button>
       {/* graph paper being worked on: its tools take the bar (as Word's ribbon turns to a table's) */}
       <div className="nb-format-slot" />
