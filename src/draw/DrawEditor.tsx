@@ -755,6 +755,8 @@ export default function DrawEditor({ code, onChange, inline = false, height, onS
         stop();
         const now = document.activeElement as HTMLElement | null;
         if (now && root.current?.contains(now)) now.blur();
+        // (the notebook's keys again — its arrows go on from here)
+        root.current?.closest<HTMLElement>(".nb")?.focus({ preventScroll: true });
       }
       return;
     }

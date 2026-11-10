@@ -20,15 +20,17 @@ class PictureWidget extends WidgetType {
   constructor(
     readonly src: string,
     readonly alt: string,
+    /** the caret's on it: it's the one picked (as a picture in Word is) */
+    readonly picked = false,
   ) {
     super();
   }
   eq(o: PictureWidget) {
-    return o.src === this.src && o.alt === this.alt;
+    return o.src === this.src && o.alt === this.alt && o.picked === this.picked;
   }
   toDOM(view: EditorView) {
     const img = document.createElement("img");
-    img.className = "cm-lp-picture";
+    img.className = `cm-lp-picture${this.picked ? " is-picked" : ""}`;
     img.alt = this.alt;
     img.draggable = false;
     const src = this.src.trim();
@@ -183,12 +185,12 @@ function build(state: EditorState, view: EditorView): DecorationSet {
           return;
         }
         if (name === "Image") {
-          if (touched(node.from, node.to)) return false;
+          // (a picture's always the picture — the caret on it picks it, its Markdown never shows)
           const n = node.node;
           const url = n.getChild("URL");
           const marks = n.getChildren("LinkMark");
           const alt = marks.length >= 2 ? state.sliceDoc(marks[0].to, marks[1].from) : "";
-          if (url) out.push(Decoration.replace({ widget: new PictureWidget(state.sliceDoc(url.from, url.to), alt) }).range(node.from, node.to));
+          if (url) out.push(Decoration.replace({ widget: new PictureWidget(state.sliceDoc(url.from, url.to), alt, touched(node.from, node.to)) }).range(node.from, node.to));
           return false;
         }
         if (name === "HorizontalRule") {
@@ -308,18 +310,38 @@ function build(state: EditorState, view: EditorView): DecorationSet {
   return Decoration.set(out, true);
 }
 
+/** the pictures in view: each stepped over as one thing (the caret's either side of it, ⌫ takes it whole) */
+function picturesOf(view: EditorView): DecorationSet {
+  const out: Range<Decoration>[] = [];
+  for (const { from, to } of view.visibleRanges)
+    syntaxTree(view.state).iterate({
+      from,
+      to,
+      enter: (node) => {
+        if (node.name !== "Image") return;
+        if (node.node.getChild("URL")) out.push(Decoration.mark({}).range(node.from, node.to));
+        return false;
+      },
+    });
+  return Decoration.set(out, true);
+}
+
 const preview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    pictures: DecorationSet;
     constructor(view: EditorView) {
       this.decorations = build(view.state, view);
+      this.pictures = picturesOf(view);
     }
     update(u: ViewUpdate) {
       if (u.docChanged || u.selectionSet || u.viewportChanged || u.focusChanged) this.decorations = build(u.state, u.view);
+      if (u.docChanged || u.viewportChanged) this.pictures = picturesOf(u.view);
     }
   },
   { decorations: (v) => v.decorations },
 );
+const atomicPictures = EditorView.atomicRanges.of((view) => view.plugin(preview)?.pictures ?? Decoration.none);
 
 /** a paragraph's alignment (<!-- matrixlab: align center --> the line before it): the comment
  * hidden (and stepped over as one thing — ⌫ at the paragraph's start takes the alignment off),
@@ -381,5 +403,5 @@ export function setAlignment(view: EditorView, align: "left" | "center" | "right
 
 /** Markdown (GitHub's, with task lists and tables), shown as it reads */
 export function livePreview(): Extension {
-  return [markdown({ base: markdownLanguage }), preview, alignField, EditorView.lineWrapping];
+  return [markdown({ base: markdownLanguage }), preview, atomicPictures, alignField, EditorView.lineWrapping];
 }

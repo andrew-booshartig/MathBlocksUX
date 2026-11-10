@@ -4155,6 +4155,14 @@ body.nb-is-moving * {
   margin: 6px 0;
   border-radius: 6px;
   vertical-align: top;
+  transition: box-shadow 0.12s;
+}
+
+/* the caret on a picture: it's picked (⌫ takes it, Enter goes on under it, the arrows go on past it) */
+.cm-lp-picture.is-picked {
+  box-shadow:
+    0 0 0 2.5px var(--t-bg1, #fff),
+    0 0 0 5px color-mix(in srgb, var(--t-blue, #3b82f6) 85%, transparent);
 }
 
 .cm-lp-rule {

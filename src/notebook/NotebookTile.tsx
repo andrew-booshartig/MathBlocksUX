@@ -3126,6 +3126,28 @@ export default function NotebookTile({
     );
   };
 
+  /** a / typed on a fresh line right under a block (its menu of apps opening there): the writing under it, a new
+   * line at its top — or the writing at the end, or a new paragraph when an app's right under it */
+  const slashUnder = (at: number) => {
+    const now = docRef.current;
+    if (!now) return;
+    const below = now.blocks[at + 1];
+    let id: string;
+    if (below && isProse(below) && !below.free && !below.beside) id = below.id;
+    else if (!below) id = endId.current;
+    else {
+      id = blockId();
+      commit({ ...now, blocks: [...now.blocks.slice(0, at + 1), { id, kind: "text", text: "" }, ...now.blocks.slice(at + 1)] });
+    }
+    const type = (tries: number) => {
+      const v = runs.current.get(id)?.view;
+      if (!v) return void (tries > 0 && setTimeout(() => type(tries - 1), 30));
+      v.focus();
+      const rest = v.state.doc.length ? "\n\n" : "";
+      v.dispatch({ changes: { from: 0, insert: `/${rest}` }, selection: { anchor: 1 }, scrollIntoView: true, userEvent: "input.type" });
+    };
+    type(10);
+  };
   /** a key in the notebook, nothing being edited: j/k pick, Enter edits, a/b add, dd deletes… */
   const commandKey = (e: React.KeyboardEvent) => {
     // moving about with the keys: the block picked shows
@@ -3156,10 +3178,29 @@ export default function NotebookTile({
     const key = e.key;
     const twice = lastKey.current.key === key && Date.now() - lastKey.current.at < 600;
     lastKey.current = { key, at: Date.now() };
+    // ↓ off the last thing on the page: into the writing at the end (there's always some); ↑ off the first: writing above it
+    if (key === "ArrowDown" && at >= 0 && at === blocks.length - 1) {
+      setPicked(null);
+      focusRun(endId.current, "start");
+      return true;
+    }
+    if (key === "ArrowUp" && at === 0) {
+      const id = blockId();
+      commit({ ...doc, blocks: [{ id, kind: "text", text: "" }, ...blocks] });
+      setPicked(null);
+      focusRun(id, "start");
+      return true;
+    }
     if (key === "j" || (key === "ArrowDown" && at >= 0)) return pick(at + 1), true;
     if (key === "k" || (key === "ArrowUp" && at >= 0)) return pick(at < 0 ? blocks.length - 1 : at - 1), true;
     if (at < 0) return false;
     const b = blocks[at];
+    // /: something new under it — the menu of apps on a line of its own, right under it
+    if (key === "/") {
+      setPicked(null);
+      slashUnder(at);
+      return true;
+    }
     if (key === "Enter" && e.shiftKey) {
       if (runnable(b)) runBlock(b, b.kind === "cell" ? b.code : b.text);
       return pick(at + 1), true;

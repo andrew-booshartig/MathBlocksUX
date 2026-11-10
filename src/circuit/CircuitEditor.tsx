@@ -487,6 +487,8 @@ export default function CircuitEditor({ code, onChange, inline = false, height, 
         // (out of it: whatever in it has the focus lets go)
         const now = document.activeElement as HTMLElement | null;
         if (now && root.current?.contains(now)) now.blur();
+        // (the notebook's keys again — its arrows go on from here)
+        root.current?.closest<HTMLElement>(".nb")?.focus({ preventScroll: true });
       }
       return;
     }
