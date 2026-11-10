@@ -683,6 +683,60 @@ export default function NotebookTile({
       return null;
     }
   };
+  /** a picture chosen from the Mac (the + menu's, the / menu's): kept with the notebook, its Markdown handed on */
+  const choosePicture = (done: (markdown: string) => void) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      const f = input.files?.[0];
+      if (!f) return;
+      const md = await keepPicture(f);
+      if (md) done(md);
+    };
+    input.click();
+  };
+  const dropIntoRef = useRef<(e: DragEvent, v: EditorView) => boolean>(() => false);
+  /** pictures dropped on the writing (from the Finder, a browser): kept with the notebook, each on a line of its own where they fell */
+  const dropInto = (e: DragEvent, v: EditorView) => {
+    const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    if (!files.length || !name) return false;
+    e.preventDefault();
+    let at = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.doc.length;
+    (async () => {
+      for (const f of files) {
+        const md = await keepPicture(f);
+        if (!md) continue;
+        const line = v.state.doc.lineAt(Math.min(at, v.state.doc.length));
+        // (on a line of its own: after the line it fell on, or in it when it's empty)
+        const insert = line.text.trim() ? `\n${md}` : md;
+        const from = line.text.trim() ? line.to : line.from;
+        v.dispatch({ changes: { from, to: line.text.trim() ? from : line.to, insert }, selection: { anchor: from + insert.length } });
+        at = from + insert.length;
+      }
+      v.focus();
+    })();
+    return true;
+  };
+  dropIntoRef.current = dropInto;
+  // a picture dropped anywhere on the page (not on the writing): into the writing at the end — and never the window
+  // opening it in place of the app
+  useEffect(() => {
+    const guard = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      if (e.type !== "drop" || (e.target as HTMLElement)?.closest?.(".cm-editor")) return;
+      if (!(e.target as HTMLElement)?.closest?.(".nb-page")) return;
+      const v = runs.current.get(endId.current)?.view ?? [...runs.current.values()].pop()?.view;
+      if (v) dropIntoRef.current(e, v);
+    };
+    window.addEventListener("dragover", guard);
+    window.addEventListener("drop", guard);
+    return () => {
+      window.removeEventListener("dragover", guard);
+      window.removeEventListener("drop", guard);
+    };
+  }, []);
   /** ⌘P: go to a note */
   const [quickOpen, setQuickOpen] = useState(false);
   /** the words written (text blocks') */
@@ -1417,6 +1471,16 @@ export default function NotebookTile({
     const now = docRef.current;
     if (!now) return;
     setInserting(null);
+    // a picture: chosen, then written in under it (a paragraph of its own)
+    if (kind.lang === "picture") {
+      return choosePicture((md) => {
+        const doc2 = docRef.current;
+        if (!doc2) return;
+        let at = after ? doc2.blocks.findIndex((b) => b.id === after) : doc2.blocks.length - 1;
+        while (doc2.blocks[at + 1]?.beside) at++;
+        commit({ ...doc2, blocks: [...doc2.blocks.slice(0, at + 1), { id: blockId(), kind: "text", text: md }, ...doc2.blocks.slice(at + 1)] });
+      });
+    }
     // writing (a heading too): into the writing under it — the writing that's there, or new writing
     if (kind.lang === "text" && !replace) {
       let at = after ? now.blocks.findIndex((b) => b.id === after) : now.blocks.length - 1;
@@ -1840,6 +1904,23 @@ export default function NotebookTile({
     const now = docRef.current;
     if (!now) return;
     setInserting(null);
+    // a picture: its / line cleared, then the picture chosen there (on a line of its own)
+    if (kind.lang === "picture") {
+      const v = runs.current.get(id)?.view;
+      if (v) {
+        const line = v.state.doc.lineAt(v.state.selection.main.head);
+        if (/^\/[\w ]*$/.test(line.text)) v.dispatch({ changes: { from: line.from, to: line.to, insert: "" }, selection: { anchor: line.from } });
+      }
+      return choosePicture((md) => {
+        const w = runs.current.get(id)?.view;
+        if (!w) return;
+        const line = w.state.doc.lineAt(w.state.selection.main.head);
+        const insert = line.text.trim() ? `\n${md}` : md;
+        const from = line.text.trim() ? line.to : line.from;
+        w.dispatch({ changes: { from, to: line.text.trim() ? from : line.to, insert }, selection: { anchor: from + insert.length } });
+        w.focus();
+      });
+    }
     const run = now.blocks.find((x) => x.id === id) ?? null;
     const v = runs.current.get(id)?.view;
     const text = v?.state.doc.toString() ?? (run?.kind === "text" ? run.text : "");
@@ -2415,7 +2496,18 @@ export default function NotebookTile({
     const off = (lang: string) => offCells.includes(lang);
     const cell = (lang: string) => NEW_CELLS.find((c) => c.lang === lang)!;
     const write = [
-      { key: "heading", label: "Heading", icon: "heading", group: "Write", kind: { lang: "text", start: "## " } },
+      { key: "h1", label: "Heading 1", icon: "heading", group: "Write", kind: { lang: "text", start: "# " } },
+      { key: "h2", label: "Heading 2", icon: "heading", group: "Write", kind: { lang: "text", start: "## " } },
+      { key: "h3", label: "Heading 3", icon: "heading", group: "Write", kind: { lang: "text", start: "### " } },
+      { key: "bullets", label: "Bulleted list", icon: "list", group: "Write", kind: { lang: "text", start: "- " } },
+      { key: "numbers", label: "Numbered list", icon: "numbers", group: "Write", kind: { lang: "text", start: "1. " } },
+      { key: "todo", label: "Checklist", icon: "check", group: "Write", kind: { lang: "text", start: "- [ ] " } },
+      { key: "quote", label: "Quote", icon: "quote", group: "Write", kind: { lang: "text", start: "> " } },
+      { key: "callout", label: "Callout", icon: "callout", group: "Write", kind: { lang: "text", start: "> [!note] " } },
+      { key: "tip", label: "Tip", icon: "callout", group: "Write", kind: { lang: "text", start: "> [!tip] " } },
+      { key: "warning", label: "Warning", icon: "callout", group: "Write", kind: { lang: "text", start: "> [!warning] " } },
+      { key: "divider", label: "Divider", icon: "divider", group: "Write", kind: { lang: "text", start: "***\n" } },
+      { key: "picture", label: "Picture", icon: "image", group: "Write", kind: { lang: "picture", start: "" } },
       ...(off("math") ? [] : [{ key: "math", label: "Math", icon: "equations", group: "Write", kind: cell("math") as { lang: string; start: string } }]),
       ...(off("table") ? [] : [{ key: "table", label: "Table", icon: "table", group: "Write", kind: cell("table") as { lang: string; start: string } }]),
       { key: "textbox", label: "Text box", icon: "move", group: "Write", kind: { lang: "textbox", start: "" } },
@@ -2852,6 +2944,7 @@ export default function NotebookTile({
           onDone={() => leaveRun(b.id)}
           onEdge={(dir) => runEdge(b.id, dir)}
           onPaste={pasteInto}
+          onDropFiles={dropInto}
           onUndoPast={() => notebookUndo(false)}
           onLink={(to) => (to.note ? openOrCreate(to.note) : to.href && /^(https?:|mailto:)/i.test(to.href) ? void openUrl(to.href).catch(() => {}) : undefined)}
           onCursor={(v) => cursorMoved(b.id, v)}

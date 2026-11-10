@@ -46,6 +46,8 @@ export interface TextRunProps {
   onEdge: (dir: "up" | "down") => boolean;
   /** a paste it takes itself (a picture) */
   onPaste: (e: ClipboardEvent, view: EditorView) => boolean;
+  /** files dropped on it (pictures): true when it took them */
+  onDropFiles?: (e: DragEvent, view: EditorView) => boolean;
   /** ⌘Z with nothing of its own to undo: the notebook's (an app added, a block moved) */
   onUndoPast: () => void;
   /** a link ⌘-clicked: [[a note]], or the web */
@@ -103,6 +105,7 @@ export default function TextRun(props: TextRunProps) {
       }),
       EditorView.domEventHandlers({
         paste: (e, v) => latest.current.onPaste(e, v),
+        drop: (e, v) => latest.current.onDropFiles?.(e, v) ?? false,
         focus: (_e, v) => latest.current.onFocus(v),
         blur: (_e, v) => latest.current.onBlur(v),
         mousedown: (e) => {

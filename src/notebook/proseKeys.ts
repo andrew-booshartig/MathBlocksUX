@@ -59,6 +59,17 @@ export function enterKey(v: EditorView): boolean {
   const sel = v.state.selection.main;
   if (!sel.empty) return false;
   const line = v.state.doc.lineAt(sel.head);
+  // an empty line of a quote or a callout (just its >): out of it, as an empty list item ends a list — a paragraph of
+  // its own after it (the quote's empty line before it taken off too)
+  if (/^\s*>\s*$/.test(line.text) && line.number > 1) {
+    const prev = v.state.doc.line(line.number - 1);
+    const from = /^\s*>\s*$/.test(prev.text) ? prev.from : line.from;
+    v.dispatch({ changes: { from, to: line.to }, selection: { anchor: from }, scrollIntoView: true });
+    // (a blank line between the quote and what's written after it, so it isn't the quote's)
+    const at = v.state.selection.main.head;
+    v.dispatch({ changes: { from: at, insert: "\n" }, selection: { anchor: at + 1 } });
+    return true;
+  }
   const item = line.text.match(ITEM);
   if (item && !line.text.slice(item[0].length).trim() && sel.head >= line.from + item[0].length) {
     // (a nested bullet or number: the Markdown keymap moves it out a level)
