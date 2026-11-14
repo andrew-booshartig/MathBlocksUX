@@ -1,7 +1,7 @@
 /** The library: every note, beside the page — newest first, found by name
  * or by anything in it, by #tag, and the notes that link to this one. The
  * notes' text is read once and kept (read again only when a file changes). */
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Icon from "../Icon";
 
@@ -10,7 +10,7 @@ type Listing = { name: string; modified: number }[];
 /** what each note says, as of its last change */
 import { texts } from "./noteTexts";
 
-const when = (ms: number) => {
+export const when = (ms: number) => {
   const d = new Date(ms);
   const days = Math.floor((Date.now() - ms) / 86400000);
   if (days < 1 && new Date().getDate() === d.getDate()) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -19,7 +19,7 @@ const when = (ms: number) => {
 };
 
 /** a note's words, without its header, fences or Markdown marks */
-const plain = (text: string) =>
+export const plain = (text: string) =>
   text
     .replace(/^---\n[\s\S]*?\n---\n/, "")
     .replace(/```[\s\S]*?```/g, " ")
@@ -35,7 +35,9 @@ const plain = (text: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
-export default function Library({ listing, current, onOpen, onNew }: { listing: Listing; current: string | null; onOpen: (name: string) => void; onNew: () => void }) {
+/** (drawn again only when the list, the note open or what's searched changes — not at every keystroke in the page beside it) */
+export default memo(Library);
+function Library({ listing, current, onOpen, onNew }: { listing: Listing; current: string | null; onOpen: (name: string) => void; onNew: () => void }) {
   const [query, setQuery] = useState("");
   const [read, setRead] = useState(0);
   // every note's text, read (again) when it's changed
@@ -59,10 +61,12 @@ export default function Library({ listing, current, onOpen, onNew }: { listing: 
     return [...count].sort((a, b) => b[1] - a[1]).slice(0, 24);
   }, [listing, read]); // eslint-disable-line react-hooks/exhaustive-deps
   const q = query.trim().toLowerCase();
+  /** each note's words, worked out once a reading (not at every draw) */
+  const wordsOf = useMemo(() => new Map(listing.map((l) => [l.name, plain(texts.get(l.name)?.text ?? "")])), [listing, read]); // eslint-disable-line react-hooks/exhaustive-deps
   const found = [...listing]
     .sort((a, b) => b.modified - a.modified)
     .map((l) => {
-      const words = plain(texts.get(l.name)?.text ?? "");
+      const words = wordsOf.get(l.name) ?? "";
       if (!q) return { ...l, snippet: words.slice(0, 80) };
       if (q.startsWith("#")) return (texts.get(l.name)?.text ?? "").toLowerCase().match(new RegExp(`(^|\\s)${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)) ? { ...l, snippet: words.slice(0, 80) } : null;
       if (l.name.toLowerCase().includes(q)) return { ...l, snippet: words.slice(0, 80) };
@@ -71,7 +75,7 @@ export default function Library({ listing, current, onOpen, onNew }: { listing: 
     })
     .filter((l): l is NonNullable<typeof l> => !!l);
   // notes that link here: [[this one]]
-  const linkedFrom = current ? listing.filter((l) => l.name !== current && (texts.get(l.name)?.text ?? "").includes(`[[${current}`)) : [];
+  const linkedFrom = useMemo(() => (current ? listing.filter((l) => l.name !== current && (texts.get(l.name)?.text ?? "").includes(`[[${current}`)) : []), [listing, read, current]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <aside className="nb-library">
       <div className="nb-lib-search">

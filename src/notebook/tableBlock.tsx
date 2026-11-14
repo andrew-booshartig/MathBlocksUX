@@ -55,7 +55,7 @@ export const modelOf = (info: string) => info.match(/(?:^|\s)model=(\S+)/)?.[1];
 export const withModel = (info: string, model?: string) => [info.replace(/(?:^|\s)model=\S+/, "").trim(), model ? `model=${model}` : ""].filter(Boolean).join(" ");
 
 /** The table in the page is the Graph tab's table itself (the same grid, the same fit and facts), with its plot beside it. */
-export function TableBlock({ id, code, info, onChange, onInfo, onRemove }: { id: string; code: string; info: string; onChange: (code: string) => void; onInfo: (info: string) => void; onRemove: () => void }) {
+export function TableBlock({ id, code, info, onChange, onInfo, onRemove, onLeave }: { id: string; code: string; info: string; onChange: (code: string) => void; onInfo: (info: string) => void; onRemove: () => void; onLeave?: (how: "esc" | "up" | "down") => boolean }) {
   const { headers, rows } = useMemo(() => readTable(code), [code]);
   // the rows handed to the table so far: a change that comes back with one of them (a fit worked out late) isn't new data
   const handed = useRef(new WeakSet<string[][]>()).current;
@@ -74,6 +74,7 @@ export function TableBlock({ id, code, info, onChange, onInfo, onRemove }: { id:
           table={table}
           color="var(--t-pink)"
           onRemove={onRemove}
+          onLeave={onLeave}
           onUseFit={() => onInfo(plotted ? info : `${info} plot`.trim())}
           onChange={(t) => {
             if (t.fit !== fit) setFit(t.fit);

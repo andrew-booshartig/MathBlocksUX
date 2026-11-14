@@ -214,9 +214,24 @@ export function settleLists(text: string): string {
   return out.join("\n");
 }
 
+/** the HTML of texts drawn lately — a page draws its math and tables again at every keystroke typed anywhere in it */
+const drawn = new Map<string, string>();
 /** a text block as HTML (safe to put on the page) */
 export function renderMarkdown(text: string, print = false): string {
+  const key = `${print ? "p" : "s"}${text}`;
+  const known = drawn.get(key);
+  if (known !== undefined) {
+    // (the most recent last: the oldest goes first when there are too many)
+    drawn.delete(key);
+    drawn.set(key, known);
+    return known;
+  }
   const html = (print ? paper : screen).parse(settleLists(text), { async: false }) as string;
   // a task's box can be ticked on the page (the page writes it into the text)
-  return print ? html : html.replace(/<input (checked="" )?disabled="" type="checkbox">/g, (_all, on) => `<input ${on ?? ""}type="checkbox">`);
+  const out = print ? html : html.replace(/<input (checked="" )?disabled="" type="checkbox">/g, (_all, on) => `<input ${on ?? ""}type="checkbox">`);
+  if (text.length < 200_000) {
+    drawn.set(key, out);
+    if (drawn.size > 600) drawn.delete(drawn.keys().next().value!);
+  }
+  return out;
 }

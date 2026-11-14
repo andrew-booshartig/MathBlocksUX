@@ -36,6 +36,7 @@ const SHEET: { group: string; keys: [string, string][] }[] = [
     keys: [
       ["⌘F", "Find (and replace)"],
       ["⌘P", "Go to a note"],
+      ["⌘⇧D", "Today's page (Home's jotted notes land in its Inbox)"],
       ["⌘⇧F", "Focus — just the page"],
       ["⌘Z  ⌘⇧Z", "Undo, redo"],
       ["⌘/", "These keys"],

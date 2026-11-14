@@ -23,6 +23,9 @@ export interface SheetProps {
   /** columns' widths, in pixels (0 or none: as wide as what's in them) */
   widths?: number[];
   onWidths?: (widths: number[]) => void;
+  /** off its edge, out of it (a notebook's table): Esc with one cell picked, ↑ on its top row, ↓ on its spare last
+   * row — handed on to what's around it (true: it took it), as the writing hands the arrows on at its first and last line */
+  onLeave?: (how: "esc" | "up" | "down") => boolean;
 }
 
 /** how wide some text is in the sheet's type */
@@ -38,7 +41,7 @@ type Cell = { r: number; c: number };
 
 const isNum = (s: string) => s.trim() !== "" && Number.isFinite(Number(s.replace(/,/g, "")));
 
-export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colColor, onValues, minRows = 1, widths: given, onWidths }: SheetProps) {
+export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colColor, onValues, minRows = 1, widths: given, onWidths, onLeave }: SheetProps) {
   const [ownWidths, setOwnWidths] = useState<number[]>([]);
   const widths = given ?? ownWidths;
   const setWidths = (next: number[]) => (onWidths ? onWidths(next) : setOwnWidths(next));
@@ -153,6 +156,12 @@ export default function Sheet({ headers, rows, onChange, readOnlyCols = [], colC
     if (mod && e.key.toLowerCase() === "x") return void (e.preventDefault(), navigator.clipboard?.writeText(tsv()).catch(() => {}), clear());
     if (mod && e.key.toLowerCase() === "a") return void (e.preventDefault(), setAnchor({ r: 0, c: 0 }), setAt({ r: height - 1, c: width - 1 }));
     if (mod) return;
+    // out of it: Esc with a single cell picked, ↑ on the top row, ↓ on the spare row under the last
+    const single = at.r === anchor.r && at.c === anchor.c;
+    if (onLeave && !e.shiftKey && !e.altKey) {
+      const how = e.key === "Escape" && single ? "esc" : e.key === "ArrowUp" && at.r === 0 ? "up" : e.key === "ArrowDown" && at.r >= height ? "down" : null;
+      if (how && onLeave(how)) return void (e.preventDefault(), e.stopPropagation());
+    }
     const keys: Record<string, () => void> = {
       ArrowUp: () => move(-1, 0, e.shiftKey),
       ArrowDown: () => move(1, 0, e.shiftKey),

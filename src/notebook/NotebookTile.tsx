@@ -37,11 +37,10 @@ import { alignmentAt, rememberPicture, setAlignment } from "./livePreview";
 import { type SectionApi, sectionTools } from "./sectionTools";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import PaperBlock from "./paperBlock";
-import CanvasBlock from "./canvasBlock";
-import CircuitEditor from "../circuit/CircuitEditor";
-import { circuitHeight } from "../circuit/size";
-import DrawEditor from "../draw/DrawEditor";
-import { drawHeight } from "../draw/size";
+import CanvasCell, { type CanvasApi } from "./canvasCell";
+import Home, { type HomeTask, tickTask } from "./Home";
+import { addToInbox, dailyText, todayName } from "./daily";
+import { texts as noteTexts } from "./noteTexts";
 import MermaidView from "../mermaid/MermaidView";
 import { MERMAID_SPEC } from "../mermaid/MermaidStudio";
 import { enterKey, listKey, tabKey, wrapKey } from "./proseKeys";
@@ -53,7 +52,7 @@ import { DEFAULT_SIZE, TYPE_KEYS, fontCss } from "./fonts";
 import { LINKED_LANGS, appDataFor, canLink, closeLinked, codeFor, linkedApp, linkedId, openLinked, rescopeLinked, useLinkedApps, watchLinked } from "./linked";
 import type { Equation } from "../equations";
 import { GraphLive, GraphRecord } from "./graphBlock";
-import { setFocusMode, setPageView, setSmartSymbols, setVimKeys, useFocusMode, usePageView, useSmartSymbols, useVimKeys } from "./editorSettings";
+import { setFocusMode, setPageView, setSmartSymbols, setStartOnHome, setVimKeys, startOnHome, useFocusMode, usePageView, useSmartSymbols, useStartOnHome, useVimKeys } from "./editorSettings";
 import { useParts } from "../parts";
 import "./notebook.css";
 
@@ -189,13 +188,28 @@ function PluginCell({ kind, code }: { kind: CellKind; code: string }) {
   return <div className="nb-plugin-out" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+/** whether Home has been shown on the app's opening yet (it is, once) */
+let homeShown = 0;
+
+/** a block's words (its text's — apps have none), counted once for each version of it */
+const counted = new WeakMap<Block, number>();
+const wordsIn = (b: Block) => {
+  if (b.kind !== "text") return 0;
+  let n = counted.get(b);
+  if (n === undefined) counted.set(b, (n = b.text.replace(/<!--[\s\S]*?-->/g, " ").replace(/[#*_`>$=[\]()-]/g, " ").match(/\S+/g)?.length ?? 0));
+  return n;
+};
+
 export default function NotebookTile({
   name,
   onOpen,
   work,
   calcVars,
   equations = [],
+  onShowTile,
 }: {
+  /** an app's tile brought up beside the notebook (Home's apps) */
+  onShowTile?: (id: string) => void;
   /** your saved equations (the Equations tile's), for a calc block's ƒ */
   equations?: Equation[];
   name?: string;
@@ -205,7 +219,11 @@ export default function NotebookTile({
   calcVars?: Record<string, number | null>;
 }) {
   const [doc, setDoc] = useState<NotebookDoc | null>(null);
-  const [view, setView] = useState<"doc" | "source" | "new">(name ? "doc" : "new");
+  /** the notebook open when the tile was made (the app opening on Home keeps it there, behind Home) */
+  const firstName = useRef(name);
+  /** the page, its Markdown, a new notebook's templates, or Home (today, what's to do, your notebooks, the apps) */
+  // (the app just opened: Home first, when that's how it's set — once, not each time the tile's made again)
+  const [view, setView] = useState<"doc" | "source" | "new" | "home">(() => (!name || (startOnHome() && !homeShown++) ? "home" : "doc"));
   const [listing, setListing] = useState<Listing>([]);
   const [mine, setMine] = useState<Template[]>([]);
   const [switcher, setSwitcher] = useState(false);
@@ -321,6 +339,9 @@ export default function NotebookTile({
   // the latest onOpen, so loading doesn't start over on every render
   const onOpenRef = useRef(onOpen);
   onOpenRef.current = onOpen;
+  /** the notes list's: the same each draw, so it isn't drawn again at every keystroke */
+  const openFromList = useCallback((n: string) => (setView("doc"), onOpenRef.current(n)), []);
+  const newFromList = useCallback(() => setView("new"), []);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const docRef = useRef(doc);
   docRef.current = doc;
@@ -332,13 +353,28 @@ export default function NotebookTile({
   }, [notice]);
 
   const refreshListing = useCallback(async () => {
-    setListing(await invoke<Listing>("list_notebooks").catch(() => []));
+    // (the same as it was: left as it was — nothing drawn again, nothing read again)
+    const next = await invoke<Listing>("list_notebooks").catch(() => [] as Listing);
+    setListing((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next));
     const yours = await invoke<[string, string][]>("list_templates").catch(() => [] as [string, string][]);
-    setMine(yours.map(([n, t]) => userTemplate(n, t)));
+    const key = JSON.stringify(yours);
+    if (key !== minesKey.current) {
+      minesKey.current = key;
+      setMine(yours.map(([n, t]) => userTemplate(n, t)));
+    }
   }, []);
+  const minesKey = useRef("");
   useEffect(() => {
     refreshListing();
   }, [refreshListing]);
+  // Home: the notebooks as they are now — read again on coming home, and every few seconds while it's shown (a note
+  // saved in Obsidian or Neovim shows up; only the files changed are read again)
+  useEffect(() => {
+    if (view !== "home") return;
+    refreshListing();
+    const t = setInterval(refreshListing, 4000);
+    return () => clearInterval(t);
+  }, [view, refreshListing]);
 
   // ---- open / save
 
@@ -370,7 +406,7 @@ export default function NotebookTile({
       } catch {
         setDoc(null);
         onOpenRef.current(undefined);
-        setView("new");
+        setView("home");
       }
     },
     [],
@@ -378,11 +414,13 @@ export default function NotebookTile({
   useEffect(() => {
     setEditing(null);
     if (name) {
-      setView((v) => (v === "new" ? "doc" : v));
+      // (opened from Home, or from anywhere: the page — but the app's first open stays on Home, the notebook behind it)
+      setView((v) => (v === "new" || (v === "home" && name !== firstName.current) ? "doc" : v));
+      firstName.current = undefined;
       load(name);
     } else {
       setDoc(null);
-      setView("new");
+      setView("home");
     }
   }, [name, load]);
 
@@ -743,7 +781,8 @@ export default function NotebookTile({
   /** ⌘P: go to a note */
   const [quickOpen, setQuickOpen] = useState(false);
   /** the words written (text blocks') */
-  const wordCount = useMemo(() => (doc?.blocks ?? []).reduce((n, b) => n + (b.kind === "text" ? (b.text.replace(/<!--[\s\S]*?-->/g, " ").replace(/[#*_`>$=[\]()-]/g, " ").match(/\S+/g)?.length ?? 0) : 0), 0), [doc]);
+  // (each block's counted once: typing in one doesn't count all the others again)
+  const wordCount = useMemo(() => (doc?.blocks ?? []).reduce((n, b) => n + wordsIn(b), 0), [doc]);
   /** the library (every note) beside the page — remembered */
   const [libraryOpen, setLibraryOpenState] = useState(() => {
     try {
@@ -786,6 +825,7 @@ export default function NotebookTile({
   const vimKeys = useVimKeys();
   const pageView = usePageView();
   const smartSymbols = useSmartSymbols();
+  const startHome = useStartOnHome();
   const focusMode = useFocusMode();
   const focusModeRef = useRef(focusMode);
   focusModeRef.current = focusMode;
@@ -995,6 +1035,7 @@ export default function NotebookTile({
   };
   /** the notebook as a Jupyter notebook, or as a Python script (# %% cells) */
   const exportAs = async (kind: "ipynb" | "script") => {
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     if (!doc || !name) return;
     const { extension, text } = kind === "ipynb" ? { extension: "ipynb", text: toIpynb(doc, name, py) } : toScript(doc, name);
     const path = await invoke<string>("save_text", { name, extension, text }).catch((err) => (setError(errorText(err)), null));
@@ -1021,6 +1062,9 @@ export default function NotebookTile({
     const now = docRef.current;
     if (now) commit({ ...now, blocks: now.blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b)) });
   };
+  /** a circuit's or a drawing's actions, always the latest (they're drawn again only when they change) */
+  const canvasApi = useRef<CanvasApi | null>(null);
+  canvasApi.current = { update: (id, patch) => updateBlock(id, patch), putUnder: (id, markdown) => putUnder(id, markdown) };
   /** Markdown put under a block (after its row, when it's in one): an app's worked-out answer */
   const putUnder = (id: string, markdown: string) => {
     const now = docRef.current;
@@ -1156,6 +1200,7 @@ export default function NotebookTile({
   };
   /** side by side: a block put beside the one above it (sharing the row evenly), or back on its own */
   const toggleBeside = (id: string) => {
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     if (!doc) return;
     const at = doc.blocks.findIndex((b) => b.id === id);
     if (at <= 0) return;
@@ -1189,6 +1234,7 @@ export default function NotebookTile({
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       setResizing(null);
+      const doc = docRef.current; // (the latest — not the one this was drawn with)
       if (!doc || now === from) return;
       const widths = new Map(row.map((b, j) => [b.id, Math.round(now[j])]));
       commit({ ...doc, blocks: doc.blocks.map((b) => (widths.has(b.id) ? { ...b, width: widths.get(b.id) } : b)) });
@@ -1197,6 +1243,7 @@ export default function NotebookTile({
     window.addEventListener("pointerup", up);
   };
   const removeBlock = (id: string, quiet = false) => {
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     if (!doc) return;
     if (name) closeLinked(linkedId(name, id));
     const at = doc.blocks.findIndex((b) => b.id === id);
@@ -1219,6 +1266,7 @@ export default function NotebookTile({
     commit({ ...doc, blocks: focusedRunRef.current ? rest : joinWriting(rest) });
   };
   const moveBlock = (id: string, by: number) => {
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     if (!doc) return;
     const at = doc.blocks.findIndex((b) => b.id === id);
     const to = at + by;
@@ -1601,10 +1649,41 @@ export default function NotebookTile({
     }
     if (b.kind === "text") {
       // (a Math block with no math in it goes too)
-      if (!draft.trim() || mathRowsOf(draft)?.every((r) => !r)) removeBlock(b.id, true);
+      if (!draft.trim() || mathRowsOf(draft)?.every((r) => !r)) discard(b.id);
       else if (draft !== b.text) updateBlock(b.id, { text: draft });
-    } else if ((b.lang === "calc" || b.lang === "work") && !draft.replace(/problem:/, "").trim()) removeBlock(b.id, true);
+    } else if ((b.lang === "calc" || b.lang === "work") && !draft.replace(/problem:/, "").trim()) discard(b.id);
     else if (draft !== b.code) updateBlock(b.id, { code: draft });
+  };
+  /** an app left empty, gone — and the caret back in the writing where it was put in (the end of what's above it,
+   * or the start of what's after), or the block beside it picked: the keys always somewhere, never on nothing */
+  const discard = (id: string) => {
+    const now = docRef.current;
+    const blocks = now?.blocks ?? [];
+    const k = blocks.findIndex((x) => x.id === id);
+    const prev = blocks[k - 1];
+    const next = blocks[k + 1];
+    const back = lastInsert.current?.id === id && lastInsert.current.run === prev?.id ? lastInsert.current : null;
+    lastInsert.current = null;
+    setPicked(null);
+    setQuietId(null);
+    const plainWriting = (b?: Block): b is Block & { kind: "text"; text: string } => !!b && b.kind === "text" && isProse(b) && !b.free && !b.beside && !b.width && !b.wrap && !b.wide;
+    if (now && k >= 0 && plainWriting(prev) && !blocks[k + 2]?.beside) {
+      // the writing either side of it one again, as it was before it went in — the caret where the / was
+      if (name) closeLinked(linkedId(name, id));
+      const head = prev.text.replace(/\s+$/, "");
+      const sep = back?.sepBefore ?? "";
+      const tail = plainWriting(next) ? next.text.replace(/^\s+/, "") : null;
+      const text = tail === null ? head + sep : `${head}${sep}${back ? back.sepAfter || "\n\n" : "\n\n"}${tail}`;
+      commit({ ...now, blocks: blocks.flatMap((x) => (x.id === id || (tail !== null && x.id === next?.id) ? [] : x.id === prev.id ? [{ ...prev, text }] : [x])) });
+      setTimeout(() => focusRun(prev.id, head.length + sep.length), 0);
+      return;
+    }
+    removeBlock(id, true);
+    if (prev && isProse(prev) && !prev.free && prev.kind === "text") focusRun(prev.id, prev.text.replace(/\s+$/, "").length);
+    else if (next && isProse(next) && !next.free) focusRun(next.id, "start");
+    // (the last thing on the page: the writing at the end — there's always some)
+    else if (!next) focusRun(endId.current, "start");
+    else setPicked((prev ?? next)!.id);
   };
   /** ⌘⏎: done editing — and run it, if it runs */
   const runEdited = (b: Block) => {
@@ -1615,6 +1694,7 @@ export default function NotebookTile({
   /** ⇧⏎: run it, and on to the next cell of its kind (a new one at the end) — as in Jupyter */
   const runAndNext = (b: Block) => {
     if (b.kind !== "cell") return;
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     const code = draftRef.current;
     finishEditing();
     setTimeout(() => runBlock(b, code), 60);
@@ -1631,6 +1711,7 @@ export default function NotebookTile({
   /** ⌥⏎: run it, and a new cell right under it — as in Jupyter */
   const runAndInsert = (b: Block) => {
     if (b.kind !== "cell") return;
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     const code = draftRef.current;
     finishEditing();
     setTimeout(() => runBlock(b, code), 60);
@@ -1938,6 +2019,15 @@ export default function NotebookTile({
     } else pickBlock(next.id);
     return true;
   };
+  /** out of a table's grid: Esc — the table picked, the keys the page's again (↑ ↓ on to the next thing, Enter back
+   * in); ↑ off its top row or ↓ off its spare last row — on to the block above or below, as the writing goes */
+  const leaveTable = (id: string, how: "esc" | "up" | "down") => {
+    if (how !== "esc" && (runEdge(id, how) || (how === "down" && (focusRun(endId.current, "start"), true)))) return true;
+    setPicked(id);
+    setQuietId(null);
+    root.current?.focus({ preventScroll: true });
+    return true;
+  };
   const runHandle = (id: string, h: RunHandle | null) => {
     if (!h) return void runs.current.delete(id);
     runs.current.set(id, h);
@@ -1948,6 +2038,8 @@ export default function NotebookTile({
       setTimeout(() => runs.current.get(id)?.focus(want.at), 0);
     }
   };
+  /** the app just put in the writing, and the line breaks around it (for putting the writing back if it's let go empty) */
+  const lastInsert = useRef<{ id: string; run: string; sepBefore: string; sepAfter: string } | null>(null);
   /** a new block, open to work in (graph paper: its cursor in it; a table's typed into where it is) */
   const openNew = (b: Block) => {
     setPicked(b.id);
@@ -1956,7 +2048,12 @@ export default function NotebookTile({
       setQuietId(b.id);
       return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .pp-scratch`)?.focus(), 60);
     }
-    if (b.kind === "cell" && b.lang === "table") return setEditing(null);
+    if (b.kind === "cell" && b.lang === "table") {
+      // (a table put in: its grid takes the keys — type the first number right away, the arrows go cell to cell)
+      setEditing(null);
+      setQuietId(b.id);
+      return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .sheet`)?.focus(), 60);
+    }
     if (b.kind === "cell" && CANVAS_CELLS.has(b.lang)) {
       setEditing(null);
       setQuietId(b.id);
@@ -2046,6 +2143,8 @@ export default function NotebookTile({
     }
     if (after) pieces.push({ id: before || pid === id ? blockId() : id, kind: "text", text: after });
     editingRef.current = null;
+    // (the line breaks around where it went in: let go empty, the writing's put back as it was, the caret on its line)
+    lastInsert.current = !how.beside && before ? { id: nid, run: id, sepBefore: taken ? text.slice(before.length, lineFrom) : "", sepAfter: text.slice(lineTo, text.length - after.length) } : null;
     commit({ ...now, blocks: run ? now.blocks.flatMap((x) => (x.id === id ? pieces : [x])) : [...now.blocks, ...pieces] });
     openNew(fresh);
     if (how.tab) setTimeout(() => openInApp(docRef.current?.blocks.find((x) => x.id === nid) ?? fresh), 80);
@@ -2147,6 +2246,52 @@ export default function NotebookTile({
       setError(errorText(err));
     }
   };
+  /** a notebook's file changed from outside its page (Home: a box ticked, a line jotted down) — the one that's open
+   * saved first (a save still waiting goes in with it) and read back after, so nothing's lost either way */
+  const editFile = async (which: string, change: (text: string) => string | null, start?: string) => {
+    let text: string | null;
+    const open = which === name && !!docRef.current;
+    if (open) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = undefined;
+      setSaving(false);
+      text = writeNotebook(docRef.current!);
+    } else text = (await invoke<{ text: string }>("read_notebook", { name: which }).catch(() => null))?.text ?? start ?? null;
+    if (text === null) return false;
+    const next = change(text);
+    if (next === null) return false;
+    try {
+      const modified = await invoke<number>("write_notebook", { name: which, text: next });
+      noteTexts.set(which, { modified, text: next });
+      if (open) await load(which, true);
+    } catch (err) {
+      setError(`Couldn't save: ${errorText(err)}`);
+      return false;
+    }
+    await refreshListing();
+    return true;
+  };
+  /** today's page — made the first time it's asked for */
+  const openToday = async () => {
+    const day = todayName();
+    setSwitcher(false);
+    if (!listing.some((l) => l.name === day)) {
+      await invoke("write_notebook", { name: day, text: dailyText() }).catch(() => {});
+      await refreshListing();
+    }
+    setView("doc");
+    if (name === day) return;
+    onOpen(day);
+  };
+  /** a notebook opened from Home (the page shown, even when it's the one open already) */
+  const openFromHome = (which: string) => {
+    setView("doc");
+    if (which !== name) onOpen(which);
+  };
+  /** a line jotted down on Home: into today's Inbox (a to-do: a box to tick) */
+  const capture = (text: string, todo: boolean) => editFile(todayName(), (t) => addToInbox(t, `- ${todo ? "[ ] " : ""}${text.replace(/\s*\n\s*/g, " ")}`), dailyText());
+  /** a box ticked on Home: ticked in its notebook */
+  const tickBox = (t: HomeTask) => editFile(t.note, (text) => tickTask(text, t));
   const openOrCreate = async (which: string) => {
     setSwitcher(false);
     if (!listing.some((l) => l.name === which)) {
@@ -2168,6 +2313,7 @@ export default function NotebookTile({
     }
   };
   const saveTemplate = async (as: string) => {
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     if (!doc || !as.trim()) return setPrompt(null);
     const withHolders = setMeta(setMeta(doc, "title", "{{title}}"), "date", "{{date}}");
     await invoke("save_template", { name: as.trim(), text: writeNotebook(withHolders) }).catch((err) => setError(errorText(err)));
@@ -2197,6 +2343,7 @@ export default function NotebookTile({
   /** the problems finished in Work: in here, out of Work's list (one
    * that's already here, same problem, isn't added twice) */
   const addFinished = () => {
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     if (!doc) return;
     setMenu(false);
     const here = new Set(doc.blocks.filter((b) => b.kind === "cell" && b.lang === "work").map((b) => readWorkCell((b as { code: string }).code).problem.replace(/\s/g, "")));
@@ -2225,6 +2372,7 @@ export default function NotebookTile({
   };
   const copyLatex = async () => {
     setMenu(false);
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     if (!doc || !name) return;
     const tex = await notebookLatex(doc, name, calc, py);
     await navigator.clipboard.writeText(tex).then(
@@ -2233,6 +2381,7 @@ export default function NotebookTile({
     );
   };
   const showPreview = async () => {
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     if (!doc || !name) return;
     try {
       await everyGraphDrawn();
@@ -2270,6 +2419,7 @@ export default function NotebookTile({
     }
   };
   const print = async () => {
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     if (!doc || !name) return;
     try {
       await everyGraphDrawn();
@@ -2283,9 +2433,13 @@ export default function NotebookTile({
 
   // ---- the parts of the tile
 
+  const onPage = (view === "doc" || view === "source") && !!doc;
   const toolbar = (
     <div className="nb-bar">
-      {view !== "new" && doc && (
+      <button className={`nb-tool is-icon${view === "home" ? " is-on" : ""}`} title="Home — today, what's to do, your notebooks, the apps" onClick={() => setView(view === "home" && doc ? "doc" : "home")}>
+        <Icon name="home" size={15} />
+      </button>
+      {onPage && (
         <button className={`nb-tool is-icon${libraryOpen ? " is-on" : ""}`} title="Your notes — search, tags, what links here" onClick={() => setLibraryOpen(!libraryOpen)}>
           <Icon name="panel" size={15} />
         </button>
@@ -2293,12 +2447,18 @@ export default function NotebookTile({
       <div className="nb-switch">
         <button className={`nb-switch-btn${switcher ? " is-on" : ""}`} title="Your notebooks" onClick={() => (refreshListing(), setSwitcher(!switcher))}>
           <Icon name="notebook" size={15} />
-          <span className="nb-switch-name">{view === "new" ? "New notebook" : name ?? "Notebooks"}</span>
+          <span className="nb-switch-name">{view === "home" ? "Home" : view === "new" ? "New notebook" : name ?? "Notebooks"}</span>
           {saving && <span className="nb-saving" title="Saving…" />}
           <Icon name="chevron" size={13} />
         </button>
         {switcher && (
           <div className="nb-pop" onMouseLeave={() => setSwitcher(false)}>
+            <button className="nb-pop-item" onClick={() => (setSwitcher(false), setView("home"))}>
+              <Icon name="home" size={14} /> Home
+            </button>
+            <button className="nb-pop-item" onClick={() => (setSwitcher(false), openToday())}>
+              <Icon name="calendar" size={14} /> Today <kbd className="nb-pop-key">⌘⇧D</kbd>
+            </button>
             <button className="nb-pop-item is-new" onClick={() => (setSwitcher(false), setView("new"))}>
               <Icon name="plus" size={14} /> New notebook…
             </button>
@@ -2316,7 +2476,7 @@ export default function NotebookTile({
           </div>
         )}
       </div>
-      {view !== "new" && doc && (
+      {onPage && (
         <div className="nb-tools">
           {doc.blocks.some(runnable) && (
             <span className="nb-kernel">
@@ -2389,6 +2549,9 @@ export default function NotebookTile({
                 </button>
                 <button className="nb-pop-item" onClick={() => (setMenu(false), setKeysOpen(true))}>
                   <Icon name="source" size={14} /> Keyboard shortcuts <kbd className="nb-pop-key">⌘/</kbd>
+                </button>
+                <button className={`nb-pop-item nb-vim-toggle${startHome ? " is-on" : ""}`} title="The app opens on Home — today, what's to do, your notebooks — with the last notebook behind it (Esc)" onClick={() => (setMenu(false), setStartOnHome(!startHome))}>
+                  <Icon name="check" size={14} /> Open on Home {startHome ? "on" : "off"}
                 </button>
                 <button className={`nb-pop-item nb-vim-toggle${smartSymbols ? " is-on" : ""}`} title="As you write: -> is →, <= ≤, >= ≥, != ≠, +- ±, ~= ≈, => ⇒, ... …, -- in a sentence an em dash (⌘Z right after gives back what you typed)" onClick={() => (setMenu(false), setSmartSymbols(!smartSymbols))}>
                   <Icon name="check" size={14} /> Smart symbols {smartSymbols ? "on" : "off"}
@@ -2489,7 +2652,8 @@ export default function NotebookTile({
     </div>
   );
 
-  const gallery = (
+  // (made only when it's shown — not at every keystroke in a notebook)
+  const gallery = () => (
     <div className="nb-gallery">
       <div className="nb-gallery-head">
         <h2>New notebook</h2>
@@ -2653,6 +2817,8 @@ export default function NotebookTile({
   const openBlock = (b: Block) => {
     // a table (graph paper) is worked in where it is
     if (b.kind === "cell" && (b.lang === "table" || b.lang === "paper" || CANVAS_CELLS.has(b.lang))) {
+      // (a table: into its grid — the keys its, Esc back out)
+      if (b.lang === "table") page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .sheet`)?.focus();
       if (CANVAS_CELLS.has(b.lang) && !openInAppNow(b)) page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .cs-editor, [data-block="${b.id}"] .dr-editor`)?.focus();
       return;
     }
@@ -2768,6 +2934,17 @@ export default function NotebookTile({
     </span>
   );
   const [barMenu, setBarMenu] = useState<{ id: string; which: "flat" | "more" | "lang" } | null>(null);
+  /** the block the pointer's over, and the one it was over before (its bar fading out as it goes): only these — and the
+   * picked one, one with a menu open, one being moved or sized — have their + and grip and bar made. Every block of a
+   * long notebook making them again at each keystroke was most of what typing in it cost. */
+  const [pointed, setPointed] = useState<[string | null, string | null]>([null, null]);
+  const pointedRef = useRef<string | null>(null);
+  const pointAt = (id: string | null) => {
+    if (id === pointedRef.current) return;
+    setPointed([id, pointedRef.current]);
+    pointedRef.current = id;
+  };
+  const chromeOn = (id: string) => pointed[0] === id || pointed[1] === id || picked === id || barMenu?.id === id || inserting?.after === id || moving === id || sizing?.id === id || freeDrag?.id === id;
   // a menu open (a bar's, or +): a press anywhere else puts it away
   useEffect(() => {
     if (!barMenu && !(inserting && !inserting.replace)) return;
@@ -2885,7 +3062,7 @@ export default function NotebookTile({
                 <button onClick={() => (setBarMenu(null), flatten(cell, "jpeg"))}>A smaller picture (JPEG)</button>
                 {(cell.lang === "calc" || cell.lang === "vars") && <button onClick={() => (setBarMenu(null), toLatex(cell, calcIndex.get(cell.id) ?? -1))}>Math text (LaTeX)</button>}
                 {cell.lang === "table" && (
-                  <button onClick={() => (setBarMenu(null), commit({ ...doc!, blocks: doc!.blocks.map((x) => (x.id === cell.id ? ({ id: x.id, kind: "text", text: tableMarkdown(cell.code), beside: x.beside, width: x.width } as Block) : x)) }))}>
+                  <button onClick={() => (setBarMenu(null), commit({ ...docRef.current!, blocks: docRef.current!.blocks.map((x) => (x.id === cell.id ? ({ id: x.id, kind: "text", text: tableMarkdown(cell.code), beside: x.beside, width: x.width } as Block) : x)) }))}>
                     A Markdown table (text)
                   </button>
                 )}
@@ -3010,7 +3187,7 @@ export default function NotebookTile({
     const menuAt = here && (here.slash !== null || plusOpen) ? { top: here.bottom + 6, left: here.left } : null;
     return (
       <div key={b.id} data-block={b.id} className={`nb-block is-text is-run${placed ? " is-placed" : ""}${focusedRun === b.id ? " is-writing" : ""}${b.align && b.align !== "left" ? ` is-lines-${b.align}` : ""}${marks}`}>
-        {placed && focusedRun !== b.id && gutter(b)}
+        {placed && focusedRun !== b.id && chromeOn(b.id) && gutter(b)}
         <TextRun
           id={b.id}
           value={b.kind === "text" ? b.text : ""}
@@ -3059,7 +3236,7 @@ export default function NotebookTile({
       // math, a table: objects on the page — as they read, worked in when they're clicked
       return (
         <div key={b.id} data-block={b.id} className={`nb-block is-text is-object-text${isEditing ? " is-editing" : ""}${b.align && b.align !== "left" ? ` is-lines-${b.align}` : ""}${marks}`}>
-          {!isEditing && gutter(b)}
+          {!isEditing && chromeOn(b.id) && gutter(b)}
           {isEditing && isMathText(b.text) ? (
             // a Math block: math typed as math, drawn as it's typed
             <MathBlockLive text={draft} onChange={type} onDone={() => finishEditing()} />
@@ -3156,17 +3333,11 @@ export default function NotebookTile({
         )
       ) : b.lang === "table" ? (
         // a spreadsheet, typed into right on the page
-        <TableBlock id={b.id} code={b.code} info={b.info} onChange={(code) => updateBlock(b.id, { code })} onInfo={(info) => updateBlock(b.id, { info })} onRemove={() => removeBlock(b.id)} />
+        <TableBlock id={b.id} code={b.code} info={b.info} onChange={(code) => updateBlock(b.id, { code })} onInfo={(info) => updateBlock(b.id, { info })} onRemove={() => removeBlock(b.id)} onLeave={(how) => leaveTable(b.id, how)} />
       ) : b.lang === "paper" ? (
         <PaperBlock id={b.id} code={b.code} onChange={(code) => updateBlock(b.id, { code })} onLeave={() => leavePaper(b)} />
-      ) : b.lang === "circuit" ? (
-        <CanvasBlock height={b.height} fallback={circuitHeight(b.code)} onHeight={(height) => place(b, { height })}>
-          {(height) => <CircuitEditor code={b.code} inline height={height} onChange={(code) => updateBlock(b.id, { code })} onNotebook={(markdown) => putUnder(b.id, markdown)} />}
-        </CanvasBlock>
-      ) : b.lang === "draw" ? (
-        <CanvasBlock height={b.height} fallback={drawHeight(b.code)} onHeight={(height) => place(b, { height })}>
-          {(height) => <DrawEditor code={b.code} inline height={height} onChange={(code) => updateBlock(b.id, { code })} />}
-        </CanvasBlock>
+      ) : b.lang === "circuit" || b.lang === "draw" ? (
+        <CanvasCell id={b.id} lang={b.lang} code={b.code} height={b.height} api={canvasApi} />
       ) : b.lang === "mermaid" ? (
         <MermaidView code={isEditing ? draft : b.code} live={isEditing} />
       ) : b.lang === "numberline" ? (
@@ -3281,7 +3452,7 @@ export default function NotebookTile({
         onClick={() => objectClick(b)}
         onDoubleClick={(e) => !isEditing && !(e.target as HTMLElement).closest("button, a, input, textarea, math-field, .cm-editor, .nb-obj-bar, .nb-gutter, .nb-code") && openBlock(b)}
       >
-        {!isEditing && gutter(b)}
+        {!isEditing && chromeOn(b.id) && gutter(b)}
         {openInAppNow(b) && (
           <span className="nb-in-app" title="It's open in its app — what you do there shows here as you go">
             <Icon name={icon} size={12} /> open in {label}
@@ -3302,7 +3473,7 @@ export default function NotebookTile({
         {appEditor}
         {result && outFolded && foldLine("output", "fold-output")}
         {result && !outFolded && <div className="nb-obj-body nb-cell-result">{result}</div>}
-        {!isEditing && objectBar(b, inRow)}
+        {!isEditing && chromeOn(b.id) && objectBar(b, inRow)}
         {isPicked && !inRow && !b.wide && sizeHandles(b)}
       </div>
     );
@@ -3347,6 +3518,7 @@ export default function NotebookTile({
       setInserting(null);
       return true;
     }
+    const doc = docRef.current; // (the latest — not the one this was drawn with)
     if (!doc || editing || e.metaKey || e.ctrlKey || e.altKey) return false;
     const blocks = doc.blocks;
     const at = picked ? blocks.findIndex((b) => b.id === picked) : -1;
@@ -3380,6 +3552,18 @@ export default function NotebookTile({
       setPicked(null);
       focusRun(id, "start");
       return true;
+    }
+    // nothing picked, the keys on the notebook itself (an app just put away, a button clicked…): ↑ ↓ Enter go back to
+    // the writing, the caret where it was — and what's typed goes there too — never nowhere
+    if (at < 0 && !e.shiftKey && (key === "ArrowDown" || key === "ArrowUp" || key === "Enter" || (key.length === 1 && key !== "j" && key !== "k"))) {
+      const v = lastView.current;
+      if (v && v.dom.isConnected) {
+        v.focus();
+        // (a letter: typed in the writing — focus moved before it lands, so it lands there)
+        return key.length !== 1;
+      }
+      if (key === "ArrowUp" || key === "ArrowDown") return pick(key === "ArrowUp" ? blocks.length - 1 : 0), true;
+      if (key.length !== 1) return focusRun(writingAtEnd(), "end"), true;
     }
     if (key === "j" || (key === "ArrowDown" && at >= 0)) return pick(at + 1), true;
     if (key === "k" || (key === "ArrowUp" && at >= 0)) return pick(at < 0 ? blocks.length - 1 : at - 1), true;
@@ -3497,6 +3681,19 @@ export default function NotebookTile({
           e.preventDefault();
           e.stopPropagation();
           setKeysOpen(!keysOpen);
+          return;
+        }
+        // ⌘⇧D: today's page
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "d") {
+          e.preventDefault();
+          e.stopPropagation();
+          openToday();
+          return;
+        }
+        // Esc on Home: back to the page
+        if (e.key === "Escape" && view === "home" && doc && !inField) {
+          e.preventDefault();
+          setView("doc");
           return;
         }
         // ⌘⇧F: focus — just the page (again: out of it)
@@ -3642,7 +3839,7 @@ export default function NotebookTile({
         </div>
       )}
       {preview && <Preview html={preview} onClose={() => setPreview(null)} onPrint={print} />}
-      {varsOpen && view !== "new" && (
+      {varsOpen && onPage && (
         <div className="nb-vars">
           <div className="nb-vars-head">
             Variables <span className="nb-vars-dim">{kernel === "off" ? "— run a cell to start Python" : `${vars.length}`}</span>
@@ -3679,8 +3876,10 @@ export default function NotebookTile({
           </div>
         </div>
       )}
-      {view === "new" || !doc ? (
-        gallery
+      {view === "home" ? (
+        <Home listing={listing} onOpen={openFromHome} onToday={openToday} onNew={() => setView("new")} onFind={() => setQuickOpen(true)} onCapture={capture} onTick={tickBox} onShowTile={onShowTile} />
+      ) : view === "new" || !doc ? (
+        gallery()
       ) : view === "source" ? (
         <div className="nb-source">
           <textarea
@@ -3695,7 +3894,7 @@ export default function NotebookTile({
         </div>
       ) : (
         <div className="nb-main">
-        {libraryOpen && <Library listing={listing} current={name ?? null} onOpen={(n) => (setView("doc"), onOpen(n))} onNew={() => setView("new")} />}
+        {libraryOpen && <Library listing={listing} current={name ?? null} onOpen={openFromList} onNew={newFromList} />}
         <div className="nb-center">
         <FormatBar
           view={textView}
@@ -3721,6 +3920,9 @@ export default function NotebookTile({
           ref={page}
           style={typeStyle}
           onScroll={() => (spy(), bubble && setBubble(null))}
+          // which block the pointer's over: its + and grip and bar are made
+          onPointerOver={(e) => pointAt((e.target as HTMLElement).closest?.<HTMLElement>("[data-block]")?.dataset.block ?? null)}
+          onPointerLeave={() => pointAt(null)}
           // a press on the page around the blocks: nothing picked
           onPointerDown={(e) => !(e.target as HTMLElement).closest("[data-block], .nb-insert, .nb-end, .nb-add") && setPicked(null)}
           // a click on the page itself (its margin, between the apps, under the writing): writing there, as in Word

@@ -95,3 +95,9 @@ export const useSmartSymbols = smartSymbols.use;
 const focus = setting("mlx-focus", false);
 export const setFocusMode = focus.set;
 export const useFocusMode = focus.use;
+
+/** the app opens on Home (today, what's to do, your notebooks) — the last notebook open behind it, Esc away */
+const startHome = setting("mlx-start-home", true);
+export const startOnHome = startHome.get;
+export const setStartOnHome = startHome.set;
+export const useStartOnHome = startHome.use;

@@ -359,9 +359,12 @@ export function DataTable({
   onChange,
   onRemove,
   onUseFit,
+  onLeave,
 }: {
   table: XYTable;
   color: string;
+  /** off the grid's edge, out of it (a notebook's table hands the keys back to the page) */
+  onLeave?: (how: "esc" | "up" | "down") => boolean;
   /** a table of values: the row it's of (as math), and its y at each x */
   linked?: { latex: string; key: string; compute: (xs: string[]) => Promise<{ text: string }[]> } | null;
   onChange: (t: XYTable) => void;
@@ -439,6 +442,7 @@ export function DataTable({
         onChange={(headers, next) => onChange({ ...table, headers: headers.some((h) => h) ? headers : undefined, rows: next })}
         widths={table.widths}
         onWidths={(widths) => onChange({ ...table, widths })}
+        onLeave={onLeave}
       />
       <LineFacts pts={tablePoints(table)} onDraw={onUseFit} />
       {table.model && (
