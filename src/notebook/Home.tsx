@@ -8,12 +8,23 @@ import { type Listing, readAll, texts } from "./noteTexts";
 import { plain, when } from "./Library";
 import { isDayName, todayName, todayTitle } from "./daily";
 
+/** this week, Monday to Sunday: each day's page's name, its weekday and its date */
+function thisWeek(now = new Date()) {
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+  return Array.from({ length: 7 }, (_, k) => {
+    const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + k);
+    return { name: todayName(d), weekday: d.toLocaleDateString(undefined, { weekday: "short" }), day: d.getDate(), title: todayTitle(d) };
+  });
+}
+
 /** a box not ticked yet (- [ ] …) in a notebook: its line as written, and which of the same lines it is */
 export interface HomeTask {
   note: string;
   text: string;
   raw: string;
   nth: number;
+  /** the line it was ticked on (for taking it back) */
+  line?: number;
 }
 
 /** the boxes not ticked yet in a note (- [ ] …) — not in its header or its code */
@@ -67,10 +78,21 @@ export function tickTask(text: string, t: HomeTask): string | null {
     if (l !== t.raw) continue;
     if (n++ === t.nth) {
       lines[k] = l.replace("[ ]", "[x]");
+      t.line = k;
       return lines.join("\n");
     }
   }
   return null;
+}
+
+/** a box ticked on Home, unticked again (Undo): on the line it was ticked on, else the first one ticked just so */
+export function untickTask(text: string, t: HomeTask): string | null {
+  const done = t.raw.replace("[ ]", "[x]");
+  const lines = text.split("\n");
+  const at = t.line !== undefined && lines[t.line] === done ? t.line : lines.indexOf(done);
+  if (at < 0) return null;
+  lines[at] = t.raw;
+  return lines.join("\n");
 }
 
 // ---- notebooks pinned to Home (kept on this computer)
@@ -137,6 +159,8 @@ export default function Home({
   onFind,
   onCapture,
   onTick,
+  onUntick,
+  onDay,
   onShowTile,
 }: {
   listing: Listing;
@@ -149,6 +173,10 @@ export default function Home({
   onCapture: (text: string, todo: boolean) => Promise<boolean>;
   /** a box ticked — true once it's in the file */
   onTick: (t: HomeTask) => Promise<boolean>;
+  /** a box ticked here, unticked (Undo) */
+  onUntick: (t: HomeTask) => Promise<boolean>;
+  /** a day's page (made when it's first asked for) */
+  onDay: (name: string) => void;
   /** an app's tile, opened beside the notebook */
   onShowTile?: (id: string) => void;
 }) {
@@ -167,6 +195,13 @@ export default function Home({
   /** boxes just ticked: shown struck through a moment, then gone */
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [allTasks, setAllTasks] = useState(false);
+  /** the box just ticked: a moment to take it back */
+  const [undo, setUndo] = useState<HomeTask | null>(null);
+  useEffect(() => {
+    if (!undo) return;
+    const t = setTimeout(() => setUndo(null), 6000);
+    return () => clearTimeout(t);
+  }, [undo]);
   useEffect(() => field.current?.focus({ preventScroll: true }), []);
   // (left open past midnight: tomorrow's date — drawn again each minute)
   const [, minute] = useState(0);
@@ -211,7 +246,14 @@ export default function Home({
     setTicked((s) => new Set(s).add(k));
     const done = await onTick(t);
     if (!done) setTicked((s) => (s.delete(k), new Set(s)));
+    else setUndo(t);
   };
+  const untick = async () => {
+    const t = undo;
+    setUndo(null);
+    if (t && (await onUntick(t))) setTicked((s) => (s.delete(keyOf(t)), new Set(s)));
+  };
+  const week = useMemo(() => thisWeek(), [day]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="nb-home">
@@ -219,6 +261,14 @@ export default function Home({
         <header className="nb-home-head">
           <div className="nb-home-greet">{greeting()}</div>
           <h1 className="nb-home-date">{todayTitle()}</h1>
+          <nav className="nb-home-week">
+            {week.map((w) => (
+              <button key={w.name} className={`nb-home-day${w.name === day ? " is-today" : ""}${byName.has(w.name) ? " has-page" : ""}${w.name < day ? " is-past" : ""}`} title={byName.has(w.name) ? w.title : `${w.title} — start its page`} onClick={() => onDay(w.name)}>
+                <span className="nb-home-day-name">{w.weekday}</span>
+                <span className="nb-home-day-num">{w.day}</span>
+              </button>
+            ))}
+          </nav>
         </header>
 
         <div className={`nb-home-capture${capture.trim() ? " is-typing" : ""}`}>
@@ -281,6 +331,12 @@ export default function Home({
                 </div>
               );
             })}
+            {undo && (
+              <div className="nb-home-undo">
+                <Icon name="check" size={13} /> Ticked “{readable(undo.text)}”
+                <button onClick={untick}>Undo</button>
+              </div>
+            )}
             {tasks.length > 9 && (
               <button className="nb-home-more" onClick={() => setAllTasks(!allTasks)}>
                 {allTasks ? "Fewer" : `All ${tasks.length}`}

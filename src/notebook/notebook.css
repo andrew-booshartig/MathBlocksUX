@@ -5562,3 +5562,110 @@ body.nb-is-moving * {
   background: color-mix(in srgb, var(--tile-hue) 16%, transparent);
   color: var(--tile-hue);
 }
+
+/* Home's week: Monday to Sunday — today lit, a dot under a day with a page */
+.nb-home-week {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.nb-home-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 46px;
+  padding: 6px 0 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--t-text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.nb-home-day:hover {
+  background: var(--t-bg1);
+  border-color: var(--t-line);
+}
+
+.nb-home-day-name {
+  color: var(--t-faint, var(--t-muted));
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nb-home-day-num {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.nb-home-day.is-past .nb-home-day-num {
+  color: var(--t-muted);
+}
+
+.nb-home-day.has-page::after {
+  content: "";
+  position: absolute;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--t-purple, #8e4ec6);
+}
+
+.nb-home-day.is-today {
+  background: color-mix(in srgb, var(--t-purple, #8e4ec6) 14%, transparent);
+  border-color: color-mix(in srgb, var(--t-purple, #8e4ec6) 40%, transparent);
+}
+
+.nb-home-day.is-today .nb-home-day-name,
+.nb-home-day.is-today .nb-home-day-num {
+  color: var(--t-purple, #8e4ec6);
+}
+
+/* a box just ticked on Home: a moment to take it back */
+.nb-home-undo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 0 0 8px;
+  color: var(--t-muted);
+  font-size: 12.5px;
+  animation: nb-home-in 0.18s ease-out;
+}
+
+.nb-home-undo button {
+  margin-left: 4px;
+  padding: 2px 9px;
+  border: 1px solid var(--t-line);
+  border-radius: 999px;
+  background: var(--t-bg1);
+  color: var(--t-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.nb-home-undo button:hover {
+  border-color: var(--t-faint, var(--t-muted));
+}
+
+/* a day's page: on to the day before or after */
+.nb-days {
+  display: inline-flex;
+  gap: 1px;
+}
+
+.nb-days .nb-tool:disabled {
+  opacity: 0.3;
+  cursor: default;
+}

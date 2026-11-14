@@ -38,8 +38,8 @@ import { type SectionApi, sectionTools } from "./sectionTools";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import PaperBlock from "./paperBlock";
 import CanvasCell, { type CanvasApi } from "./canvasCell";
-import Home, { type HomeTask, tickTask } from "./Home";
-import { addToInbox, dailyText, todayName } from "./daily";
+import Home, { type HomeTask, tickTask, untickTask } from "./Home";
+import { addToInbox, dailyText, isDayName, todayName } from "./daily";
 import { texts as noteTexts } from "./noteTexts";
 import MermaidView from "../mermaid/MermaidView";
 import { MERMAID_SPEC } from "../mermaid/MermaidStudio";
@@ -2271,18 +2271,19 @@ export default function NotebookTile({
     await refreshListing();
     return true;
   };
-  /** today's page — made the first time it's asked for */
-  const openToday = async () => {
-    const day = todayName();
+  /** a day's page (2026-11-14) — made the first time it's asked for */
+  const openDay = async (day: string) => {
     setSwitcher(false);
     if (!listing.some((l) => l.name === day)) {
-      await invoke("write_notebook", { name: day, text: dailyText() }).catch(() => {});
+      const [y, m, d] = day.split("-").map(Number);
+      await invoke("write_notebook", { name: day, text: dailyText(new Date(y, m - 1, d)) }).catch(() => {});
       await refreshListing();
     }
     setView("doc");
     if (name === day) return;
     onOpen(day);
   };
+  const openToday = () => openDay(todayName());
   /** a notebook opened from Home (the page shown, even when it's the one open already) */
   const openFromHome = (which: string) => {
     setView("doc");
@@ -2292,6 +2293,7 @@ export default function NotebookTile({
   const capture = (text: string, todo: boolean) => editFile(todayName(), (t) => addToInbox(t, `- ${todo ? "[ ] " : ""}${text.replace(/\s*\n\s*/g, " ")}`), dailyText());
   /** a box ticked on Home: ticked in its notebook */
   const tickBox = (t: HomeTask) => editFile(t.note, (text) => tickTask(text, t));
+  const untickBox = (t: HomeTask) => editFile(t.note, (text) => untickTask(text, t));
   const openOrCreate = async (which: string) => {
     setSwitcher(false);
     if (!listing.some((l) => l.name === which)) {
@@ -2476,6 +2478,26 @@ export default function NotebookTile({
           </div>
         )}
       </div>
+      {onPage &&
+        name &&
+        isDayName(name) &&
+        (() => {
+          // a day's page: on to the day before or after (that has a page — or today's, from a day before it)
+          const days = listing.map((l) => l.name).filter(isDayName).sort();
+          const prev = [...days].reverse().find((d) => d < name);
+          const today = todayName();
+          const next = days.find((d) => d > name) ?? (name < today ? today : undefined);
+          return (
+            <span className="nb-days">
+              <button className="nb-tool is-icon" disabled={!prev} title={prev ? `The day before: ${prev}` : "No page before this one"} onClick={() => prev && openDay(prev)}>
+                <Icon name="back" size={14} />
+              </button>
+              <button className="nb-tool is-icon" disabled={!next} title={next ? `The day after: ${next}` : "No page after this one"} onClick={() => next && openDay(next)}>
+                <Icon name="forward" size={14} />
+              </button>
+            </span>
+          );
+        })()}
       {onPage && (
         <div className="nb-tools">
           {doc.blocks.some(runnable) && (
@@ -3877,7 +3899,7 @@ export default function NotebookTile({
         </div>
       )}
       {view === "home" ? (
-        <Home listing={listing} onOpen={openFromHome} onToday={openToday} onNew={() => setView("new")} onFind={() => setQuickOpen(true)} onCapture={capture} onTick={tickBox} onShowTile={onShowTile} />
+        <Home listing={listing} onOpen={openFromHome} onToday={openToday} onNew={() => setView("new")} onFind={() => setQuickOpen(true)} onCapture={capture} onTick={tickBox} onUntick={untickBox} onDay={openDay} onShowTile={onShowTile} />
       ) : view === "new" || !doc ? (
         gallery()
       ) : view === "source" ? (
