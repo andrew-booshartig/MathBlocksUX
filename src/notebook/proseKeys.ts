@@ -6,6 +6,8 @@
  * code); ⌘⇧7 / ⌘⇧8 / ⌘⇧9 a numbered, bulleted or checklist line. */
 import type { EditorView } from "@codemirror/view";
 import { writingKey } from "./writing";
+import { isLive } from "./livePreview";
+import { linkKey, toggleMark } from "./wysiwyg";
 
 /** the text made `value` (selected start…end), changed only where it differs — the rest of it, and its undo, left be */
 export function applyEdit(v: EditorView, value: string, start: number, end: number) {
@@ -20,6 +22,12 @@ export function applyEdit(v: EditorView, value: string, start: number, end: numb
 /** ⌘B ⌘I ⌘U ⌘E ⌘K ⌘⇧X ⌘⇧H: what's selected wrapped (a selection from a line's start leaves its # or list marker outside) */
 export function wrapKey(key: string, shift = false) {
   return (v: EditorView): boolean => {
+    // the live writing: as a word processor's keys (nothing picked: what's typed next) — no Markdown to see
+    if (isLive(v)) {
+      const kind = ({ b: "b", i: "i", u: "u", e: "c", x: shift ? "s" : "", h: shift ? "h" : "" } as Record<string, string>)[key];
+      if (key === "k" && !shift) return linkKey(v);
+      if (kind) return toggleMark(kind as "b")(v);
+    }
     const sel = v.state.selection.main;
     const line = v.state.doc.lineAt(sel.from);
     const lead = line.text.match(/^(\s*)(#{1,6}\s+|>\s?|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d+[.)]\s+|[a-zA-Z][.)]\s+)?/)![0].length;

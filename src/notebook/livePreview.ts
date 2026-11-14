@@ -1,8 +1,12 @@
-/** Live preview, as Obsidian does it: text is written as it reads. A
- * heading is big, **bold** is bold, $x^2$ is math, a task's box is a box —
- * and the Markdown that does it (the #, the **, the $) shows only where
- * the caret is, so it can be changed. It's still plain text underneath: the
- * file, Neovim and vim keys all see Markdown. */
+/** The writing as it reads, the way a word processor shows it: a heading is
+ * big, bold is bold, math is math, a task's box is a box, a bullet a bullet,
+ * a link its words — and the Markdown that does it never shows (only a
+ * heading's # does, on the line the caret's on: its level, changed by typing).
+ * It's plain Markdown underneath — the file, Neovim, Obsidian and vim keys
+ * all see it — and the caret, ⌫, ⌦ and the arrows step over what's hidden as
+ * a word processor's do (see wysiwyg.ts). Each hidden piece is kept as a
+ * `Piece` for them: a mark (**, `, ==, a link's (address)), a line's start (a
+ * bullet, a task's box, a quote's >), or a thing whole (math, a picture). */
 import { syntaxTree } from "@codemirror/language";
 import { colorSpans, markColorCss, textColorCss } from "./colors";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
@@ -15,6 +19,28 @@ import katex from "katex";
 const pictures = new Map<string, string>();
 /** a picture the app has just kept (pasted, chosen): known without reading it back */
 export const rememberPicture = (path: string, url: string) => void pictures.set(path, url);
+
+/** what's hidden or drawn over: a mark around words (its node — kind, whole, words — for ⌫ and the format keys), a
+ * line's start (⌫ there takes it off: the bullet, the box, the quote), a thing whole (stepped over, ⌫ takes it) */
+export interface Piece {
+  from: number;
+  to: number;
+  kind: "mark" | "prefix" | "whole";
+  node?: { type: MarkType; from: number; to: number; inner: [number, number] };
+}
+/** the marks around words the format keys put on and take off */
+export type MarkType = "b" | "i" | "s" | "c" | "h" | "u" | "link" | "wiki" | "color" | "esc";
+export const MARKS: Record<"b" | "i" | "s" | "c" | "h" | "u", { open: string; close: string }> = {
+  b: { open: "**", close: "**" },
+  i: { open: "*", close: "*" },
+  s: { open: "~~", close: "~~" },
+  c: { open: "`", close: "`" },
+  h: { open: "==", close: "==" },
+  u: { open: "<u>", close: "</u>" },
+};
+
+/** inline math, clicked: edited in the notebook's math box (set by the notebook) */
+export const mathEditing: { open: ((view: EditorView, from: number, to: number, tex: string) => void) | null } = { open: null };
 
 /** a picture in the writing: ![](Name.assets/…) or one from the web */
 class PictureWidget extends WidgetType {
@@ -43,7 +69,7 @@ class PictureWidget extends WidgetType {
       else
         invoke<string>("flat_read", { path })
           .then((url) => (pictures.set(path, url), (img.src = url)))
-          .catch(() => (img.replaceWith(Object.assign(document.createElement("span"), { className: "nb-missing", textContent: this.alt || "(a picture that's gone)" }))));
+          .catch(() => img.replaceWith(Object.assign(document.createElement("span"), { className: "nb-missing", textContent: this.alt || "(a picture that's gone)" })));
     }
     // (its height known once it's drawn: the editor measures again)
     img.onload = () => view.requestMeasure();
@@ -83,18 +109,32 @@ class RuleWidget extends WidgetType {
   }
 }
 
+/** $math$, drawn — clicked, it opens in the math box (typed as it looks, no LaTeX needed) */
 class MathWidget extends WidgetType {
-  constructor(readonly tex: string) {
+  constructor(
+    readonly tex: string,
+    readonly from: number,
+    readonly to: number,
+  ) {
     super();
   }
   eq(o: MathWidget) {
-    return o.tex === this.tex;
+    return o.tex === this.tex && o.from === this.from && o.to === this.to;
   }
-  toDOM() {
+  toDOM(view: EditorView) {
     const el = document.createElement("span");
     el.className = "cm-lp-math";
+    el.title = "Click to change it";
     el.innerHTML = katex.renderToString(this.tex, { throwOnError: false, strict: "ignore" });
+    el.onmousedown = (e) => {
+      if (!mathEditing.open || e.button !== 0) return;
+      e.preventDefault();
+      mathEditing.open(view, this.from, this.to, this.tex);
+    };
     return el;
+  }
+  ignoreEvent(e: Event) {
+    return e.type === "mousedown";
   }
 }
 
@@ -126,13 +166,16 @@ class TaskWidget extends WidgetType {
 }
 
 class BulletWidget extends WidgetType {
-  eq() {
-    return true;
+  constructor(readonly depth: number) {
+    super();
+  }
+  eq(o: BulletWidget) {
+    return o.depth === this.depth;
   }
   toDOM() {
     const el = document.createElement("span");
     el.className = "cm-lp-bullet";
-    el.textContent = "•";
+    el.textContent = ["•", "◦", "▪"][this.depth % 3];
     return el;
   }
 }
@@ -141,222 +184,263 @@ const hide = Decoration.replace({});
 const mark = (cls: string) => Decoration.mark({ class: cls });
 const line = (cls: string) => Decoration.line({ class: cls });
 
-const INLINE: Record<string, { cls: string; marks: string[] }> = {
-  Emphasis: { cls: "cm-lp-em", marks: ["EmphasisMark"] },
-  StrongEmphasis: { cls: "cm-lp-strong", marks: ["EmphasisMark"] },
-  Strikethrough: { cls: "cm-lp-strike", marks: ["StrikethroughMark"] },
-  InlineCode: { cls: "cm-lp-code", marks: ["CodeMark"] },
+const INLINE: Record<string, { cls: string; marks: string[]; type: MarkType }> = {
+  Emphasis: { cls: "cm-lp-em", marks: ["EmphasisMark"], type: "i" },
+  StrongEmphasis: { cls: "cm-lp-strong", marks: ["EmphasisMark"], type: "b" },
+  Strikethrough: { cls: "cm-lp-strike", marks: ["StrikethroughMark"], type: "s" },
+  InlineCode: { cls: "cm-lp-code", marks: ["CodeMark"], type: "c" },
 };
 
-function build(state: EditorState, view: EditorView): DecorationSet {
+/** the writing from…to: its decorations, and every piece hidden or drawn over. `caretLines`: the lines a heading's #
+ * shows on (the caret's) */
+export function scan(state: EditorState, from: number, to: number, caretLines: Set<number>, focused: boolean): { decos: Range<Decoration>[]; pieces: Piece[] } {
   const out: Range<Decoration>[] = [];
+  const pieces: Piece[] = [];
   /** callouts' [!kind] markers (not links) */
   const callouts: [number, number][] = [];
   const sel = state.selection.ranges;
-  // (writing the caret isn't in shows no Markdown at all — its selection's just where the caret would go)
-  const focused = view.hasFocus;
-  /** the caret (or a selection) touches from…to: its Markdown shows */
-  const touched = (from: number, to: number) => focused && sel.some((r) => r.from <= to && r.to >= from);
-  const lineTouched = (pos: number) => {
-    const l = state.doc.lineAt(pos);
-    return touched(l.from, l.to);
+  /** the caret (or a selection) on from…to — a picture's picked ring */
+  const touched = (a: number, b: number) => focused && sel.some((r) => r.from <= b && r.to >= a);
+  const hidden = (a: number, b: number, kind: Piece["kind"], node?: Piece["node"]) => {
+    if (b <= a) return;
+    out.push(hide.range(a, b));
+    pieces.push({ from: a, to: b, kind, node });
   };
-  for (const { from, to } of view.visibleRanges) {
-    syntaxTree(state).iterate({
-      from,
-      to,
-      enter: (node) => {
-        const name = node.name;
-        const h = name.match(/^ATXHeading(\d)$/);
-        if (h) {
-          out.push(line(`cm-lp-h${h[1]}`).range(state.doc.lineAt(node.from).from));
-          return;
-        }
-        if (name === "HeaderMark" && node.node.parent?.name.startsWith("ATXHeading")) {
-          if (!lineTouched(node.from)) out.push(hide.range(node.from, Math.min(node.to + 1, state.doc.lineAt(node.from).to)));
-          return;
-        }
-        const inline = INLINE[name];
-        if (inline) {
-          out.push(mark(inline.cls).range(node.from, node.to));
-          if (!touched(node.from, node.to)) {
-            const n = node.node;
-            for (let c = n.firstChild; c; c = c.nextSibling) if (inline.marks.includes(c.name)) out.push(hide.range(c.from, c.to));
-          }
-          return;
-        }
-        if (name === "Image") {
-          // (a picture's always the picture — the caret on it picks it, its Markdown never shows)
-          const n = node.node;
-          const url = n.getChild("URL");
-          const marks = n.getChildren("LinkMark");
-          const alt = marks.length >= 2 ? state.sliceDoc(marks[0].to, marks[1].from) : "";
-          if (url) out.push(Decoration.replace({ widget: new PictureWidget(state.sliceDoc(url.from, url.to), alt, touched(node.from, node.to)) }).range(node.from, node.to));
-          return false;
-        }
-        if (name === "HorizontalRule") {
-          if (!lineTouched(node.from)) out.push(Decoration.replace({ widget: new RuleWidget() }).range(node.from, node.to));
-          return false;
-        }
-        if (name === "Link") {
-          // (a callout's [!tip] isn't a link)
-          if (callouts.some(([a, b]) => node.from >= a && node.to <= b)) return false;
-          const n = node.node;
-          const marks = n.getChildren("LinkMark");
-          const url = n.getChild("URL");
-          const href = url ? state.sliceDoc(url.from, url.to) : "";
-          if (marks.length >= 2) out.push(Decoration.mark({ class: "cm-lp-link", attributes: href ? { "data-href": href, title: "⌘-click to open" } : {} }).range(marks[0].to, marks[1].from));
-          if (!touched(node.from, node.to)) {
-            if (marks[0]) out.push(hide.range(marks[0].from, marks[0].to));
-            // ](address) — all of it
-            if (marks[1]) out.push(hide.range(marks[1].from, node.to));
-          }
-          return false;
-        }
-        if (name === "Blockquote") {
-          // > [!tip] A title — a callout (Obsidian's): a box, its kind's color, its title in bold
-          const first = state.doc.lineAt(node.from);
-          const call = first.text.match(/^(\s*>\s?)\[!(\w+)\][+-]?[^\S\n]*(.*)$/);
-          const kind = call?.[2].toLowerCase();
-          for (let p = node.from; p <= node.to; ) {
-            const l = state.doc.lineAt(p);
-            out.push(line(call ? `cm-lp-callout is-${kind}${l.from === first.from ? " cm-lp-callout-title" : ""}` : "cm-lp-quote").range(l.from));
-            p = l.to + 1;
-          }
-          if (call) {
-            const a = first.from + call[1].length;
-            const b = a + call[2].length + 3;
-            callouts.push([a, b]);
-            if (!lineTouched(first.from)) out.push(Decoration.replace({ widget: new CalloutWidget(kind!, !call[3].trim()) }).range(a, Math.min(first.to, b + (call[3] ? 1 : 0))));
-          }
-          return;
-        }
-        if (name === "QuoteMark") {
-          if (!lineTouched(node.from)) out.push(hide.range(node.from, Math.min(node.to + 1, state.doc.lineAt(node.from).to)));
-          return;
-        }
-        if (name === "TaskMarker") {
-          if (!lineTouched(node.from)) out.push(Decoration.replace({ widget: new TaskWidget(/x/i.test(state.sliceDoc(node.from, node.to)), node.from) }).range(node.from, node.to));
-          return;
-        }
-        if (name === "ListMark" && node.node.parent?.parent?.name === "BulletList") {
-          if (lineTouched(node.from)) return;
-          // a task's box is its bullet
-          const task = node.node.parent?.getChild("Task");
-          if (task) out.push(hide.range(node.from, Math.min(node.to + 1, task.from)));
-          else out.push(Decoration.replace({ widget: new BulletWidget() }).range(node.from, node.to));
-          return;
-        }
-        if (name === "FencedCode") {
-          for (let p = node.from; p <= node.to; ) {
-            const l = state.doc.lineAt(p);
-            out.push(line("cm-lp-codeblock").range(l.from));
-            p = l.to + 1;
-          }
-          return false;
-        }
-        if (name === "InlineCode" || name === "CodeText") return false;
-      },
-    });
-    // a list item's lines wrap under its text, not its marker (as Word's do) — lettered ones too
-    for (let pos = from; pos <= to; ) {
-      const l = state.doc.lineAt(pos);
-      const item = l.text.match(/^(\s*)([-*+]|\d{1,9}[.)]|[a-zA-Z][.)])(\s+)(\[[ xX]\]\s+)?/);
-      if (item) {
-        const width = item[0].length - (/^[-*+]$/.test(item[2]) ? 0.4 : 0);
-        out.push(Decoration.line({ class: "cm-lp-item", attributes: { style: `padding-left: calc(${width}ch + 6px); text-indent: calc(-${width}ch)` } }).range(l.from));
-        if (/^[a-zA-Z][.)]$/.test(item[2])) out.push(mark("cm-lp-letter").range(l.from + item[1].length, l.from + item[1].length + item[2].length));
+  syntaxTree(state).iterate({
+    from,
+    to,
+    enter: (node) => {
+      const name = node.name;
+      const h = name.match(/^ATXHeading(\d)$/);
+      if (h) {
+        out.push(line(`cm-lp-h${h[1]}`).range(state.doc.lineAt(node.from).from));
+        return;
       }
-      pos = l.to + 1;
-    }
-    // what Markdown's parser doesn't know: $math$, ==highlights==, #tags
-    const text = state.sliceDoc(from, to);
-    for (const m of text.matchAll(/(?<!\$)\$(?!\$)(?=\S)((?:\\.|[^\\$\n])+?)(?<=\S)\$(?!\d)/g)) {
-      const a = from + m.index!;
-      const b = a + m[0].length;
-      if (touched(a, b)) out.push(mark("cm-lp-math-src").range(a, b));
-      else out.push(Decoration.replace({ widget: new MathWidget(m[1]) }).range(a, b));
-    }
-    for (const m of text.matchAll(/==(?=\S)([^=\n]+?)(?<=\S)==/g)) {
-      const a = from + m.index!;
-      const b = a + m[0].length;
-      out.push(mark("cm-lp-mark").range(a, b));
-      if (!touched(a, b)) out.push(hide.range(a, a + 2), hide.range(b - 2, b));
-    }
-    // [[another note]] (and [[note|what it says]])
-    for (const m of text.matchAll(/\[\[([^\]|\n]+)(?:\|([^\]\n]+))?\]\]/g)) {
-      const a = from + m.index!;
-      const b = a + m[0].length;
-      if (touched(a, b)) {
-        out.push(mark("cm-lp-wikilink-src").range(a, b));
-        continue;
+      if (name === "HeaderMark" && node.node.parent?.name.startsWith("ATXHeading")) {
+        // (a heading's # shows on the caret's line — its level, changed by typing; elsewhere it's just the heading)
+        const l = state.doc.lineAt(node.from);
+        if (!(focused && caretLines.has(l.number))) hidden(node.from, Math.min(node.to + 1, l.to), "prefix");
+        return;
       }
-      const shown = m[2] ? b - 2 - m[2].length : a + 2;
-      out.push(hide.range(a, shown), Decoration.mark({ class: "cm-lp-wikilink", attributes: { "data-note": m[1].trim(), title: "⌘-click to open" } }).range(shown, b - 2), hide.range(b - 2, b));
+      const inline = INLINE[name];
+      if (inline) {
+        out.push(mark(inline.cls).range(node.from, node.to));
+        const n = node.node;
+        const ms = [];
+        for (let c = n.firstChild; c; c = c.nextSibling) if (inline.marks.includes(c.name)) ms.push(c);
+        if (ms.length >= 2) {
+          const info = { type: inline.type, from: node.from, to: node.to, inner: [ms[0].to, ms[ms.length - 1].from] as [number, number] };
+          for (const m of ms) hidden(m.from, m.to, "mark", info);
+        }
+        return name === "InlineCode" ? false : undefined;
+      }
+      if (name === "Escape") {
+        // \* — the backslash that keeps a * a star
+        hidden(node.from, node.from + 1, "mark", { type: "esc", from: node.from, to: node.to, inner: [node.from + 1, node.to] });
+        return false;
+      }
+      if (name === "Image") {
+        // (a picture's always the picture — the caret on it picks it)
+        const n = node.node;
+        const url = n.getChild("URL");
+        const marks = n.getChildren("LinkMark");
+        const alt = marks.length >= 2 ? state.sliceDoc(marks[0].to, marks[1].from) : "";
+        if (url) {
+          out.push(Decoration.replace({ widget: new PictureWidget(state.sliceDoc(url.from, url.to), alt, touched(node.from, node.to)) }).range(node.from, node.to));
+          pieces.push({ from: node.from, to: node.to, kind: "whole" });
+        }
+        return false;
+      }
+      if (name === "HorizontalRule") {
+        out.push(Decoration.replace({ widget: new RuleWidget() }).range(node.from, node.to));
+        pieces.push({ from: node.from, to: node.to, kind: "whole" });
+        return false;
+      }
+      if (name === "Link") {
+        // (a callout's [!tip] isn't a link)
+        if (callouts.some(([a, b]) => node.from >= a && node.to <= b)) return false;
+        const n = node.node;
+        const marks = n.getChildren("LinkMark");
+        const url = n.getChild("URL");
+        const href = url ? state.sliceDoc(url.from, url.to) : "";
+        if (marks.length >= 2) {
+          out.push(Decoration.mark({ class: "cm-lp-link", attributes: href ? { "data-href": href, title: `${href}\n⌘-click to open` } : {} }).range(marks[0].to, marks[1].from));
+          const info = { type: "link" as const, from: node.from, to: node.to, inner: [marks[0].to, marks[1].from] as [number, number] };
+          hidden(marks[0].from, marks[0].to, "mark", info);
+          // ](address) — all of it
+          hidden(marks[1].from, node.to, "mark", info);
+        }
+        return false;
+      }
+      if (name === "Blockquote") {
+        // > [!tip] A title — a callout (Obsidian's): a box, its kind's color, its title in bold
+        const first = state.doc.lineAt(node.from);
+        const call = first.text.match(/^(\s*>\s?)\[!(\w+)\][+-]?[^\S\n]*(.*)$/);
+        const kind = call?.[2].toLowerCase();
+        for (let p = node.from; p <= node.to; ) {
+          const l = state.doc.lineAt(p);
+          out.push(line(call ? `cm-lp-callout is-${kind}${l.from === first.from ? " cm-lp-callout-title" : ""}` : "cm-lp-quote").range(l.from));
+          p = l.to + 1;
+        }
+        if (call) {
+          const a = first.from + call[1].length;
+          const b = a + call[2].length + 3;
+          callouts.push([a, b]);
+          const end = Math.min(first.to, b + (call[3] ? 1 : 0));
+          out.push(Decoration.replace({ widget: new CalloutWidget(kind!, !call[3].trim()) }).range(a, end));
+          pieces.push({ from: a, to: end, kind: "whole" });
+        }
+        return;
+      }
+      if (name === "QuoteMark") {
+        const l = state.doc.lineAt(node.from);
+        // (the > and the space after it — and a callout's [!kind] right after, drawn as its widget)
+        const end = Math.min(node.to + (state.sliceDoc(node.to, node.to + 1) === " " ? 1 : 0), l.to);
+        hidden(node.from, end, "prefix");
+        return;
+      }
+      if (name === "TaskMarker") {
+        out.push(Decoration.replace({ widget: new TaskWidget(/x/i.test(state.sliceDoc(node.from, node.to)), node.from) }).range(node.from, node.to));
+        pieces.push({ from: node.from, to: node.to, kind: "whole" });
+        return;
+      }
+      if (name === "ListMark" && node.node.parent?.parent?.name === "BulletList") {
+        // a task's box is its bullet; any other item's bullet is a dot (◦ ▪ further in)
+        const task = node.node.parent?.getChild("Task");
+        if (task) {
+          const box = task.getChild("TaskMarker");
+          hidden(node.from, box ? box.from : Math.min(node.to + 1, task.from), "prefix");
+        } else {
+          let depth = 0;
+          for (let p = node.node.parent?.parent?.parent; p; p = p.parent) if (p.name === "BulletList" || p.name === "OrderedList") depth++;
+          out.push(Decoration.replace({ widget: new BulletWidget(depth) }).range(node.from, node.to));
+          pieces.push({ from: node.from, to: Math.min(node.to + 1, state.doc.lineAt(node.from).to), kind: "prefix" });
+        }
+        return;
+      }
+      if (name === "FencedCode") {
+        for (let p = node.from; p <= node.to; ) {
+          const l = state.doc.lineAt(p);
+          out.push(line("cm-lp-codeblock").range(l.from));
+          p = l.to + 1;
+        }
+        return false;
+      }
+      if (name === "CodeText") return false;
+    },
+  });
+  // a list item's lines wrap under its text, not its marker (as Word's do) — lettered ones too
+  for (let pos = from; pos <= to; ) {
+    const l = state.doc.lineAt(pos);
+    const item = l.text.match(/^(\s*)([-*+]|\d{1,9}[.)]|[a-zA-Z][.)])(\s+)(\[[ xX]\]\s+)?/);
+    if (item) {
+      const width = item[0].length - (/^[-*+]$/.test(item[2]) ? 0.4 : 0);
+      out.push(Decoration.line({ class: "cm-lp-item", attributes: { style: `padding-left: calc(${width}ch + 6px); text-indent: calc(-${width}ch)` } }).range(l.from));
+      if (/^[a-zA-Z][.)]$/.test(item[2])) out.push(mark("cm-lp-letter").range(l.from + item[1].length, l.from + item[1].length + item[2].length));
+      // (a numbered item: ⌫ at its words' start takes its number off, as a bullet's)
+      if (/^(\d{1,9}|[a-zA-Z])[.)]$/.test(item[2])) pieces.push({ from: l.from + item[1].length, to: l.from + item[1].length + item[2].length + item[3].length, kind: "prefix" });
     }
-    // <u>underlined</u>, <sub>…</sub>, <sup>…</sup> — the HTML Markdown has for them
-    for (const m of text.matchAll(/<(u|sub|sup)>([^<\n]+)<\/\1>/g)) {
-      const a = from + m.index!;
-      const b = a + m[0].length;
-      const open = m[1].length + 2;
-      out.push(mark(`cm-lp-${m[1]}`).range(a + open, b - open - 1));
-      if (!touched(a, b)) out.push(hide.range(a, a + open), hide.range(b - open - 1, b));
-    }
-    // colored words and highlights: the color drawn, the tags it's written with never shown
-    for (const c of colorSpans(text, from)) {
-      if (c.innerEnd > c.inner)
-        out.push(
-          Decoration.mark(c.kind === "text" ? { class: "cm-lp-color", attributes: { style: `color: ${textColorCss(c.color)}` } } : { class: "cm-lp-hl", attributes: { style: `background: ${markColorCss(c.color)}` } }).range(c.inner, c.innerEnd),
-        );
-      out.push(hide.range(c.from, c.inner), hide.range(c.innerEnd, c.to));
-    }
-    for (const m of text.matchAll(/(^|\s)(#[A-Za-z][\w/-]*)/g)) {
-      const a = from + m.index! + m[1].length;
-      // (a color's #hex, inside the HTML it's written with, isn't a tag)
-      const before = text.slice(0, a - from);
-      if (before.lastIndexOf("<") > before.lastIndexOf(">")) continue;
-      if (state.doc.lineAt(a).text.match(/^#{1,6}\s/) && state.doc.lineAt(a).from === a) continue;
-      out.push(mark("cm-lp-tag").range(a, a + m[2].length));
-    }
+    if (l.to >= to) break;
+    pos = l.to + 1;
   }
-  return Decoration.set(out, true);
+  // what Markdown's parser doesn't know: $math$, ==highlights==, [[links]], <u>, colors, #tags
+  const text = state.sliceDoc(from, to);
+  for (const m of text.matchAll(/(?<!\$)\$(?!\$)(?=\S)((?:\\.|[^\\$\n])+?)(?<=\S)\$(?!\d)/g)) {
+    const a = from + m.index!;
+    const b = a + m[0].length;
+    // (in code it's just dollars)
+    const at = syntaxTree(state).resolveInner(a, 1);
+    if (/Code/.test(at.name) || /Code/.test(at.parent?.name ?? "")) continue;
+    out.push(Decoration.replace({ widget: new MathWidget(m[1], a, b) }).range(a, b));
+    pieces.push({ from: a, to: b, kind: "whole" });
+  }
+  for (const m of text.matchAll(/==(?=\S)([^=\n]+?)(?<=\S)==/g)) {
+    const a = from + m.index!;
+    const b = a + m[0].length;
+    out.push(mark("cm-lp-mark").range(a, b));
+    const info = { type: "h" as const, from: a, to: b, inner: [a + 2, b - 2] as [number, number] };
+    hidden(a, a + 2, "mark", info);
+    hidden(b - 2, b, "mark", info);
+  }
+  // [[another note]] (and [[note|what it says]])
+  for (const m of text.matchAll(/\[\[([^\]|\n]+)(?:\|([^\]\n]+))?\]\]/g)) {
+    const a = from + m.index!;
+    const b = a + m[0].length;
+    const shown = m[2] ? b - 2 - m[2].length : a + 2;
+    const info = { type: "wiki" as const, from: a, to: b, inner: [shown, b - 2] as [number, number] };
+    hidden(a, shown, "mark", info);
+    out.push(Decoration.mark({ class: "cm-lp-wikilink", attributes: { "data-note": m[1].trim(), title: `${m[1].trim()} — ⌘-click to open` } }).range(shown, b - 2));
+    hidden(b - 2, b, "mark", info);
+  }
+  // <u>underlined</u>, <sub>…</sub>, <sup>…</sup> — the HTML Markdown has for them
+  for (const m of text.matchAll(/<(u|sub|sup)>([^<\n]+)<\/\1>/g)) {
+    const a = from + m.index!;
+    const b = a + m[0].length;
+    const open = m[1].length + 2;
+    out.push(mark(`cm-lp-${m[1]}`).range(a + open, b - open - 1));
+    const info = { type: m[1] === "u" ? ("u" as const) : ("esc" as const), from: a, to: b, inner: [a + open, b - open - 1] as [number, number] };
+    hidden(a, a + open, "mark", info);
+    hidden(b - open - 1, b, "mark", info);
+  }
+  // colored words and highlights: the color drawn, the tags it's written with never shown
+  for (const c of colorSpans(text, from)) {
+    if (c.innerEnd > c.inner)
+      out.push(
+        Decoration.mark(c.kind === "text" ? { class: "cm-lp-color", attributes: { style: `color: ${textColorCss(c.color)}` } } : { class: "cm-lp-hl", attributes: { style: `background: ${markColorCss(c.color)}` } }).range(c.inner, c.innerEnd),
+      );
+    const info = { type: "color" as const, from: c.from, to: c.to, inner: [c.inner, c.innerEnd] as [number, number] };
+    hidden(c.from, c.inner, "mark", info);
+    hidden(c.innerEnd, c.to, "mark", info);
+  }
+  for (const m of text.matchAll(/(^|\s)(#[A-Za-z][\w/-]*)/g)) {
+    const a = from + m.index! + m[1].length;
+    // (a color's #hex, inside the HTML it's written with, isn't a tag)
+    const before = text.slice(0, a - from);
+    if (before.lastIndexOf("<") > before.lastIndexOf(">")) continue;
+    if (state.doc.lineAt(a).text.match(/^#{1,6}\s/) && state.doc.lineAt(a).from === a) continue;
+    out.push(mark("cm-lp-tag").range(a, a + m[2].length));
+  }
+  return { decos: out, pieces };
 }
 
-/** the pictures in view, and the tags color's written with: each stepped over as one thing (the caret's either side of
- * it, ⌫ takes it whole) */
-function picturesOf(view: EditorView): DecorationSet {
-  const out: Range<Decoration>[] = [];
-  for (const { from, to } of view.visibleRanges) {
-    syntaxTree(view.state).iterate({
-      from,
-      to,
-      enter: (node) => {
-        if (node.name !== "Image") return;
-        if (node.node.getChild("URL")) out.push(Decoration.mark({}).range(node.from, node.to));
-        return false;
-      },
-    });
-    for (const c of colorSpans(view.state.sliceDoc(from, to), from)) out.push(Decoration.mark({}).range(c.from, c.inner), Decoration.mark({}).range(c.innerEnd, c.to));
-  }
-  return Decoration.set(out, true);
+/** the lines the caret's on (a heading's # shows there) */
+export const caretLinesOf = (state: EditorState) => new Set(state.selection.ranges.flatMap((r) => [state.doc.lineAt(r.from).number, state.doc.lineAt(r.to).number]));
+
+/** the pieces around a place (for the keys): what's hidden near it, worked out from the text as it is */
+export function piecesNear(state: EditorState, pos: number, span = 400): Piece[] {
+  const from = state.doc.lineAt(Math.max(0, pos - span)).from;
+  const to = state.doc.lineAt(Math.min(state.doc.length, pos + span)).to;
+  return scan(state, from, to, caretLinesOf(state), true).pieces;
 }
 
 const preview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
-    pictures: DecorationSet;
+    atomic: RangeSet<Decoration>;
     constructor(view: EditorView) {
-      this.decorations = build(view.state, view);
-      this.pictures = picturesOf(view);
+      ({ decorations: this.decorations, atomic: this.atomic } = this.make(view));
+    }
+    make(view: EditorView) {
+      const decos: Range<Decoration>[] = [];
+      const atom: Range<Decoration>[] = [];
+      const lines = caretLinesOf(view.state);
+      for (const { from, to } of view.visibleRanges) {
+        const s = scan(view.state, from, to, lines, view.hasFocus);
+        decos.push(...s.decos);
+        // (each hidden piece stepped over as one thing: the caret's on one side of it or the other)
+        for (const p of s.pieces) atom.push(Decoration.mark({}).range(p.from, p.to));
+      }
+      return { decorations: Decoration.set(decos, true), atomic: RangeSet.of(atom, true) };
     }
     update(u: ViewUpdate) {
-      if (u.docChanged || u.selectionSet || u.viewportChanged || u.focusChanged) this.decorations = build(u.state, u.view);
-      if (u.docChanged || u.viewportChanged) this.pictures = picturesOf(u.view);
+      if (u.docChanged || u.selectionSet || u.viewportChanged || u.focusChanged) ({ decorations: this.decorations, atomic: this.atomic } = this.make(u.view));
     }
   },
   { decorations: (v) => v.decorations },
 );
-const atomicPictures = EditorView.atomicRanges.of((view) => view.plugin(preview)?.pictures ?? Decoration.none);
+const atomicPieces = EditorView.atomicRanges.of((view) => view.plugin(preview)?.atomic ?? Decoration.none);
+/** whether an editor's the live writing (not a code block's or the Markdown's own) */
+export const isLive = (view: EditorView) => !!view.plugin(preview);
 
 /** a paragraph's alignment (<!-- matrixlab: align center --> the line before it): the comment
  * hidden (and stepped over as one thing — ⌫ at the paragraph's start takes the alignment off),
@@ -418,5 +502,5 @@ export function setAlignment(view: EditorView, align: "left" | "center" | "right
 
 /** Markdown (GitHub's, with task lists and tables), shown as it reads */
 export function livePreview(): Extension {
-  return [markdown({ base: markdownLanguage }), preview, atomicPictures, alignField, EditorView.lineWrapping];
+  return [markdown({ base: markdownLanguage }), preview, atomicPieces, alignField, EditorView.lineWrapping];
 }

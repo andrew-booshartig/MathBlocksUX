@@ -13,6 +13,8 @@ import { markdownKeymap } from "@codemirror/lang-markdown";
 import { getCM, vim } from "@replit/codemirror-vim";
 import { livePreview } from "./livePreview";
 import { smartTyping } from "./smartType";
+import { wysiwyg } from "./wysiwyg";
+import { type FoldInfo, foldField, setFoldInfo } from "./folds";
 
 /** a run of writing, from outside it: the caret put in it, a place shown, where a place is */
 export interface RunHandle {
@@ -59,11 +61,15 @@ export interface TextRunProps {
   extensions?: Extension[];
   /** changes when something its decorations show from outside has (a section's apps) */
   refreshKey?: string;
+  /** its headings folded (and a folded section from above running on into it) */
+  fold?: FoldInfo;
 }
 
 export default function TextRun(props: TextRunProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  /** changes made in the writing itself (typed, a key's), counted */
+  const ownEdits = useRef(0);
   const latest = useRef(props);
   latest.current = props;
 
@@ -91,6 +97,8 @@ export default function TextRun(props: TextRunProps) {
       p.vimKeys ? keymap.of(p.keys) : Prec.highest(keymap.of(p.keys)),
       Prec.high(keymap.of(keys)),
       livePreview(),
+      foldField,
+      wysiwyg(),
       smartTyping,
       keymap.of(markdownKeymap),
       history(),
@@ -102,7 +110,10 @@ export default function TextRun(props: TextRunProps) {
       EditorView.contentAttributes.of({ spellcheck: "true", autocorrect: "on", autocapitalize: "sentences", "aria-label": "Writing" }),
       ...(p.extensions ?? []),
       EditorView.updateListener.of((u) => {
-        if (u.docChanged && !u.transactions.some((t) => t.annotation(fromOutside))) latest.current.onChange(u.state.doc.toString());
+        if (u.docChanged && !u.transactions.some((t) => t.annotation(fromOutside))) {
+          ownEdits.current++;
+          latest.current.onChange(u.state.doc.toString());
+        }
         if (u.docChanged || u.selectionSet || u.focusChanged) latest.current.onCursor?.(u.view);
       }),
       EditorView.domEventHandlers({
@@ -180,10 +191,13 @@ export default function TextRun(props: TextRunProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.vimKeys]);
 
-  // the text changed from outside (the file saved elsewhere, a replace, a split): in, the caret kept where it can be
+  // the text changed from outside (the file saved elsewhere, a replace, a split): in, the caret kept where it can be —
+  // unless it was typed in since this was drawn (React running this late): then the value is older than the writing, and
+  // the drawing the typing brings has the newer one (taken in as it is, it would undo what was just typed)
+  const editsDrawn = ownEdits.current;
   useEffect(() => {
     const v = view.current;
-    if (!v) return;
+    if (!v || ownEdits.current !== editsDrawn) return;
     const now = v.state.doc.toString();
     const next = props.value;
     if (now === next) return;
@@ -197,6 +211,12 @@ export default function TextRun(props: TextRunProps) {
   useEffect(() => {
     view.current?.dispatch({ effects: refreshDecorations.of(null) });
   }, [props.refreshKey]);
+
+  // its headings folded: told to the editor when they change (a heading's chevron asks the notebook, which keeps them)
+  const foldKey = JSON.stringify([props.fold?.folded ?? [], props.fold?.hideTop ?? null]);
+  useEffect(() => {
+    view.current?.dispatch({ effects: setFoldInfo.of({ folded: props.fold?.folded ?? [], hideTop: props.fold?.hideTop ?? null, onFold: (line) => latest.current.fold?.onFold(line) }) });
+  }, [foldKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div className="nb-cm is-prose is-live is-run" ref={host} />;
 }

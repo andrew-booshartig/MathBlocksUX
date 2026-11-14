@@ -5776,3 +5776,158 @@ body.nb-is-moving * {
   opacity: 0.3;
   cursor: default;
 }
+
+/* ==== math in the writing, changed in a box under it (typed as it looks); a link's address in a bar under it ==== */
+.nb-mathbox,
+.nb-linkbar {
+  position: fixed;
+  z-index: 62;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--t-line);
+  border-radius: 11px;
+  background: var(--t-bg1);
+  box-shadow: 0 12px 34px rgb(0 0 0 / 0.26);
+  animation: nb-bubble-in 0.12s ease-out;
+  font: 13px -apple-system, "Inter", sans-serif;
+  color: var(--t-text);
+}
+
+.nb-mathbox {
+  min-width: 260px;
+  max-width: min(560px, calc(100vw - 40px));
+}
+
+.nb-mathbox math-field,
+.nb-mathbox .math-input {
+  flex: 1;
+  min-width: 180px;
+  font-size: 17px;
+}
+
+.nb-mathbox-done,
+.nb-linkbar button {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--t-line);
+  border-radius: 7px;
+  background: var(--t-bg2);
+  color: var(--t-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.nb-mathbox-done:hover,
+.nb-linkbar button:hover {
+  border-color: var(--t-faint, var(--t-muted));
+}
+
+.nb-linkbar {
+  gap: 5px;
+  padding: 4px 4px 4px 9px;
+  color: var(--t-muted);
+}
+
+.nb-linkbar-url {
+  width: 260px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--t-bg2);
+  color: var(--t-text);
+  font: 12.5px ui-monospace, "SF Mono", Menlo, monospace;
+  outline: none;
+}
+
+.nb-linkbar-url:focus {
+  border-color: color-mix(in srgb, var(--t-blue) 55%, var(--t-line));
+}
+
+/* inline math: a quiet box on hover, clicked to change */
+.cm-lp-math {
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.cm-lp-math:hover {
+  background: color-mix(in srgb, var(--t-blue) 12%, transparent);
+}
+
+
+/* ==== a heading's chevron: its section folded away (▸), or open (▾) — on hover, and always when folded ==== */
+.cm-line:has(> .cm-fold-toggle) {
+  position: relative;
+}
+
+.cm-fold-toggle {
+  position: absolute;
+  top: 50%;
+  left: -26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  border-radius: 5px;
+  color: var(--t-faint, var(--t-muted));
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity 0.12s,
+    background 0.12s;
+}
+
+.cm-line:hover > .cm-fold-toggle,
+.cm-fold-toggle.is-folded {
+  opacity: 1;
+}
+
+.cm-fold-toggle svg {
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+
+.cm-fold-toggle.is-folded svg {
+  transform: none;
+}
+
+.cm-fold-toggle:hover {
+  background: var(--t-bg2);
+  color: var(--t-text);
+}
+
+.cm-folded {
+  margin-left: 10px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--t-bg2);
+  color: var(--t-muted);
+  font-size: 0.65em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.cm-folded:hover {
+  color: var(--t-text);
+}
+
+/* a Markdown block: as it reads (its Markdown shown when it's clicked into) */
+.nb-md-block {
+  padding: 2px 0;
+}
+
+/* the writing never scrolls sideways (its lines wrap): nothing at its edges clipped — a heading's chevron sits out in
+   the margin beside it */
+.nb-cm.is-run .cm-scroller,
+.nb-cm.is-run .cm-editor {
+  overflow: visible;
+}

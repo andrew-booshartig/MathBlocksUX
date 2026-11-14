@@ -159,6 +159,8 @@ export async function notebookLatex(doc: NotebookDoc, name: string, calc: CalcLi
       else if (r?.value) parts.push(`\\begin{verbatim}\n${r.value}\n\\end{verbatim}`);
       if (r?.images?.length) parts.push(`% ${r.images.length} plot${r.images.length === 1 ? "" : "s"} — in the printed page`);
       out.push(parts.join("\n"));
+    } else if (b.lang === "md") {
+      out.push(text(b.code));
     } else if (b.lang === "table" || b.lang === "csv") {
       // a table as one: its cells worked out, shown in their formats
       const { headers, rows } = b.lang === "csv" ? readCsv(b.code) : readTable(b.code);

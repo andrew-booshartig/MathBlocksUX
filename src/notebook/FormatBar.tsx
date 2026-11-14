@@ -270,7 +270,7 @@ export default function FormatBar({
       <button className="nb-format-wide2" disabled={off} title="Code (⌘E)" onClick={() => wrap("e")}>
         <Icon name="source" size={14} />
       </button>
-      <button className="nb-format-wide2" disabled={off} title="Link (⌘K) — [[a note]] links another notebook" onClick={() => wrap("k")}>
+      <button className="nb-format-wide2" disabled={off} title="Link (⌘K) — a web address, or another notebook's name" onClick={() => wrap("k")}>
         <Icon name="link" size={14} />
       </button>
       <span className="nb-format-sep" />
@@ -308,7 +308,7 @@ export default function FormatBar({
       <button className="nb-format-wide" title="A picture" onClick={() => file.current?.click()}>
         <Icon name="image" size={15} />
       </button>
-      <button className="nb-format-wide3" title="Math — a problem written out, typed as it reads (in a line of text, $x^2$ does it)" onClick={() => onApp("math")}>
+      <button className="nb-format-wide3" title="Math — a problem written out, typed as it reads (math in a line: / then Math in the line)" onClick={() => onApp("math")}>
         <span className="nb-format-num">∑</span>
       </button>
       <span className="nb-format-anchor nb-format-wide3">

@@ -8,7 +8,7 @@ const SHEET: { group: string; keys: [string, string][] }[] = [
     keys: [
       ["⌘B  ⌘I  ⌘U", "Bold, italic, underline"],
       ["⌘⇧X  ⌘⇧H", "Strikethrough, highlight"],
-      ["⌘E  ⌘K", "Code, a link ([[a note]] links another notebook)"],
+      ["⌘E  ⌘K", "Code, a link (a web address, or another notebook's name)"],
       ["⌘⇧8  ⌘⇧7  ⌘⇧9", "Bulleted list, numbered list, checklist"],
       ["Tab  ⇧Tab", "A list item in under the one above, back out"],
       ["/", "The menu of things to put in: apps, headings, callouts, a picture…"],

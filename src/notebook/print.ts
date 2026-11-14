@@ -146,6 +146,7 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
       const out = await mermaidSvg(b.code, true);
       body.push("svg" in out ? `<div class="mermaid-print">${out.svg}</div>` : `<pre class="code">${escape(b.code)}</pre>`);
     }
+    else if (b.lang === "md") body.push(`<div class="text">${renderMarkdown(b.code, true)}</div>`);
     else if (b.lang === "table" || b.lang === "csv") {
       // a table prints as one, its cells worked out (formulas' results) and shown as they look on the page
       const { headers, rows } = b.lang === "csv" ? readCsv(b.code) : readTable(b.code);

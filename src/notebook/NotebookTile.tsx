@@ -33,7 +33,10 @@ import { type Language, languageOf, useLanguages } from "./languages";
 import { type CellKind, cellKindOf, usePlugins } from "../plugins";
 import CodeEditor, { PYTHON_SPEC } from "./CodeEditor";
 import TextRun, { type RunHandle } from "./TextRun";
-import { alignmentAt, rememberPicture, setAlignment } from "./livePreview";
+import { alignmentAt, mathEditing, piecesNear, rememberPicture, setAlignment } from "./livePreview";
+import { linkMade } from "./wysiwyg";
+import { syntaxTree } from "@codemirror/language";
+import MathInput, { type MathInputHandle } from "../MathInput";
 import { type SectionApi, sectionTools } from "./sectionTools";
 import { CalcLive, CalcRecord, MathBlockLive, mathRowsOf } from "./apps";
 import PaperBlock from "./paperBlock";
@@ -112,9 +115,9 @@ export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon:
 
 /** each kind's color in the + menu (the apps' own, as their tabs have them) */
 const INSERT_HUES: Record<string, string> = { calc: "teal", work: "orange", graph: "blue", paper: "green", circuit: "yellow", draw: "pink", mermaid: "teal", numberline: "blue", vars: "purple", math: "teal", table: "green", python: "yellow" };
-const LANG_LABEL: Record<string, string> = { paper: "Graph paper", circuit: "Circuit", draw: "Drawing", mermaid: "Flowchart", table: "Table", csv: "Table (CSV)", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
+const LANG_LABEL: Record<string, string> = { paper: "Graph paper", circuit: "Circuit", draw: "Drawing", mermaid: "Flowchart", table: "Table", csv: "Table (CSV)", md: "Markdown", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
-const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "csv", "paper", "circuit", "draw", "mermaid"]);
+const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "csv", "paper", "circuit", "draw", "mermaid", "md"]);
 /** a table's kinds of fence: tab-separated (```table) or comma-separated (```csv) — both a spreadsheet on the page */
 const isSheet = (lang: string) => lang === "table" || lang === "csv";
 /** an indent's step (Tab on an app), in pixels: a list's */
@@ -221,6 +224,15 @@ export default function NotebookTile({
   calcVars?: Record<string, number | null>;
 }) {
   const [doc, setDoc] = useState<NotebookDoc | null>(null);
+  /** headings folded (their sections tucked away under them), by heading — kept per notebook on this computer */
+  const [folds, setFolds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      setFolds(new Set(name ? JSON.parse(localStorage.getItem(`mlx-folds:${name}`) ?? "[]") : []));
+    } catch {
+      setFolds(new Set());
+    }
+  }, [name]);
   /** the notebook open when the tile was made (the app opening on Home keeps it there, behind Home) */
   const firstName = useRef(name);
   /** the page, its Markdown, a new notebook's templates, or Home (today, what's to do, your notebooks, the apps) */
@@ -345,6 +357,9 @@ export default function NotebookTile({
   const openFromList = useCallback((n: string) => (setView("doc"), onOpenRef.current(n)), []);
   const newFromList = useCallback(() => setView("new"), []);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** a save waiting or under way (the file's newest stamp is ours till it's done); which save was asked for last */
+  const savePending = useRef(false);
+  const saveSeq = useRef(0);
   const docRef = useRef(doc);
   docRef.current = doc;
 
@@ -454,17 +469,26 @@ export default function NotebookTile({
       setDoc(next);
       if (!name) return;
       setSaving(true);
+      savePending.current = true;
       clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(async () => {
+      const timer = setTimeout(async () => {
+        const mine = ++saveSeq.current;
         text ??= writeNotebook(next);
         try {
-          lastModified.current = await invoke<number>("write_notebook", { name, text });
+          const stamp = await invoke<number>("write_notebook", { name, text });
+          // (an earlier save answering after a later one: the later one's stamp kept)
+          if (mine === saveSeq.current) lastModified.current = stamp;
           setSource(text);
         } catch (err) {
           setError(`Couldn't save: ${errorText(err)}`);
         }
-        setSaving(false);
+        // (done only when no later change's save is waiting or under way)
+        if (mine === saveSeq.current && saveTimer.current === timer) {
+          savePending.current = false;
+          setSaving(false);
+        }
       }, 350);
+      saveTimer.current = timer;
     },
     [name],
   );
@@ -484,9 +508,10 @@ export default function NotebookTile({
   useEffect(() => {
     if (!name) return;
     const timer = setInterval(async () => {
-      if (saving) return;
+      if (saving || savePending.current) return;
       const m = await invoke<number>("notebook_modified", { name }).catch(() => 0);
-      if (!m || m === lastModified.current) return;
+      // (a save of ours begun meanwhile: its stamp, not another editor's — read back, it would undo what's typed since)
+      if (savePending.current || !m || m === lastModified.current) return;
       // (an app being worked in, or the Markdown being typed: asked first; the writing just takes it in, the caret kept)
       if (editing || view === "source") setElsewhere(true);
       else {
@@ -1668,6 +1693,12 @@ export default function NotebookTile({
     lastInsert.current = null;
     setPicked(null);
     setQuietId(null);
+    // (let go because the caret went somewhere else — clicked into other writing, a field: it stays there; only keys
+    // that were in it — Esc — come back to where it was put in)
+    const elsewhere = () => {
+      const a = document.activeElement as HTMLElement | null;
+      return !!a && !a.closest(`[data-block="${id}"]`) && !!a.closest(".cm-editor, input, textarea, math-field, .sheet, [contenteditable='true']");
+    };
     const plainWriting = (b?: Block): b is Block & { kind: "text"; text: string } => !!b && b.kind === "text" && isProse(b) && !b.free && !b.beside && !b.width && !b.wrap && !b.wide;
     if (now && k >= 0 && plainWriting(prev) && !blocks[k + 2]?.beside) {
       // the writing either side of it one again, as it was before it went in — the caret where the / was
@@ -1677,10 +1708,11 @@ export default function NotebookTile({
       const tail = plainWriting(next) ? next.text.replace(/^\s+/, "") : null;
       const text = tail === null ? head + sep : `${head}${sep}${back ? back.sepAfter || "\n\n" : "\n\n"}${tail}`;
       commit({ ...now, blocks: blocks.flatMap((x) => (x.id === id || (tail !== null && x.id === next?.id) ? [] : x.id === prev.id ? [{ ...prev, text }] : [x])) });
-      setTimeout(() => focusRun(prev.id, head.length + sep.length), 0);
+      if (!elsewhere()) setTimeout(() => !elsewhere() && focusRun(prev.id, head.length + sep.length), 0);
       return;
     }
     removeBlock(id, true);
+    if (elsewhere()) return;
     if (prev && isProse(prev) && !prev.free && prev.kind === "text") focusRun(prev.id, prev.text.replace(/\s+$/, "").length);
     else if (next && isProse(next) && !next.free) focusRun(next.id, "start");
     // (the last thing on the page: the writing at the end — there's always some)
@@ -1866,6 +1898,7 @@ export default function NotebookTile({
   const typewriterLine = useRef(-1);
   const cursorMoved = (id: string, v: EditorView) => {
     placeBubble(v);
+    placeLink(v);
     // (focus: the line being written kept a little above the middle, as a typewriter keeps it)
     if (focusModeRef.current && v.hasFocus && page.current) {
       const head = v.state.selection.main.head;
@@ -1916,6 +1949,145 @@ export default function NotebookTile({
   const [bubble, setBubble] = useState<{ x: number; y: number; view: EditorView } | null>(null);
   const [bubbleColors, setBubbleColors] = useState(false);
   const pressing = useRef(false);
+  /** math in the writing being changed (or put in): in a box under it, typed as it looks — no LaTeX to know */
+  const [mathBox, setMathBox] = useState<{ view: EditorView; from: number; to: number; tex: string; x: number; y: number } | null>(null);
+  const mathField = useRef<MathInputHandle>(null);
+  const mathDone = useRef(false);
+  const openMath = (view: EditorView, from: number, to: number, tex: string) => {
+    const at = view.coordsAtPos(from, 1) ?? view.coordsAtPos(from, -1);
+    mathDone.current = false;
+    setMathBox({ view, from, to, tex, x: at?.left ?? 200, y: at?.bottom ?? 200 });
+    setTimeout(() => mathField.current?.focus(), 60);
+  };
+  useEffect(() => {
+    mathEditing.open = openMath;
+    return () => {
+      if (mathEditing.open === openMath) mathEditing.open = null;
+    };
+  });
+  const finishMath = (keep: boolean) => {
+    const box = mathBox;
+    if (!box || mathDone.current) return;
+    mathDone.current = true;
+    setMathBox(null);
+    const tex = (mathField.current?.getValue() ?? box.tex).trim();
+    const { view, from, to } = box;
+    if (keep && tex !== box.tex) view.dispatch({ changes: { from, to, insert: tex ? `$${tex}$` : "" }, selection: { anchor: from + (tex ? tex.length + 2 : 0) } });
+    else view.dispatch({ selection: { anchor: keep ? to : from } });
+    view.focus();
+  };
+  /** a link the caret's in: its address, in a bar under it — changed, opened, or the link taken off (its words kept) */
+  const [linkBox, setLinkBox] = useState<{ view: EditorView; from: number; to: number; text: [number, number]; url: [number, number]; href: string; wiki?: boolean; x: number; y: number } | null>(null);
+  const [linkDraft, setLinkDraft] = useState("");
+  const linkField = useRef<HTMLInputElement>(null);
+  // (⌘K just made a link: its address asked for — once the bar's there to ask in)
+  const wantLinkFocus = useRef(false);
+  useEffect(() => {
+    if (!wantLinkFocus.current || !linkBox || !linkField.current) return;
+    wantLinkFocus.current = false;
+    linkField.current.focus();
+  }, [linkBox]);
+  // (the bar opened: the notebooks read again, so one made a moment ago — here or in Obsidian — is known by its name)
+  const linkOpen = !!linkBox;
+  useEffect(() => {
+    if (linkOpen) void refreshListing();
+  }, [linkOpen, refreshListing]);
+  /** a link to another notebook the caret's in ([[it|its words]]): the same bar, the notebook's name in it */
+  const placeNoteLink = (v: EditorView, head: number) => {
+    const w = v.hasFocus ? piecesNear(v.state, head, 200).find((p) => p.node?.type === "wiki" && head >= p.node.inner[0] && head <= p.node.inner[1])?.node : undefined;
+    const at = w && v.coordsAtPos(w.inner[0], 1);
+    if (!w || !at) return setLinkBox(null);
+    const inside = v.state.sliceDoc(w.from + 2, w.to - 2);
+    const bar = inside.indexOf("|");
+    const name = (bar < 0 ? inside : inside.slice(0, bar)).trim();
+    setLinkBox((now) => {
+      if (now && now.view === v && now.from === w.from && now.href === name && Math.abs(now.y - at.bottom) < 1) return now;
+      setLinkDraft(name);
+      return { view: v, from: w.from, to: w.to, text: w.inner, url: [w.from + 2, w.from + 2 + (bar < 0 ? inside.length : bar)], href: name, wiki: true, x: at.left, y: at.bottom };
+    });
+    if (linkMade.just) {
+      linkMade.just = false;
+      wantLinkFocus.current = true;
+    }
+  };
+  const placeLink = (v: EditorView) => {
+    // (its address being typed: the bar stays)
+    if (linkField.current && document.activeElement === linkField.current) return;
+    const head = v.state.selection.main.head;
+    type SyntaxNodeLike = ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]>;
+    let node: SyntaxNodeLike | null = null;
+    for (const side of [-1, 1] as const) {
+      for (let n: SyntaxNodeLike | null = syntaxTree(v.state).resolveInner(head, side); n; n = n.parent)
+        if (n.name === "Link") {
+          node = n;
+          break;
+        }
+      if (node) break;
+    }
+    const marks = node?.getChildren("LinkMark") ?? [];
+    if (!node || !v.hasFocus || marks.length < 4 || head < marks[0].to || head > marks[1].from) return placeNoteLink(v, head);
+    const url = node.getChild("URL");
+    const span: [number, number] = url ? [url.from, url.to] : [marks[2].to, marks[3].from];
+    const at = v.coordsAtPos(marks[0].to, 1);
+    if (!at) return setLinkBox(null);
+    const href = v.state.sliceDoc(span[0], span[1]).trim();
+    const found = node;
+    setLinkBox((now) => {
+      if (now && now.view === v && now.from === found.from && now.href === href && Math.abs(now.y - at.bottom) < 1) return now;
+      setLinkDraft(href);
+      return { view: v, from: found.from, to: found.to, text: [marks[0].to, marks[1].from], url: span, href, x: at.left, y: at.bottom };
+    });
+    // (⌘K just made it: its address asked for at once)
+    if (linkMade.just) {
+      linkMade.just = false;
+      wantLinkFocus.current = true;
+    }
+  };
+  const setLink = (href: string) => {
+    const box = linkBox;
+    if (!box) return;
+    const typed = href.trim();
+    // (an address with no scheme that's a site's: https)
+    const clean = typed && !/^[a-z][\w+.-]*:|^#|^\//i.test(typed) && /\.[a-z]{2,}/i.test(typed) ? `https://${typed}` : typed;
+    // a notebook's name — one there is, or a new one's (opened, it's made, as Obsidian does): a link to it
+    // ([[that notebook|its words]], opened with ⌘-click) — and a link to a notebook given a web address: a web link
+    const address = /^[a-z][\w+.-]*:|^#|^\/|\.[a-z]{2,}/i.test(typed);
+    const note = listing.find((l) => l.name.toLowerCase() === typed.toLowerCase())?.name ?? (address ? "" : typed.replace(/[[\]|]/g, "").trim());
+    if (note || box.wiki) {
+      const shown = box.view.state.sliceDoc(box.text[0], box.text[1]);
+      // (words of its own kept; one showing just a notebook's name shows the new one's)
+      const own = shown.trim() && shown !== "link" && shown !== note && !(box.wiki && box.text[0] === box.from + 2);
+      const put = note ? (own ? `[[${note}|${shown}]]` : `[[${note}]]`) : clean ? `[${shown}](${clean})` : shown;
+      if (put !== box.view.state.sliceDoc(box.from, box.to)) box.view.dispatch({ changes: { from: box.from, to: box.to, insert: put } });
+      box.view.focus();
+      box.view.dispatch({ selection: { anchor: box.from + put.length } });
+      return setLinkBox(null);
+    }
+    if (clean !== box.href) box.view.dispatch({ changes: { from: box.url[0], to: box.url[1], insert: clean } });
+    box.view.focus();
+    // (a new link's words picked, to type over; else the caret after them)
+    box.view.dispatch({ selection: box.href ? { anchor: box.text[1] } : { anchor: box.text[0], head: box.text[1] } });
+    setLinkBox(null);
+  };
+  /** the bar let go of (Esc, or a click away): a link just made and never given an address goes again, its words kept */
+  const leaveLink = (focus: boolean) => {
+    const box = linkBox;
+    if (!box) return;
+    const words = box.view.state.sliceDoc(box.text[0], box.text[1]);
+    // (still there as it was made: Esc, then the blur it brings, let it go once)
+    if (!box.href && !linkDraft.trim() && box.view.state.sliceDoc(box.from, box.to) === `[${words}]()`)
+      box.view.dispatch({ changes: { from: box.from, to: box.to, insert: words }, selection: { anchor: box.from + words.length } });
+    if (focus) box.view.focus();
+    setLinkBox(null);
+  };
+  const unlink = () => {
+    const box = linkBox;
+    if (!box) return;
+    const words = box.view.state.sliceDoc(box.text[0], box.text[1]);
+    box.view.dispatch({ changes: { from: box.from, to: box.to, insert: words }, selection: { anchor: box.from + words.length } });
+    box.view.focus();
+    setLinkBox(null);
+  };
   const placeBubble = (v: EditorView | null) => {
     const sel = v?.state.selection.main;
     if (!v || !sel || sel.empty || pressing.current || !v.hasFocus) {
@@ -1953,6 +2125,7 @@ export default function NotebookTile({
   const wrapMath = (v: EditorView) => {
     const { from, to } = v.state.selection.main;
     const picked = v.state.sliceDoc(from, to);
+    if (!picked.trim()) return openMath(v, from, to, "");
     v.dispatch({ changes: { from, to, insert: "$" + picked + "$" }, selection: { anchor: from + 1, head: to + 1 } });
     v.focus();
   };
@@ -2072,6 +2245,18 @@ export default function NotebookTile({
     const now = docRef.current;
     if (!now) return;
     setInserting(null);
+    // math in the line: the / typed for it cleared, the math box opened right there (typed as it looks)
+    if (kind.lang === "inline-math") {
+      const v = runs.current.get(id)?.view;
+      if (!v) return;
+      const head = v.state.selection.main.head;
+      const line = v.state.doc.lineAt(head);
+      const slash = v.state.sliceDoc(line.from, head).match(/\/[\w ]*$/);
+      const at = slash ? head - slash[0].length : head;
+      if (slash) v.dispatch({ changes: { from: at, to: head, insert: "" }, selection: { anchor: at } });
+      v.focus();
+      return void setTimeout(() => openMath(v, at, at, ""), 0);
+    }
     // a picture: its / line cleared, then the picture chosen there (on a line of its own)
     if (kind.lang === "picture") {
       const v = runs.current.get(id)?.view;
@@ -2256,6 +2441,7 @@ export default function NotebookTile({
     if (open) {
       clearTimeout(saveTimer.current);
       saveTimer.current = undefined;
+      savePending.current = false;
       setSaving(false);
       text = writeNotebook(docRef.current!);
     } else text = (await invoke<{ text: string }>("read_notebook", { name: which }).catch(() => null))?.text ?? start ?? null;
@@ -2774,12 +2960,15 @@ export default function NotebookTile({
       { key: "warning", label: "Warning", icon: "callout", group: "Write", kind: { lang: "text", start: "> [!warning] " } },
       { key: "divider", label: "Divider", icon: "divider", group: "Write", kind: { lang: "text", start: "***\n" } },
       { key: "picture", label: "Picture", icon: "image", group: "Write", kind: { lang: "picture", start: "" } },
+      { key: "inline-math", label: "Math in the line", icon: "equations", group: "Write", kind: { lang: "inline-math", start: "" } },
       ...(off("math") ? [] : [{ key: "math", label: "Math", icon: "equations", group: "Write", kind: cell("math") as { lang: string; start: string } }]),
       ...(off("table") ? [] : [{ key: "table", label: "Table", icon: "table", group: "Write", kind: cell("table") as { lang: string; start: string } }]),
       { key: "textbox", label: "Text box", icon: "move", group: "Write", kind: { lang: "textbox", start: "" } },
     ];
     const apps = NEW_CELLS.filter((c) => !["text", "math", "table", "python"].includes(c.lang) && !off(c.lang)).map((c) => ({ key: c.lang, label: c.label, icon: c.icon, group: "Apps", kind: c as { lang: string; start: string } }));
     const code = [
+      // (Markdown as it's written, for whoever writes it — the writing itself never asks for it)
+      ...(off("md") ? [] : [{ key: "md", label: "Markdown", icon: "source", group: "Code", kind: { lang: "md", start: "" } }]),
       ...(off("python") ? [] : [{ key: "python", label: "Python", icon: "source", group: "Code", kind: cell("python") as { lang: string; start: string } }]),
       ...allLanguages.map((l) => ({ key: `lang:${l.id}`, label: l.label, icon: "source", group: "Code", kind: { lang: l.id, start: l.starter ?? "" } })),
     ];
@@ -3230,6 +3419,7 @@ export default function NotebookTile({
           onHandle={runHandle}
           extensions={[sectionTools(b.id, sectionApi)]}
           refreshKey={sectionKey}
+          fold={{ folded: foldPlan.runs.get(b.id)?.folded ?? [], hideTop: foldPlan.runs.get(b.id)?.hideTop ?? null, onFold: (line) => toggleFold(b.id, line) }}
         />
         {/* an empty line: + to put an app (math, a table, code…) there */}
         {here?.empty && here.slash === null && (
@@ -3362,6 +3552,8 @@ export default function NotebookTile({
         <PaperBlock id={b.id} code={b.code} onChange={(code) => updateBlock(b.id, { code })} onLeave={() => leavePaper(b)} />
       ) : b.lang === "circuit" || b.lang === "draw" ? (
         <CanvasCell id={b.id} lang={b.lang} code={b.code} height={b.height} api={canvasApi} />
+      ) : b.lang === "md" ? (
+        <div className="nb-md nb-md-block" dangerouslySetInnerHTML={{ __html: renderMarkdown(isEditing ? draft : b.code) }} />
       ) : b.lang === "mermaid" ? (
         <MermaidView code={isEditing ? draft : b.code} live={isEditing} />
       ) : b.lang === "numberline" ? (
@@ -3466,7 +3658,7 @@ export default function NotebookTile({
       </div>
     );
     // an app being worked in: it, with what it is and a way out above it
-    const appEditor = !isCode && isEditing && (b.lang === "work" ? <WorkCellEditor code={draft} onChange={setDraft} onDone={() => finishEditing()} /> : b.lang === "numberline" || b.lang === "mermaid" || pluginCell ? codeEditor : null);
+    const appEditor = !isCode && isEditing && (b.lang === "work" ? <WorkCellEditor code={draft} onChange={setDraft} onDone={() => finishEditing()} /> : b.lang === "numberline" || b.lang === "mermaid" || b.lang === "md" || pluginCell ? codeEditor : null);
     return (
       <div
         key={b.id}
@@ -3671,11 +3863,88 @@ export default function NotebookTile({
     }
     commit(d);
   };
+  /** each heading in the writing, in order: its block, its line there, its level, and who it is (its level and words, and
+   * which of the same it is — two "Problem 1"s are two headings) */
+  const headings = useMemo(() => {
+    const out: { block: string; line: number; level: number; key: string }[] = [];
+    const seen = new Map<string, number>();
+    for (const b of doc?.blocks ?? []) {
+      if (b.kind !== "text" || !isProse(b)) continue;
+      let fence = false;
+      b.text.split("\n").forEach((t, k) => {
+        if (/^(`{3,}|~{3,})/.test(t)) fence = !fence;
+        const m = !fence && t.match(/^(#{1,6})\s+(\S.*)$/);
+        if (!m) return;
+        const id = `${m[1].length}:${m[2].trim()}`;
+        const n = seen.get(id) ?? 0;
+        seen.set(id, n + 1);
+        out.push({ block: b.id, line: k + 1, level: m[1].length, key: `${id}#${n}` });
+      });
+    }
+    return out;
+  }, [doc]);
+  /** what the folds tuck away: whole blocks, and in each run of writing its folded headings (and the lines at its top
+   * that a folded section above runs on into) */
+  const foldPlan = useMemo(() => {
+    const hidden = new Set<string>();
+    const runs = new Map<string, { folded: number[]; hideTop: number | null }>();
+    if (!folds.size) return { hidden, runs };
+    let open: number | null = null;
+    for (const b of doc?.blocks ?? []) {
+      if (!(b.kind === "text" && isProse(b))) {
+        if (open !== null) hidden.add(b.id);
+        continue;
+      }
+      const hs = headings.filter((h) => h.block === b.id);
+      let hideTop: number | null = null;
+      let from = 0;
+      if (open !== null) {
+        const end = hs.find((h) => h.level <= open!);
+        if (!end) {
+          hidden.add(b.id);
+          continue;
+        }
+        hideTop = open;
+        from = end.line;
+        open = null;
+      }
+      const folded: number[] = [];
+      let inner: number | null = null;
+      for (const h of hs) {
+        if (h.line < from || (inner !== null && h.level > inner)) continue;
+        inner = null;
+        if (folds.has(h.key)) {
+          folded.push(h.line);
+          inner = h.level;
+        }
+      }
+      open = inner;
+      runs.set(b.id, { folded, hideTop });
+    }
+    return { hidden, runs };
+  }, [doc, folds, headings]);
+  /** a heading's chevron: its section folded, or open again (kept for next time) */
+  const toggleFold = (block: string, line: number) => {
+    const h = headings.find((x) => x.block === block && x.line === line);
+    if (!h) return;
+    setFolds((now) => {
+      const next = new Set(now);
+      if (next.has(h.key)) next.delete(h.key);
+      else next.add(h.key);
+      try {
+        if (name) localStorage.setItem(`mlx-folds:${name}`, JSON.stringify([...next]));
+      } catch {
+        /* folded for now, not kept */
+      }
+      return next;
+    });
+  };
   /** the blocks on the page: the notebook's, and writing at the end when the last isn't writing — there's always somewhere to write */
   const shown: Block[] = (() => {
     const blocks = doc?.blocks ?? [];
     const last = blocks[blocks.length - 1];
-    return last && isProse(last) && !last.free && !last.beside ? blocks : [...blocks, { id: endId.current, kind: "text", text: "" }];
+    const all = last && isProse(last) && !last.free && !last.beside ? blocks : [...blocks, { id: endId.current, kind: "text", text: "" } as Block];
+    return foldPlan.hidden.size ? all.filter((b) => !foldPlan.hidden.has(b.id) || b.id === endId.current) : all;
   })();
   // the paragraph the toolbar aligns: the one the caret's in (in the writing), else a block picked (a text box's lines)
   const alignTarget = (() => {
@@ -3763,6 +4032,59 @@ export default function NotebookTile({
           <Icon name="close" size={12} /> Focus
         </button>
       )}
+      {mathBox && (
+        <div
+          className="nb-mathbox"
+          style={{ left: mathBox.x, top: mathBox.y + 6 }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onKeyDownCapture={(e) => e.key === "Escape" && (e.preventDefault(), e.stopPropagation(), finishMath(false))}
+        >
+          <MathInput
+            ref={mathField}
+            value={mathBox.tex}
+            onChange={() => {}}
+            onEnter={() => finishMath(true)}
+            onBlur={() => setTimeout(() => finishMath(true), 120)}
+            placeholder="Math"
+          />
+          <button className="nb-mathbox-done" title="Done (Enter) · Esc: as it was" onMouseDown={(e) => e.preventDefault()} onClick={() => finishMath(true)}>
+            Done
+          </button>
+        </div>
+      )}
+      {linkBox && (
+        <div className="nb-linkbar" style={{ left: linkBox.x, top: linkBox.y + 6 }} onMouseDown={(e) => e.target === e.currentTarget && e.preventDefault()}>
+          <Icon name="link" size={13} />
+          <input
+            ref={linkField}
+            className="nb-linkbar-url"
+            value={linkDraft}
+            placeholder="A web address, or a notebook's name"
+            spellCheck={false}
+            list="nb-note-names"
+            onChange={(e) => setLinkDraft(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") (e.preventDefault(), setLink(linkDraft));
+              if (e.key === "Escape") (e.preventDefault(), leaveLink(true));
+            }}
+            onBlur={(e) => !e.relatedTarget?.closest?.(".nb-linkbar") && leaveLink(false)}
+          />
+          {linkBox.href && (
+            <button title="Open it" onMouseDown={(e) => e.preventDefault()} onClick={() => (linkBox.wiki ? void openOrCreate(linkBox.href) : void openUrl(linkBox.href).catch(() => {}))}>
+              Open
+            </button>
+          )}
+          <button title="Take the link off (its words stay)" onMouseDown={(e) => e.preventDefault()} onClick={unlink}>
+            Unlink
+          </button>
+          <datalist id="nb-note-names">
+            {listing.map((l) => (
+              <option key={l.name} value={l.name} />
+            ))}
+          </datalist>
+        </div>
+      )}
       {bubble && bubble.view.hasFocus && (
         <div className="nb-bubble" style={{ left: bubble.x, top: bubble.y }} onMouseDown={(e) => e.preventDefault()}>
           {(
@@ -3796,7 +4118,7 @@ export default function NotebookTile({
           <button title="Link (⌘K)" onClick={() => (wrapKey("k")(bubble.view), bubble.view.focus())}>
             <Icon name="link" size={14} />
           </button>
-          <button title="Math — $…$, typed as it reads" onClick={() => wrapMath(bubble.view)}>
+          <button title="Math — the words picked, as math" onClick={() => wrapMath(bubble.view)}>
             <span className="nb-bubble-math">∑</span>
           </button>
         </div>
