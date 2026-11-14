@@ -10,6 +10,9 @@ import type { NumberLineGraph } from "../store";
 import { noteTex, snapshot, todayLabel } from "../workHistory";
 import { type CalcLine, type PyOutput, calcAnswer, readGraphCell, readWorkCell, workLatex } from "./cells";
 import { type NotebookDoc, metaValue, printSwitches } from "./format";
+import { readCsv, readTable } from "./tableBlock";
+import { compute } from "../sheet/formula";
+import { display, lookAt, readLooks } from "../sheet/looks";
 
 /** plain text, safe in LaTeX */
 const esc = (t: string) => t.replace(/[\\&%$#_{}~^]/g, (c) => ({ "\\": "\\textbackslash{}", "~": "\\textasciitilde{}", "^": "\\textasciicircum{}" })[c] ?? `\\${c}`);
@@ -156,6 +159,23 @@ export async function notebookLatex(doc: NotebookDoc, name: string, calc: CalcLi
       else if (r?.value) parts.push(`\\begin{verbatim}\n${r.value}\n\\end{verbatim}`);
       if (r?.images?.length) parts.push(`% ${r.images.length} plot${r.images.length === 1 ? "" : "s"} — in the printed page`);
       out.push(parts.join("\n"));
+    } else if (b.lang === "table" || b.lang === "csv") {
+      // a table as one: its cells worked out, shown in their formats
+      const { headers, rows } = b.lang === "csv" ? readCsv(b.code) : readTable(b.code);
+      const { values, hints } = compute(rows, headers);
+      const looks = readLooks(b.info);
+      const width = Math.max(headers.length, ...rows.map((r) => r.length), 1);
+      const body = rows
+        .filter((r) => r.some((v) => v.trim()))
+        .map((r, i) =>
+          Array.from({ length: width }, (_, c) => {
+            const look = lookAt(looks, i, c);
+            const t = esc(display(values[i]?.[c] ?? null, r[c] ?? "", hints[i]?.[c] ?? null, look));
+            return look.b ? `\\textbf{${t}}` : look.i ? `\\textit{${t}}` : t;
+          }).join(" & ") + " \\\\",
+        );
+      const head = headers.some((h) => h.trim()) ? `${Array.from({ length: width }, (_, c) => `\\textbf{${esc(headers[c] ?? "")}}`).join(" & ")} \\\\\n\\hline\n` : "";
+      out.push(`\\begin{center}\n\\begin{tabular}{${"l".repeat(width)}}\n\\hline\n${head}${body.join("\n")}\n\\hline\n\\end{tabular}\n\\end{center}`);
     } else out.push(`\\begin{verbatim}\n${b.code}\n\\end{verbatim}`);
   }
   return `\\documentclass{article}

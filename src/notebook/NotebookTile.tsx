@@ -100,7 +100,7 @@ export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon:
   { lang: "vars", label: "Variables", icon: "variables", start: "m = 2.5 kg  # the cart's mass\ng = 9.81  # gravity, m/s²" },
   { lang: "calc", label: "Calculate", icon: "calc", start: "" },
   { lang: "graph", label: "Graph", icon: "graph", start: "y = 2x + 1" },
-  { lang: "table", label: "Table", icon: "table", start: "x\ty\n0\t\n1\t\n2\t" },
+  { lang: "table", label: "Table", icon: "table", start: "" },
   { lang: "numberline", label: "Number line", icon: "segment", start: "x < 3" },
   { lang: "work", label: "Work", icon: "work", start: "problem: 2x + 3 = 11\n" },
   { lang: "paper", label: "Graph paper", icon: "gridpaper", start: "" },
@@ -112,9 +112,11 @@ export const NEW_CELLS: { lang: CellLang | "text" | "math"; label: string; icon:
 
 /** each kind's color in the + menu (the apps' own, as their tabs have them) */
 const INSERT_HUES: Record<string, string> = { calc: "teal", work: "orange", graph: "blue", paper: "green", circuit: "yellow", draw: "pink", mermaid: "teal", numberline: "blue", vars: "purple", math: "teal", table: "green", python: "yellow" };
-const LANG_LABEL: Record<string, string> = { paper: "Graph paper", circuit: "Circuit", draw: "Drawing", mermaid: "Flowchart", table: "Table", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
+const LANG_LABEL: Record<string, string> = { paper: "Graph paper", circuit: "Circuit", draw: "Drawing", mermaid: "Flowchart", table: "Table", csv: "Table (CSV)", vars: "Variables", calc: "Calculate", graph: "Graph", numberline: "Number line", work: "Work", python: "Python" };
 /** the cells the app works out itself; any other fence is a language's (a plugin's) */
-const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "paper", "circuit", "draw", "mermaid"]);
+const OWN_CELLS = new Set(["vars", "calc", "graph", "numberline", "work", "python", "table", "csv", "paper", "circuit", "draw", "mermaid"]);
+/** a table's kinds of fence: tab-separated (```table) or comma-separated (```csv) — both a spreadsheet on the page */
+const isSheet = (lang: string) => lang === "table" || lang === "csv";
 /** an indent's step (Tab on an app), in pixels: a list's */
 const INDENT_STEP = 32;
 /** drawn and worked on right where they are on the page (a circuit): their own editor, clicked into */
@@ -1576,7 +1578,7 @@ export default function NotebookTile({
       setQuietId(id);
       return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${id}"] .pp-scratch`)?.focus(), 60);
     }
-    if (kind.lang === "table") return setEditing(null);
+    if (isSheet(kind.lang)) return setEditing(null);
     if (CANVAS_CELLS.has(kind.lang)) {
       setEditing(null);
       setQuietId(id);
@@ -2048,7 +2050,7 @@ export default function NotebookTile({
       setQuietId(b.id);
       return void setTimeout(() => page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .pp-scratch`)?.focus(), 60);
     }
-    if (b.kind === "cell" && b.lang === "table") {
+    if (b.kind === "cell" && isSheet(b.lang)) {
       // (a table put in: its grid takes the keys — type the first number right away, the arrows go cell to cell)
       setEditing(null);
       setQuietId(b.id);
@@ -2838,9 +2840,9 @@ export default function NotebookTile({
   /** open it: work in the app right where it is, on the page (a picture made live first) — its bar opens it in a tab beside the notebook */
   const openBlock = (b: Block) => {
     // a table (graph paper) is worked in where it is
-    if (b.kind === "cell" && (b.lang === "table" || b.lang === "paper" || CANVAS_CELLS.has(b.lang))) {
+    if (b.kind === "cell" && (isSheet(b.lang) || b.lang === "paper" || CANVAS_CELLS.has(b.lang))) {
       // (a table: into its grid — the keys its, Esc back out)
-      if (b.lang === "table") page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .sheet`)?.focus();
+      if (isSheet(b.lang)) page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .sheet`)?.focus();
       if (CANVAS_CELLS.has(b.lang) && !openInAppNow(b)) page.current?.querySelector<HTMLElement>(`[data-block="${b.id}"] .cs-editor, [data-block="${b.id}"] .dr-editor`)?.focus();
       return;
     }
@@ -3010,7 +3012,7 @@ export default function NotebookTile({
           <Icon name={icon} size={13} /> {label}
           {flat && <span className="nb-obj-tag" title="Kept as a picture — not worked out or drawn again">picture</span>}
         </span>
-        {cell && !flat && cell.lang !== "paper" && cell.lang !== "table" && !CANVAS_CELLS.has(cell.lang) && !openInAppNow(b) && (
+        {cell && !flat && cell.lang !== "paper" && !isSheet(cell.lang) && !CANVAS_CELLS.has(cell.lang) && !openInAppNow(b) && (
           <button title={code ? "Edit its code (click the code, or Enter)" : "Work in it, right here (double-click it, or Enter)"} onClick={() => startEditing(b)}>
             <Icon name="pen" size={14} />
           </button>
@@ -3083,8 +3085,8 @@ export default function NotebookTile({
                 <button onClick={() => (setBarMenu(null), flatten(cell, "png"))}>A picture (PNG)</button>
                 <button onClick={() => (setBarMenu(null), flatten(cell, "jpeg"))}>A smaller picture (JPEG)</button>
                 {(cell.lang === "calc" || cell.lang === "vars") && <button onClick={() => (setBarMenu(null), toLatex(cell, calcIndex.get(cell.id) ?? -1))}>Math text (LaTeX)</button>}
-                {cell.lang === "table" && (
-                  <button onClick={() => (setBarMenu(null), commit({ ...docRef.current!, blocks: docRef.current!.blocks.map((x) => (x.id === cell.id ? ({ id: x.id, kind: "text", text: tableMarkdown(cell.code), beside: x.beside, width: x.width } as Block) : x)) }))}>
+                {isSheet(cell.lang) && (
+                  <button onClick={() => (setBarMenu(null), commit({ ...docRef.current!, blocks: docRef.current!.blocks.map((x) => (x.id === cell.id ? ({ id: x.id, kind: "text", text: tableMarkdown(cell.code, cell.lang === "csv"), beside: x.beside, width: x.width } as Block) : x)) }))}>
                     A Markdown table (text)
                   </button>
                 )}
@@ -3353,9 +3355,9 @@ export default function NotebookTile({
             }
           />
         )
-      ) : b.lang === "table" ? (
+      ) : isSheet(b.lang) ? (
         // a spreadsheet, typed into right on the page
-        <TableBlock id={b.id} code={b.code} info={b.info} onChange={(code) => updateBlock(b.id, { code })} onInfo={(info) => updateBlock(b.id, { info })} onRemove={() => removeBlock(b.id)} onLeave={(how) => leaveTable(b.id, how)} />
+        <TableBlock id={b.id} code={b.code} info={b.info} csv={b.lang === "csv"} onChange={(code) => updateBlock(b.id, { code })} onInfo={(info) => updateBlock(b.id, { info })} onRemove={() => removeBlock(b.id)} onLeave={(how) => leaveTable(b.id, how)} />
       ) : b.lang === "paper" ? (
         <PaperBlock id={b.id} code={b.code} onChange={(code) => updateBlock(b.id, { code })} onLeave={() => leavePaper(b)} />
       ) : b.lang === "circuit" || b.lang === "draw" ? (
@@ -3480,7 +3482,7 @@ export default function NotebookTile({
             <Icon name={icon} size={12} /> open in {label}
           </span>
         )}
-        {isEditing && !isCode && b.lang !== "graph" && b.lang !== "table" && (
+        {isEditing && !isCode && b.lang !== "graph" && !isSheet(b.lang) && (
           <div className="nb-obj-live">
             <span className="nb-obj-name">
               <Icon name={icon} size={13} /> {label}
@@ -3926,7 +3928,7 @@ export default function NotebookTile({
           onRedo={() => notebookUndo(true)}
           onNew={(start) => insertHere({ lang: "text", start })}
           onPicture={keepPicture}
-          onTable={() => insertHere({ lang: "table", start: "x\ty\n\t\n\t\n\t" })}
+          onTable={() => insertHere({ lang: "table", start: "" })}
           onApp={(lang) => {
             const kind = NEW_CELLS.find((c) => c.lang === lang)!;
             // (graph paper: beside the paragraph being written — the problem on the left, its working on the right)

@@ -3,12 +3,13 @@
  * work lined up at its = signs with the answer boxed, graphs as pictures in
  * printer colors, number lines, and what Python printed and drew. Math is
  * MathML — every browser draws it, no fonts or internet needed. */
-import { readTable } from "./tableBlock";
+import { readCsv, readTable } from "./tableBlock";
+import { display, lookAt, lookStyle, readLooks } from "../sheet/looks";
+import { compute } from "../sheet/formula";
 import { sheetSvg } from "../paper/sheetSvg";
 import { circuitSvg } from "../circuit/circuitSvg";
 import { drawSvg } from "../draw/drawSvg";
 import { mermaidSvg } from "../mermaid/render";
-import { evaluate } from "../sheet/formula";
 import { Plotly } from "../PlotlyChart";
 import { mathRequest } from "../mathSidecar";
 import { PRINT_PALETTE, numberLineSvg, sameWritten } from "../numberLine";
@@ -145,11 +146,23 @@ export async function notebookHtml(doc: NotebookDoc, name: string, calc: CalcLin
       const out = await mermaidSvg(b.code, true);
       body.push("svg" in out ? `<div class="mermaid-print">${out.svg}</div>` : `<pre class="code">${escape(b.code)}</pre>`);
     }
-    else if (b.lang === "table") {
-      // a table prints as one, its cells worked out (formulas' results)
-      const { headers, rows } = readTable(b.code);
-      const values = evaluate(rows);
-      body.push(`<table class="data"><tr>${headers.map((h) => `<th>${escape(h)}</th>`).join("")}</tr>${values.map((r) => `<tr>${r.map((v) => `<td>${escape(v)}</td>`).join("")}</tr>`).join("")}</table>`);
+    else if (b.lang === "table" || b.lang === "csv") {
+      // a table prints as one, its cells worked out (formulas' results) and shown as they look on the page
+      const { headers, rows } = b.lang === "csv" ? readCsv(b.code) : readTable(b.code);
+      const { values, hints } = compute(rows, headers);
+      const looks = readLooks(b.info);
+      const cell = (raw: string, r: number, c: number) => {
+        const look = lookAt(looks, r, c);
+        const v = values[r]?.[c] ?? null;
+        const css = Object.entries(lookStyle(look) ?? {})
+          .filter(([, x]) => x !== undefined)
+          .map(([k, x]) => `${k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}: ${x}`)
+          .join("; ");
+        const right = typeof v === "number" && !look.align ? "text-align: right;" : "";
+        return `<td${css || right ? ` style="${right}${css}"` : ""}>${escape(display(v, raw, hints[r]?.[c] ?? null, look))}</td>`;
+      };
+      const named = headers.some((h) => h.trim());
+      body.push(`<table class="data">${named ? `<tr>${headers.map((h) => `<th>${escape(h)}</th>`).join("")}</tr>` : ""}${rows.filter((r) => r.some((v) => v.trim())).map((r, i) => `<tr>${r.map((raw, c) => cell(raw, i, c)).join("")}</tr>`).join("")}</table>`);
     }
     else body.push(`<pre class="code">${escape(b.code)}</pre>`);
   }
