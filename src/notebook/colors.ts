@@ -62,8 +62,10 @@ export interface ColorSpan {
   to: number;
   color: string;
 }
-/** every colored run in some text (offset: where the text starts in the document) */
-export const COLOR_SPAN = /<(span|mark)\s+style="\s*(color|background(?:-color)?)\s*:\s*([^";]+?)\s*;?\s*"\s*>([^<\n]*)<\/\1>/g;
+/** every colored run in some text (offset: where the text starts in the document) — its color read
+ * up to the quote or a ; and trimmed after (a pattern that trimmed spaces as it read them took
+ * minutes on a half-typed tag with a long run of spaces after it, and froze the writing) */
+export const COLOR_SPAN = /<(span|mark)\s+style="\s*(color|background(?:-color)?)\s*:([^";\n]*)(?:;\s*)?"\s*>([^<\n]*)<\/\1>/g;
 export function colorSpans(text: string, offset = 0): ColorSpan[] {
   const out: ColorSpan[] = [];
   for (const m of text.matchAll(COLOR_SPAN)) {
@@ -73,7 +75,9 @@ export function colorSpans(text: string, offset = 0): ColorSpan[] {
     const kind: ColorKind = m[1] === "span" ? "text" : "mark";
     // (a span's color is its color: a mark's background its background — not the other way round)
     if ((kind === "text") !== (m[2] === "color")) continue;
-    out.push({ kind, from, inner: from + openLen, innerEnd: from + m[0].length - closeLen, to: from + m[0].length, color: m[3] });
+    const color = m[3].trim();
+    if (!color) continue;
+    out.push({ kind, from, inner: from + openLen, innerEnd: from + m[0].length - closeLen, to: from + m[0].length, color });
   }
   return out;
 }

@@ -96,7 +96,10 @@ export function loadOf(p: Part, vCircuit: number): { r: number; w?: number; v?: 
   const v = p.value;
   const ohms = amount(v, "Ω");
   if (ohms !== undefined) return { r: Math.max(ohms, 1e-6) };
-  const volts = amount(v, "V") ?? (vCircuit > 0 ? vCircuit : 120);
+  // (a rating of 0 V or less is no rating — the circuit's own, as when it doesn't say: a 0 Ω load from it made every
+  // number in the circuit NaN, even the parts not wired to it)
+  const said = amount(v, "V");
+  const volts = said !== undefined && said > 0 ? said : vCircuit > 0 ? vCircuit : 120;
   let watts = amount(v, "W") ?? amount(v, "VA");
   const hp = amount(v, "hp");
   if (hp !== undefined) watts = hp * 746;
@@ -104,8 +107,8 @@ export function loadOf(p: Part, vCircuit: number): { r: number; w?: number; v?: 
     if (role === "RECEPT") return null; // nothing plugged in
     watts = role === "MOTOR" ? 373 : role === "COIL" ? 10 : p.kind === "pilot" ? 2 : 60;
   }
-  if (watts <= 0) return null;
-  return { r: (volts * volts) / watts, w: watts, v: volts };
+  if (!(watts > 0) || !Number.isFinite(watts)) return null;
+  return { r: Math.max((volts * volts) / watts, 1e-6), w: watts, v: volts };
 }
 
 /** an AC source's frequency (60 Hz unless it says) */

@@ -105,12 +105,25 @@ export interface NotebookDoc {
 let counter = 0;
 export const blockId = () => `b${Date.now().toString(36)}${(counter++).toString(36)}`;
 
+/** a header value as written: "double quoted" read as YAML (and JSON) read it — its \" and \\ undone, so a
+ * title with quotes in it doesn't gain backslashes every save — 'single quoted' with its '' as ' */
 const unquote = (v: string) => {
   const t = v.trim();
-  return /^(["']).*\1$/.test(t) ? t.slice(1, -1) : t;
+  if (t.length > 1 && t.startsWith('"') && t.endsWith('"')) {
+    try {
+      const s = JSON.parse(t);
+      if (typeof s === "string") return s;
+    } catch {
+      /* not quite JSON: as it's written, inside its quotes */
+    }
+    return t.slice(1, -1);
+  }
+  if (t.length > 1 && t.startsWith("'") && t.endsWith("'")) return t.slice(1, -1).replace(/''/g, "'");
+  return t;
 };
-/** quoted when YAML would read it differently (a colon, a leading #…) */
-const quote = (v: string) => (/^[\s#&*!|>'"%@`-]|: |\s$|^$/.test(v) ? JSON.stringify(v) : v);
+/** quoted when YAML would read it differently (a colon, a leading #, a # after a space…) or a line can't hold
+ * it as it is (a line break, a tab) */
+const quote = (v: string) => (/^[\s#&*!|>'"%@`{[,?-]|: | #|\s$|^$|[\n\r\t]/.test(v) ? JSON.stringify(v) : v);
 
 /** a paragraph that's only display math ($$ … $$, one or more): a Math object, worked in as math */
 export const isMathText = (text: string) => {
@@ -134,16 +147,45 @@ const BLOCK_START = "<!-- matrixlab: block -->";
 /** placed writing (a text box, text in a row or flowed around…) is a paragraph */
 const placesText = (p: Placement) => !!(p.beside || p.width || p.wrap || p.free || p.wide || p.align || p.height);
 
+/** a header value YAML gives more than a line — a list under its key (Obsidian's tags:, then - math), a block of
+ * text: kept exactly as it's written (after its key's colon), shown as words, and written back as it was */
+const RAW = "\u0001";
+export const isRawMeta = (v: string) => v.startsWith(RAW);
+/** a raw value as words: a list's items with commas, a block's lines run together */
+const rawWords = (v: string) => {
+  const lines = v
+    .slice(1)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const items = lines.filter((l) => /^-(\s|$)/.test(l)).map((l) => unquote(l.slice(1)));
+  return items.length ? items.filter(Boolean).join(", ") : lines.filter((l) => !/^[>|][+-]?$/.test(l)).map(unquote).join(" ");
+};
+/** a line a header can have: key: value, a line under a key (a list's item, more text), a # note, nothing */
+const headerLine = (l: string) => !l.trim() || /^[A-Za-z][\w -]*:(\s|$)/.test(l) || /^\s+\S/.test(l) || /^-(\s|$)/.test(l) || l.startsWith("#");
+
 export function parseNotebook(text: string): NotebookDoc {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const meta: [string, string][] = [];
   let i = 0;
   if (lines[0]?.trim() === "---") {
     const end = lines.findIndex((l, k) => k > 0 && l.trim() === "---");
-    if (end > 0) {
-      for (const line of lines.slice(1, end)) {
+    // a header only when what's between reads as one: a page that starts with a line (---) and has another one
+    // further down is writing — all of it kept (it was read as a header, and every line not "key: value" was lost)
+    const inside = end > 0 ? lines.slice(1, end) : [];
+    if (end > 0 && inside.every(headerLine)) {
+      let said = "";
+      for (const line of inside) {
         const m = line.match(/^([A-Za-z][\w -]*):\s?(.*)$/);
-        if (m) meta.push([m[1].trim(), unquote(m[2])]);
+        if (m) {
+          meta.push([m[1].trim(), unquote(m[2])]);
+          said = m[2];
+        } else if (line.trim() && !line.startsWith("#") && meta.length) {
+          // under the key above: its value is the lines as written
+          const last = meta[meta.length - 1];
+          if (!isRawMeta(last[1])) last[1] = `${RAW}${said ? ` ${said}` : ""}`;
+          last[1] += `\n${line}`;
+        }
       }
       i = end + 1;
     }
@@ -168,13 +210,19 @@ function blocksOf(lines: string[]): Block[] {
   let inMath = false;
   for (; i < lines.length; i++) {
     const line = lines[i];
-    const fence = !inMath && line.match(/^(`{3,}|~{3,})\s*([\w-]*)\s*(.*)$/);
+    const found = !inMath && line.match(/^(`{3,}|~{3,})\s*(.*)$/);
+    // (```code``` on a line is code in the line, not a fence: a backtick fence's words have no backtick — as CommonMark has it)
+    const fence = found && !(found[1][0] === "`" && found[2].includes("`")) ? found : null;
     if (fence) {
       endPara();
       const close = new RegExp(`^${fence[1][0] === "`" ? "`" : "~"}{${fence[1].length},}\\s*$`);
       const code: string[] = [];
       for (i++; i < lines.length && !close.test(lines[i]); i++) code.push(lines[i]);
-      chunks.push({ k: "fence", lang: fence[2].toLowerCase(), info: fence[3].trim(), code: code.join("\n") });
+      // its language: the first word, when it's a word on its own (``` id=7 is no language, all info)
+      const rest = fence[2].trim();
+      const lang = rest.match(/^[\w-]+(?=\s|$)/)?.[0] ?? "";
+      // (its end's blank lines and spaces aren't kept — as it's written, so what's open is what's saved)
+      chunks.push({ k: "fence", lang: lang.toLowerCase(), info: rest.slice(lang.length).trim(), code: code.join("\n").replace(/\s+$/, "") });
       continue;
     }
     const placed = !inMath && line.match(PLACEMENT);
@@ -235,13 +283,18 @@ function blocksOf(lines: string[]): Block[] {
     }
     if (c.k === "place") {
       const next = chunks[k + 1];
-      // a paragraph's alignment, written in the writing: it stays there (for the paragraph after it)
-      if (ALIGN_LINE.test(c.line) && !Object.keys(place).length && next?.k === "para" && !isObjectText(next.text)) {
-        chunks[k + 1] = { k: "para", text: `${c.line}\n${next.text}` };
+      // (two in a row, as a hand-edited file can have them: both for the block after — the second doesn't undo the first)
+      const merged = { ...place, ...readPlacement(c.words) };
+      // a paragraph's alignment, written in the writing: it stays there (for the paragraph after it) — alignment alone
+      // is the writing's own, never a placed paragraph's, so it reads the same however it was written
+      const aligned = Object.keys(merged).length === 1 && merged.align;
+      if (aligned && next?.k === "para" && !isObjectText(next.text)) {
+        chunks[k + 1] = { k: "para", text: `<!-- matrixlab: align ${aligned} -->\n${next.text}` };
+        place = {};
         continue;
       }
       endRun();
-      place = readPlacement(c.words);
+      place = merged;
       marked = true;
       continue;
     }
@@ -281,14 +334,21 @@ export function joinWriting(blocks: Block[]): Block[] {
 }
 
 export function writeNotebook(doc: NotebookDoc): string {
-  const head = doc.meta.length ? `---\n${doc.meta.map(([k, v]) => `${k}: ${quote(v)}`).join("\n")}\n---\n\n` : "";
   const written = doc.blocks.filter((b) => b.kind !== "text" || b.text.trim());
+  // no header, and the page starts with a line (---): an empty header first, so the line isn't read as one
+  const ruleFirst = written[0]?.kind === "text" && !placementLine(written[0]) && /^\s*-{3,}\s*$/.test(written[0].text.split("\n")[0]);
+  const head = doc.meta.length ? `---\n${doc.meta.map(([k, v]) => (isRawMeta(v) ? `${k}:${v.slice(1)}` : `${k}: ${quote(v)}`)).join("\n")}\n---\n\n` : ruleFirst ? "---\n---\n\n" : "";
   const body = written
     .map((b, k) => {
       if (b.kind === "text") {
         const prev = written[k - 1];
-        // writing after writing (or math after math), each a block of its own: a comment between, so it reads back as it was
-        const apart = !placementLine(b) && prev?.kind === "text" && ((isProseText(prev.text) && isProseText(b.text)) || (isMathText(prev.text) && isMathText(b.text)));
+        // writing after writing (or math after math), each a block of its own: a comment between, so it reads back as it was —
+        // and writing of several paragraphs with something beside it: all of it the row's (not just its last paragraph, as an
+        // older file's paragraph was)
+        const apart =
+          !placementLine(b) &&
+          ((prev?.kind === "text" && ((isProseText(prev.text) && isProseText(b.text)) || (isMathText(prev.text) && isMathText(b.text)))) ||
+            (!!written[k + 1]?.beside && isProseText(b.text) && /\n\s*\n/.test(b.text.trim())));
         return `${apart ? `${BLOCK_START}\n` : ""}${placementLine(b)}${b.text.replace(/\s+$/, "")}`;
       }
       // a fence longer than any run of backticks inside it
@@ -301,7 +361,10 @@ export function writeNotebook(doc: NotebookDoc): string {
   return `${head}${body}\n`;
 }
 
-export const metaValue = (doc: NotebookDoc, key: string) => doc.meta.find(([k]) => k.toLowerCase() === key.toLowerCase())?.[1] ?? "";
+export const metaValue = (doc: NotebookDoc, key: string) => {
+  const v = doc.meta.find(([k]) => k.toLowerCase() === key.toLowerCase())?.[1] ?? "";
+  return isRawMeta(v) ? rawWords(v) : v;
+};
 
 export function setMeta(doc: NotebookDoc, key: string, value: string): NotebookDoc {
   const has = doc.meta.some(([k]) => k.toLowerCase() === key.toLowerCase());

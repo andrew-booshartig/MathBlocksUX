@@ -17,7 +17,7 @@ import Icon from "../Icon";
 import type { AssignmentInfo, WorkHistoryEntry } from "../store";
 import { todayLabel } from "../workHistory";
 import { type CalcLine, GraphCell, NumberLineCell, type PyOutput, PythonOutput, VarsCell, VarsRecord, WhenSeen, WorkCell, WorkCellEditor, drawEverything, numberOf, parseVars, plots, readWorkCell, runCalcCells, varsAsCalc } from "./cells";
-import { type Block, type CellLang, type NotebookDoc, type Placement, PRINT_SWITCHES, blockId, isMathText, isProse, isTableText, joinWriting, metaValue, parseBlocks, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
+import { type Block, type CellLang, type NotebookDoc, type Placement, PRINT_SWITCHES, blockId, isMathText, isProse, isRawMeta, isTableText, joinWriting, metaValue, parseBlocks, parseNotebook, printSwitches, rowsOf, scopeChain, scopesOf, setMeta, widthsOf, writeNotebook } from "./format";
 import { caretSpotOf, rememberCaret, setNotebookInbox } from "./inbox";
 import { ColorPalette } from "./ColorMenu";
 import Shortcuts from "./Shortcuts";
@@ -2522,7 +2522,7 @@ export default function NotebookTile({
     <div className="nb-header">
       {headerOpen ? (
         <div className="nb-header-form">
-          {[...HEADER_FIELDS, ...doc.meta.filter(([k]) => !HEADER_FIELDS.some(([f]) => f === k.toLowerCase()) && k !== "template" && !SWITCH_KEYS.includes(k.toLowerCase()) && !TYPE_KEYS.includes(k.toLowerCase())).map(([k]) => [k, k] as [string, string])].map(([key, label]) => (
+          {[...HEADER_FIELDS, ...doc.meta.filter(([k, v]) => !isRawMeta(v) && !HEADER_FIELDS.some(([f]) => f === k.toLowerCase()) && k !== "template" && !SWITCH_KEYS.includes(k.toLowerCase()) && !TYPE_KEYS.includes(k.toLowerCase())).map(([k]) => [k, k] as [string, string])].map(([key, label]) => (
             <label key={key} className="nb-field">
               <span>{label}</span>
               <input

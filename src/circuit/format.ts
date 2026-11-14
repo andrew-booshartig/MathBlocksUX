@@ -51,19 +51,21 @@ let seq = 0;
 export const newId = (p = "x") => `${p}${(++seq).toString(36)}`;
 export const emptyCircuit = (): Circuit => ({ parts: [], wires: [], notes: [], set: {} });
 
-/** a line's words, a "quoted" one kept whole */
+/** a line's words, a "quoted" one kept whole (a setting's too: key="two words") */
 function words(line: string): string[] {
   const out: string[] = [];
-  const re = /"((?:[^"\\]|\\.)*)"|(\S+)/g;
+  const re = /([^\s"=]+=)?"((?:[^"\\]|\\.)*)"|(\S+)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(line))) {
-    if (m[1] !== undefined) {
+    if (m[2] !== undefined) {
+      let inside = m[2];
       try {
-        out.push(`\u0000${JSON.parse(`"${m[1]}"`)}`);
+        inside = JSON.parse(`"${m[2]}"`);
       } catch {
-        out.push(`\u0000${m[1]}`);
+        /* as it's written */
       }
-    } else out.push(m[2]);
+      out.push(`\u0000${m[1] ?? ""}${inside}`);
+    } else out.push(m[3]);
   }
   return out;
 }
@@ -132,6 +134,8 @@ export function parseCircuit(code: string): Circuit {
 }
 
 const q = (s: string) => (/[\s"@=]/.test(s) || !s ? JSON.stringify(s) : s);
+/** a part's name, quoted when it'd read as something else: a comment (#1), a wire, a note, a setting */
+const qName = (s: string) => (/^(#|\/\/)|[\s"@=]/.test(s) || !s || s === "wire" || s === "note" || s === "set" ? JSON.stringify(s) : s);
 
 export function writeCircuit(c: Circuit): string {
   const lines: string[] = [];
@@ -141,7 +145,7 @@ export function writeCircuit(c: Circuit): string {
       .map(([k, v]) => ` ${k}=${/[\s"]/.test(v) ? JSON.stringify(v) : v}`)
       .join("");
     const value = p.value.replace(/@/g, "").trim();
-    lines.push(`${p.name} ${p.kind}${value ? ` ${value}` : ""} @${p.x},${p.y}${p.rot ? ` r${p.rot}` : ""}${p.flip ? " flip" : ""}${props}`);
+    lines.push(`${qName(p.name)} ${p.kind}${value ? ` ${value}` : ""} @${p.x},${p.y}${p.rot ? ` r${p.rot}` : ""}${p.flip ? " flip" : ""}${props}`);
   }
   for (const w of c.wires) lines.push(`wire ${w.pts.map(([x, y]) => `${x},${y}`).join(" ")}${w.color ? ` ${w.color}` : ""}`);
   for (const n of c.notes) lines.push(`note ${JSON.stringify(n.text)} @${Math.round(n.x * 2) / 2},${Math.round(n.y * 2) / 2}`);

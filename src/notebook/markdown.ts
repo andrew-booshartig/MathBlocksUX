@@ -138,10 +138,11 @@ function makeMarked(print: boolean) {
         if (/^<\/?(u|sub|sup|mark)>$/i.test(t)) return t.toLowerCase();
         if (/^<\/span>$/i.test(t)) return "</span>";
         // colored words and highlights (the palette's in the theme's shade): only their color, nothing else
-        const color = t.match(/^<(span|mark)\s+style="\s*(color|background(?:-color)?)\s*:\s*([^";]+?)\s*;?\s*"\s*>$/i);
-        if (color) {
+        // (the color read up to the quote or a ;, then trimmed — not trimmed as it's read, which backtracks for ever on spaces)
+        const color = t.match(/^<(span|mark)\s+style="\s*(color|background(?:-color)?)\s*:([^";]*)(?:;\s*)?"\s*>$/i);
+        if (color && color[3].trim()) {
           const span = color[1].toLowerCase() === "span";
-          const css = span ? textColorCss(color[3]) : markColorCss(color[3]);
+          const css = span ? textColorCss(color[3].trim()) : markColorCss(color[3].trim());
           return css ? `<${span ? "span" : "mark"} style="${span ? "color" : "background"}: ${css}">` : `<${span ? "span" : "mark"}>`;
         }
         if (/^<br\s*\/?>$/i.test(t)) return "<br>";
