@@ -62,3 +62,9 @@ How it works: `scripts/tokenize-colors.py` gave every color in `App.css` a
 role with the original as fallback (`var(--t-bg2, #17171f)`), so the canvas
 app looks exactly as before and a theme just sets the roles. Run it again
 after adding colors to App.css.
+
+## License
+
+Copyright (c) 2026 Andrew Boos-Hartig. Shared under the
+[PolyForm Strict License 1.0.0](LICENSE): you're welcome to run and test it for
+personal, non-commercial use, but not to change it, redistribute it, or sell it.
